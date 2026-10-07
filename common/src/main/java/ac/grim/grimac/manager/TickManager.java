@@ -1,5 +1,6 @@
 package ac.grim.grimac.manager;
 
+import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.manager.tick.Tickable;
 import ac.grim.grimac.manager.tick.impl.ClearRecentlyUpdatedBlocks;
 import ac.grim.grimac.manager.tick.impl.ClientVersionSetter;
@@ -29,6 +30,7 @@ public class TickManager {
     }
 
     public void tickSync() {
+        GrimAPI.INSTANCE.getLagProtectionManager().tick();
         currentTick++;
         for (Tickable tickable : syncTick.values()) {
             tickable.tick();

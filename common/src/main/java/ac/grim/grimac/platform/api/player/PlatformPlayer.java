@@ -32,6 +32,16 @@ public interface PlatformPlayer extends GrimEntity, OfflinePlatformPlayer {
 
     void setGameMode(GameMode gameMode);
 
+    /** Platform fall-distance bridge used by FallIntegrity. */
+    default float getFallDistance() {
+        return 0.0F;
+    }
+
+    /** Platform fall-distance bridge used by FallIntegrity. */
+    default void setFallDistance(float fallDistance) {
+        // Optional on non-Bukkit platforms.
+    }
+
     boolean isExternalPlayer();
 
     void sendPluginMessage(String channelName, byte[] byteArray);

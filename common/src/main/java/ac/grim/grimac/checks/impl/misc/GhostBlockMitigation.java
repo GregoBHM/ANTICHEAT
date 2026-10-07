@@ -57,7 +57,7 @@ public class GhostBlockMitigation extends GrimProcessor implements BlockPlaceLis
 
     @Override
     public void onReload(@NotNull ConfigManager config) {
-        allow = config.getBooleanElse("exploit.allow-building-on-ghostblocks", true);
+        allow = config.getBooleanElse("exploit.allow-building-on-ghostblocks", false);
         distance = config.getIntElse("exploit.distance-to-check-for-ghostblocks", 2);
 
         if (distance < 2 || distance > 4) distance = 2;

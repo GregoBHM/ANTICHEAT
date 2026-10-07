@@ -25,6 +25,7 @@ public class PunishmentManager implements ConfigReloadable {
     private final List<PunishGroup> groups = new ArrayList<>();
     private String experimentalSymbol = "*";
     private String alertString;
+    private String verboseAlertString;
     private boolean testMode;
     private String proxyAlertString = "";
 
@@ -39,7 +40,11 @@ public class PunishmentManager implements ConfigReloadable {
 
         alertString = config.getStringElse(
                 "alerts-format",
-                "%prefix% &f%player% &bfailed <hover:show_text:\"&b%check_name%%experimental%\\n&8Description: &f%description%\">&f%check_name%%experimental%</hover> &f(x&c%vl%&f) &7%verbose%"
+                "%prefix% &f%player% &bfailed &f%check_name%%experimental% &f(x&c%vl%&f) &8[%severity%]"
+        );
+        verboseAlertString = config.getStringElse(
+                "verbose-format",
+                "%prefix% &f%player% &bfailed &f%check_name%%experimental% &f(x&c%vl%&f) &7%verbose% &8[p=%ping% tps=%tps% corr=%integrity_score%]"
         );
 
         testMode = config.getBooleanElse("test-mode", false);
@@ -79,8 +84,8 @@ public class PunishmentManager implements ConfigReloadable {
                                 (check.getCheckName().toLowerCase(Locale.ROOT).contains(command)
                                         || check.getAlternativeName().toLowerCase(Locale.ROOT).contains(command))) { // Some checks have equivalent names like AntiKB and AntiKnockback
                             if (exclude) {
-                                excluded.add(check);
-                            } else {
+                                if (!excluded.contains(check)) excluded.add(check);
+                            } else if (!checksList.contains(check)) {
                                 checksList.add(check);
                             }
                         }
@@ -110,14 +115,24 @@ public class PunishmentManager implements ConfigReloadable {
     }
 
     private String replaceAlertPlaceholders(String original, int vl, Check check, String verbose) {
+        return replaceAlertPlaceholders(original, vl, check, verbose, 0);
+    }
+
+    private String replaceAlertPlaceholders(String original, int vl, Check check, String verbose, int suppressed) {
+        String severity = GrimAPI.INSTANCE.getAlertAggregationManager().severity(player.uuid).name();
         return MessageUtil.replacePlaceholders(player, original
                 .replace("[alert]", alertString)
+                .replace("[verbose]", verboseAlertString)
                 .replace("[proxy]", proxyAlertString)
                 .replace("%check_name%", check.getDisplayName())
                 .replace("%experimental%", check.isExperimental() ? experimentalSymbol : "")
                 .replace("%vl%", Integer.toString(vl))
                 .replace("%description%", check.getDescription())
                 .replace("%stable_key%", check.getStableKey())
+                .replace("%component%", componentFor(check))
+                .replace("%severity%", severity)
+                .replace("%suppressed%", Integer.toString(Math.max(0, suppressed)))
+                .replace("%suppressed_suffix%", GrimAPI.INSTANCE.getAlertAggregationManager().suppressedSuffix(suppressed))
         ).replace("%verbose%", MessageUtil.miniMessageSafe(verbose));
     }
 
@@ -142,7 +157,7 @@ public class PunishmentManager implements ConfigReloadable {
                     if (command.command.equals("[alert]") && GrimAPI.INSTANCE.getAlertManager().hasVerboseListeners()) {
                         sentDebug = true;
                         String verboseForListeners = safeGet(verbose);
-                        String listenerCmd = replaceAlertPlaceholders(command.command, vl, check, verboseForListeners);
+                        String listenerCmd = replaceAlertPlaceholders("[verbose]", vl, check, verboseForListeners);
                         verboseListeners = GrimAPI.INSTANCE.getAlertManager().sendVerbose(MessageUtil.miniMessage(listenerCmd), null);
                     }
                     if (violationCount >= command.threshold) {
@@ -150,14 +165,23 @@ public class PunishmentManager implements ConfigReloadable {
                                 ? command.executeCount == 0
                                 : violationCount >= command.nextBoundary;
                         if (shouldRun) {
-                            String renderedVerbose = safeGet(verbose);
-                            String cmd = replaceAlertPlaceholders(command.command, vl, check, renderedVerbose);
-                            boolean canceled = COMMAND_CHANNEL.fire(player, check, renderedVerbose, cmd);
                             if (command.interval == 0) {
                                 command.executeCount++;
                             } else {
                                 advanceBoundary(command, violationCount);
                             }
+
+                            ac.grim.grimac.manager.integrity.AlertAggregationManager.Decision alertDecision = null;
+                            if (command.command.equals("[alert]")) {
+                                alertDecision = GrimAPI.INSTANCE.getAlertAggregationManager()
+                                        .evaluate(player.uuid, check.getStableKey(), vl);
+                                if (!alertDecision.send()) continue;
+                            }
+
+                            String renderedVerbose = safeGet(verbose);
+                            int suppressed = alertDecision == null ? 0 : alertDecision.suppressedSinceLastAlert();
+                            String cmd = replaceAlertPlaceholders(command.command, vl, check, renderedVerbose, suppressed);
+                            boolean canceled = COMMAND_CHANNEL.fire(player, check, renderedVerbose, cmd);
                             if (canceled) continue;
 
                             switch (command.command) {
@@ -202,6 +226,18 @@ public class PunishmentManager implements ConfigReloadable {
         }
 
         return sentDebug;
+    }
+
+    private static String componentFor(Check check) {
+        String key = check.getStableKey();
+        if (key == null) return "Other";
+        if (key.startsWith("grim.prediction.") || key.startsWith("grim.groundspoof.")) return "Prediction";
+        if (key.startsWith("grim.timer.")) return "Connection";
+        if (key.startsWith("grim.interaction.")) return "Interaction";
+        if (key.startsWith("grim.combat.")) return "Combat";
+        if (key.startsWith("grim.scaffolding.") || key.startsWith("grim.exploit.")) return "World";
+        if (key.startsWith("grim.packetorder.") || key.startsWith("grim.multiactions.")) return "Protocol";
+        return "Other";
     }
 
     private static String safeGet(Supplier<String> supplier) {

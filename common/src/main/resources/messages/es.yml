@@ -42,8 +42,9 @@ webhook-test-failed: "Discord webhook test failed!"
 # %experimental%
 # %vl% - violaciones
 # %verbose% - información extra de la comprobación como compensaciones. No todas añadirán informacion.
-alerts-format: "%prefix% &f%player% &bfalló <hover:show_text:\"&b%check_name%%experimental%\n&8Descripción: &f%description%\">&f%check_name%%experimental%</hover> &f(x&c%vl%&f) &7%verbose%"
-alerts-format-proxy: "%prefix% &f[&cproxy&f] &f%player% &bfailed <hover:show_text:\"&b%check_name%%experimental%\n&8Descripción: &f%description%\">&f%check_name%%experimental%</hover> &f(x&c%vl%&f) &7%verbose%"
+alerts-format: "%prefix% &f%player% &bfalló <hover:show_text:\"&b%check_name%%experimental%\n&8Componente: &f%component%\n&8Descripción: &f%description%\n&8VL: &f%vl%\n&8Severidad: &f%severity%\n&8Ping: &f%ping%ms\n&8TPS: &f%tps%\n&8Correlación: &f%integrity_score% &8(corta &f%integrity_short%&8 / larga &f%integrity_long%&8)\n&8Contextos: &f%integrity_contexts%\n&8Suprimidas: &f%suppressed%\">&f%check_name%%experimental%</hover> &f(x&c%vl%&f) &8[%severity%]%suppressed_suffix%"
+alerts-format-proxy: "%prefix% &f[&cproxy&f] &f%player% &bfalló &f%check_name%%experimental% &f(x&c%vl%&f) &8[%severity%]"
+verbose-format: "%prefix% &f%player% &bfalló &f%check_name%%experimental% &f(x&c%vl%&f) &7%verbose% &8[p=%ping% tps=%tps% corr=%integrity_score%]"
 experimental-symbol: "*"
 
 profile:
@@ -133,4 +134,4 @@ grim-history-check-count: "&f%check_name%&7 x&c%count%"
 
 # Marcadores de esquema — ver el comentario de cabecera en config.yml.
 config-flavor: V2
-config-version: 2
+config-version: 3

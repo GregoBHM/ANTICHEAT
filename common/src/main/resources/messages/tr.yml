@@ -44,6 +44,7 @@ webhook-test-failed: "Discord webhook test failed!"
 # %verbose% - detaylı olarak verilen tüm uyarılar, checkler tüm bilgileri vermez
 alerts-format: "%prefix% &b%player% &fadlı oyuncuda &f(x&c%vl%&f) &fadet <hover:show_text:\"&b%check_name%%experimental%\n&8Açıklama: &f%description%\">&b%check_name%%experimental%</hover> &ftespit edildi: &7%verbose%"
 alerts-format-proxy: "%prefix% &f[&cproxy&f] &b%player% &fadlı oyuncuda &f(x&c%vl%&f) &fadet <hover:show_text:\"&b%check_name%%experimental%\n&8Açıklama: &f%description%\">&b%check_name%%experimental%</hover> &ftespit edildi: &7%verbose%"
+verbose-format: "%prefix% &f%player% &b%check_name%%experimental% &f(x&c%vl%&f) &7%verbose% &8[p=%ping% tps=%tps% corr=%integrity_score%]"
 experimental-symbol: "*"
 
 profile:
@@ -132,4 +133,4 @@ grim-history-check-count: "&f%check_name%&7 x&c%count%"
 
 # Şema işaretçileri — bkz. config.yml'deki başlık yorumu.
 config-flavor: V2
-config-version: 2
+config-version: 3

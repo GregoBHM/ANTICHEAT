@@ -8,6 +8,7 @@ import ac.grim.grimac.api.event.EventBus;
 import ac.grim.grimac.api.event.events.GrimReloadEvent;
 import ac.grim.grimac.api.plugin.GrimPlugin;
 import ac.grim.grimac.api.storage.backend.BackendRegistry;
+import ac.grim.grimac.integration.GrimIntegrationAPI;
 import ac.grim.grimac.manager.config.ConfigManagerFileImpl;
 import ac.grim.grimac.manager.init.start.StartableInitable;
 import ac.grim.grimac.player.GrimPlayer;
@@ -20,6 +21,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
@@ -224,6 +226,14 @@ public class GrimExternalAPI implements GrimAbstractAPI, ConfigReloadObserver, S
         GrimAPI.INSTANCE.getAlertManager().reload(configManager);
         GrimAPI.INSTANCE.getDiscordManager().reload();
         GrimAPI.INSTANCE.getSpectateManager().reload();
+        GrimAPI.INSTANCE.getCancelledBlockIntegrityManager().reload(configManager);
+        GrimAPI.INSTANCE.getCombatIntegrityManager().reload(configManager);
+        GrimAPI.INSTANCE.getFallIntegrityManager().reload(configManager);
+        GrimAPI.INSTANCE.getEnvironmentContextManager().reload(configManager);
+        GrimAPI.INSTANCE.getIntegrityCorrelationManager().reload(configManager);
+        GrimAPI.INSTANCE.getAlertAggregationManager().reload(configManager);
+        GrimAPI.INSTANCE.getLagProtectionManager().reload(configManager);
+        GrimAPI.INSTANCE.getMovementReleaseGuard().reload(configManager);
         // First-load guard: load() calls reload() before start() runs, so this fires once with started=false before the datastore exists. Subsequent /grim reload calls see started=true and proceed (including disabled→enabled flips — DataStoreLifecycle.reload() re-evaluates builder.enabled() each time).
         if (!started) return;
         // Hot-reload picks up backend swaps + routing + connection-pool edits without a server restart. Drains in-flight writes for shutdown-drain-timeout-ms then drops; brief mid-reload unavailability is the tradeoff.
@@ -246,6 +256,38 @@ public class GrimExternalAPI implements GrimAbstractAPI, ConfigReloadObserver, S
         variableReplacements.putIfAbsent("%fast_math%", user -> !user.isVanillaMath() + "");
         variableReplacements.putIfAbsent("%tps%", user -> String.format("%.2f", GrimAPI.INSTANCE.getPlatformServer().getTPS()));
         variableReplacements.putIfAbsent("%version%", GrimUser::getVersionName);
+        variableReplacements.putIfAbsent("%integrity_score%", user -> String.format(Locale.ROOT, "%.2f",
+                GrimAPI.INSTANCE.getIntegrityCorrelationManager().getScore(user.getUniqueId())));
+        variableReplacements.putIfAbsent("%environment%", user -> {
+            GrimPlayer player = GrimAPI.INSTANCE.getPlayerDataManager().getPlayer(user.getUniqueId());
+            return player == null ? "UNKNOWN" : GrimAPI.INSTANCE.getEnvironmentContextManager().summary(player);
+        });
+        variableReplacements.putIfAbsent("%network_jitter%", user -> String.format(Locale.ROOT, "%.0f",
+                GrimAPI.INSTANCE.getLagProtectionManager().getPlayerJitterMillis(user.getUniqueId())));
+        variableReplacements.putIfAbsent("%network_ping_avg%", user -> String.format(Locale.ROOT, "%.0f",
+                GrimAPI.INSTANCE.getLagProtectionManager().getAveragePingMillis(user.getUniqueId())));
+        variableReplacements.putIfAbsent("%integrity_short%", user -> String.format(Locale.ROOT, "%.2f",
+                GrimAPI.INSTANCE.getIntegrityCorrelationManager().getShortScore(user.getUniqueId())));
+        variableReplacements.putIfAbsent("%integrity_long%", user -> String.format(Locale.ROOT, "%.2f",
+                GrimAPI.INSTANCE.getIntegrityCorrelationManager().getLongScore(user.getUniqueId())));
+        variableReplacements.putIfAbsent("%integrity_severity%", user ->
+                GrimAPI.INSTANCE.getAlertAggregationManager().severity(user.getUniqueId()).name());
+        variableReplacements.putIfAbsent("%lag_confidence%", user -> {
+            GrimPlayer player = GrimAPI.INSTANCE.getPlayerDataManager().getPlayer(user.getUniqueId());
+            double confidence = player == null
+                    ? GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence()
+                    : GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence(player);
+            return String.format(Locale.ROOT, "%.2f", confidence);
+        });
+        variableReplacements.putIfAbsent("%tick_delay%", user ->
+                Long.toString(GrimAPI.INSTANCE.getLagProtectionManager().getLastTickIntervalMillis()));
+        variableReplacements.putIfAbsent("%combat_remaining%", user ->
+                Long.toString(GrimAPI.INSTANCE.getCombatIntegrityManager().getRemainingMillis(user.getUniqueId())));
+        variableReplacements.putIfAbsent("%combat_provider%", user -> GrimAPI.INSTANCE.getCombatIntegrityManager().getProviderId());
+        variableReplacements.putIfAbsent("%fall_debt%", user -> String.format(Locale.ROOT, "%.2f",
+                GrimAPI.INSTANCE.getFallIntegrityManager().getPendingDistance(user.getUniqueId())));
+        variableReplacements.putIfAbsent("%integrity_contexts%", user ->
+                GrimIntegrationAPI.getIntegritySnapshot(user.getUniqueId()).contextSummary());
         // static variables
         staticReplacements.put("%prefix%", MessageUtil.translateAlternateColorCodes('&', GrimAPI.INSTANCE.getConfigManager().getPrefix()));
         staticReplacements.putIfAbsent("%grim_version%", getGrimVersion());

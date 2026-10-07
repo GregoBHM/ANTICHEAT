@@ -52,9 +52,18 @@ public final class GrimConfigSpecs {
      * <p>v10 → v11: adds {@code update-permission-ticks} to the bundled
      * config. No explicit migration is needed; the updater's default rewrite
      * adds the key, and auto-lift preserves an existing user value if present.
+     *
+     * <p>v11 → v12: adds SparkGrim integrity/alert/interaction policy sections.
+     * The updater's default rewrite supplies the new keys while preserving operator overrides.
+     *
+     * <p>v12 → v13: adds Phase 4A precision controls: Simulation evidence episodes,
+     * environment confidence, causal windows and player-network lag recovery.
+     *
+     * <p>v13 → v14: adds Phase 4B Blink profiles, recovery state, MovementReleaseGuard,
+     * silent protection and optional CombatPlus provider settings.
      */
     public static @NotNull ConfigUpdater.Spec mainConfig() {
-        return ConfigUpdater.Spec.builder("/config/", 11, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/config/", 14, ConfigUpdater.ConfigFlavor.V2)
                 .migration(10, ctx -> {
                     String typeRaw = ctx.input().getString("history.database.type");
                     String type = typeRaw == null ? null : typeRaw.trim().toUpperCase(Locale.ROOT);
@@ -115,7 +124,7 @@ public final class GrimConfigSpecs {
     }
 
     public static @NotNull ConfigUpdater.Spec messages() {
-        return ConfigUpdater.Spec.builder("/messages/", 2, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/messages/", 3, ConfigUpdater.ConfigFlavor.V2)
                 .build();
     }
 

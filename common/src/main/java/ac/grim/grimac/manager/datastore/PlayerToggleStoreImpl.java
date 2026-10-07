@@ -2,10 +2,8 @@ package ac.grim.grimac.manager.datastore;
 
 import ac.grim.grimac.api.storage.DataStore;
 import ac.grim.grimac.api.storage.category.Categories;
-import ac.grim.grimac.api.storage.model.SettingRecord;
+import ac.grim.grimac.api.storage.kind.ops.KeyValueScopedOps;
 import ac.grim.grimac.api.storage.model.SettingScope;
-import ac.grim.grimac.api.storage.query.Page;
-import ac.grim.grimac.api.storage.query.Queries;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -112,14 +110,14 @@ public final class PlayerToggleStoreImpl implements PlayerToggleStore {
     }
 
     private void prefetchKey(UUID uuid, AtomicReference<TogglePair> ref, String key) {
-        store.query(Categories.SETTING,
-                        new Queries.GetSetting(SettingScope.PLAYER, uuid.toString(), key))
-                .whenComplete((page, err) -> {
+        store.execute(new KeyValueScopedOps.GetOp<SettingScope, byte[]>(
+                        Categories.SETTING, SettingScope.PLAYER, uuid.toString(), key))
+                .whenComplete((storedValue, err) -> {
                     if (err != null) {
                         logger.log(Level.FINE, "[grim-toggle] prefetch " + key + " failed for " + uuid, err);
                         return;
                     }
-                    Boolean value = decodeBool(page);
+                    Boolean value = decodeBool(storedValue.orElse(null));
                     if (value != null) trySetWithPrecedence(ref, Source.PERSISTED, value);
                 });
     }
@@ -233,9 +231,7 @@ public final class PlayerToggleStoreImpl implements PlayerToggleStore {
         return new byte[] { v ? (byte) 1 : (byte) 0 };
     }
 
-    private static @Nullable Boolean decodeBool(@NotNull Page<SettingRecord> page) {
-        if (page.items().isEmpty()) return null;
-        byte[] v = page.items().get(0).value();
+    private static @Nullable Boolean decodeBool(byte[] v) {
         if (v == null || v.length == 0) return null;
         if (v.length == 1) return v[0] != 0;
         String s = new String(v, StandardCharsets.UTF_8).trim().toLowerCase(Locale.ROOT);

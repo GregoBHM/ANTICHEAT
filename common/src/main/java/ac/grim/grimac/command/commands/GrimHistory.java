@@ -11,10 +11,10 @@ import ac.grim.grimac.api.storage.history.SessionDetail;
 import ac.grim.grimac.api.storage.history.SessionSummary;
 import ac.grim.grimac.api.storage.history.ViolationEntry;
 import ac.grim.grimac.api.storage.identity.NameResolver;
+import ac.grim.grimac.api.storage.kind.ops.EntityOps;
 import ac.grim.grimac.api.storage.model.PlayerIdentity;
 import ac.grim.grimac.api.storage.query.Cursor;
 import ac.grim.grimac.api.storage.query.Page;
-import ac.grim.grimac.api.storage.query.Queries;
 import ac.grim.grimac.command.BuildableCommand;
 import ac.grim.grimac.command.render.HistoryComponentRenderer;
 import ac.grim.grimac.internal.storage.checks.CheckRegistry;
@@ -708,9 +708,13 @@ public class GrimHistory implements BuildableCommand {
             DataStoreLifecycle dsl = GrimAPI.INSTANCE.getDataStoreLifecycle();
             if (dsl == null || !dsl.isLoaded() || dsl.dataStore() == null) return out;
             try {
-                Page<PlayerIdentity> page = dsl.dataStore().query(
-                                Categories.PLAYER_IDENTITY,
-                                Queries.listPlayersByNamePrefix(partialLower, MAX_PLAYER_SUGGESTIONS))
+                Page<PlayerIdentity> page = dsl.dataStore().execute(
+                                new EntityOps.PrefixIndexOp<PlayerIdentity>(
+                                        Categories.PLAYER_IDENTITY,
+                                        "by_name",
+                                        partialLower,
+                                        null,
+                                        MAX_PLAYER_SUGGESTIONS))
                         .toCompletableFuture().get(1, TimeUnit.SECONDS);
                 for (PlayerIdentity id : page.items()) {
                     if (id.currentName() == null) continue;

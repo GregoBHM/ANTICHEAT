@@ -18,7 +18,7 @@ import com.github.retrooper.packetevents.util.Vector3i;
 import java.util.ArrayList;
 import java.util.List;
 
-@CheckData(name = "MultiPlace", stableKey = "grim.scaffolding.multi_place", description = "Placed multiple blocks in a tick", experimental = true)
+@CheckData(name = "MultiPlace", stableKey = "grim.scaffolding.multi_place", description = "Placed multiple distinct blocks in one client tick")
 public class MultiPlace extends BlockPlaceCheck implements PacketReceiveListener, PostPredictionListener, BlockPlaceListener {
     private static final Verbose V = Verbose.of("face={face}, lastFace={face}, cursor={cursor}, lastCursor={cursor}, pos={mcpos}, lastPos={mcpos}");
 
@@ -30,6 +30,13 @@ public class MultiPlace extends BlockPlaceCheck implements PacketReceiveListener
 
     public MultiPlace(GrimPlayer player) {
         super(player);
+    }
+
+    @Override
+    protected int getDefaultCancelVL() {
+        // Multiple distinct placements without an intervening client tick are not produced by vanilla.
+        // Keep a small buffer for protocol/plugin edge cases, then actively resync.
+        return 2;
     }
 
     @Override

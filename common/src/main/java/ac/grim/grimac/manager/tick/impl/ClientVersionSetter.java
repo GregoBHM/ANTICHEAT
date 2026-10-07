@@ -17,5 +17,14 @@ public class ClientVersionSetter implements Tickable {
 
             player.pollData();
         }
+
+        GrimAPI.INSTANCE.getCancelledBlockIntegrityManager().tick();
+        GrimAPI.INSTANCE.getCombatIntegrityManager().tick();
+        GrimAPI.INSTANCE.getFallIntegrityManager().tick();
+        GrimAPI.INSTANCE.getMovementReleaseGuard().tick();
+        GrimAPI.INSTANCE.getMovementContextManager().tick();
+        GrimAPI.INSTANCE.getInteractionContextManager().tick();
+        GrimAPI.INSTANCE.getIntegrityCorrelationManager().tick();
+        GrimAPI.INSTANCE.getAlertAggregationManager().tick();
     }
 }

@@ -10,6 +10,7 @@ import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.impl.aim.processor.AimProcessor;
 import ac.grim.grimac.checks.impl.misc.ClientBrand;
 import ac.grim.grimac.checks.impl.misc.TransactionOrder;
+import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.checks.impl.packetorder.PacketOrderProcessor;
 import ac.grim.grimac.events.packets.CheckManagerListener;
 import ac.grim.grimac.events.packets.PacketEntityReplication;
@@ -560,6 +561,10 @@ public class GrimPlayer implements GrimUser {
     }
 
     public void pollData() {
+        // ConnectionStall must be polled even when the client sends no movement packets.
+        ConnectionStall connectionStall = checkManager.get(ConnectionStall.class);
+        if (connectionStall != null) connectionStall.poll();
+
         // Send a transaction at least once a tick, for timer and post check purposes
         // Don't be the first to send the transaction, or we will stack overflow
         //

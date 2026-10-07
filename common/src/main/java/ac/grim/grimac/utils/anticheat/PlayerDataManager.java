@@ -3,6 +3,7 @@ package ac.grim.grimac.utils.anticheat;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.event.events.GrimJoinEvent;
 import ac.grim.grimac.api.event.events.GrimQuitEvent;
+import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.platform.api.player.PlatformPlayer;
 import ac.grim.grimac.platform.api.player.PlatformPlayerCache;
@@ -105,11 +106,28 @@ public class PlayerDataManager {
     }
 
     public void onDisconnect(User user) {
-        GrimPlayer grimPlayer = remove(user);
+        GrimPlayer grimPlayer = getPlayer(user);
+        if (grimPlayer != null) {
+            ConnectionStall connectionStall = grimPlayer.checkManager.get(ConnectionStall.class);
+            if (connectionStall != null) connectionStall.prepareForDisconnect();
+        }
+        grimPlayer = remove(user);
         if (grimPlayer != null) Channels.QUIT.fire(grimPlayer);
         clearExemptions(user);
 
         UUID uuid = user.getProfile().getUUID();
+        if (uuid != null) {
+            // Keep integrity state outside GrimPlayer so a selective stall cannot erase combat evidence
+            // simply by disconnecting after another combat plugin's timer reached zero.
+            GrimAPI.INSTANCE.getCombatIntegrityManager().recordDisconnect(uuid);
+            GrimAPI.INSTANCE.getFallIntegrityManager().recordDisconnect(uuid);
+            GrimAPI.INSTANCE.getMovementContextManager().clear(uuid);
+            GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
+            GrimAPI.INSTANCE.getAlertAggregationManager().clear(uuid);
+            GrimAPI.INSTANCE.getIntegrityCorrelationManager().clear(uuid);
+            GrimAPI.INSTANCE.getLagProtectionManager().clear(uuid);
+            GrimAPI.INSTANCE.getMovementReleaseGuard().clear(uuid);
+        }
 
         // All cleanup paths should call onDisconnect; routing the session-close + toggle
         // eviction here means a stuck PE event (or a JVM-level channel

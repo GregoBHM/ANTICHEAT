@@ -1,8 +1,10 @@
 package ac.grim.grimac.checks.impl.groundspoof;
 
+import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
+import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.predictionengine.GhostBlockDetector;
 import ac.grim.grimac.utils.collisions.datatypes.SimpleCollisionBox;
@@ -41,7 +43,11 @@ public class NoFall extends Check implements PacketReceiveListener {
             if (wrapper.isOnGround() && !wrapper.hasPositionChanged()) {
                 if (!isNearGround(wrapper.isOnGround())) { // If player isn't near ground
                     // 1.8 boats have a mind on their own... only flag if they're not near a boat or are on 1.9+
-                    if (!GhostBlockDetector.isGhostBlock(player)) flagWithSetback();
+                    if (!GhostBlockDetector.isGhostBlock(player)) {
+                        double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                                .record(player.uuid, IntegritySignal.NO_FALL);
+                        flagWithSetback("corr=" + String.format("%.2f", correlation));
+                    }
                     if (shouldModifyPackets()) {
                         wrapper.setOnGround(false);
                         event.markForReEncode(true);

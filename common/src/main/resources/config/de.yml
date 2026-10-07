@@ -5,6 +5,23 @@
 # oder mit vollständigem Quellcode für Käufer ohne zusätzliche Kosten verfügbar sein.
 
 alerts:
+    # SparkGrim Phase 3 only aggregates normal staff alerts; internal flags, logs, history and /grim verbose stay complete.
+    enabled: true
+    aggregation: true
+    burst-summary: true
+    cooldown-ms: 1500
+    minimum-vl-gap: 5
+    state-retention-seconds: 600
+    milestones:
+        - "1"
+        - "5"
+        - "10"
+        - "15"
+        - "20"
+    severity:
+        medium: 4.0
+        high: 8.0
+        critical: 14.0
     # Sollen die Warnungen nicht nur an die Spieler, sondern auch an die Konsole gesendet werden?
     print-to-console: true
     # Dies steuert, ob/wie Warnungen zwischen Servern, die mit Ihrem Proxy verbunden sind, geteilt werden.
@@ -156,6 +173,117 @@ NegativeTimer:
     drift: 1200
 
 # Gleiche Prüfmethode wie TimerA, aber für Fahrzeuge
+# Protects movement integrity when a client stops sending movement packets while the connection remains alive.
+# This also powers combat-tag preservation during suspicious/ambiguous stalls.
+integrity-profile: balanced
+
+# Phase 4B Blink mitigation. Full connection freezes remain ambiguous; selective stalls require transaction progress.
+blink-mitigation:
+    enabled: true
+    profile: balanced
+    recovery:
+        max-ms: 8000
+        min-movement-packets: 8
+        min-transaction-advance: 2
+    profiles:
+        safe:
+            legacy-watch-gap-ms: 450
+            modern-watch-gap-ms: 1500
+            airborne-watch-gap-ms: 650
+            confirm-gap-ms: 1200
+            min-transaction-advance: 5
+            release-guard-min-gap-ms: 1400
+            release-guard-min-transactions: 5
+            release-guard-repeat-threshold: 3
+            protect-full-freeze-airborne: false
+        balanced:
+            legacy-watch-gap-ms: 350
+            modern-watch-gap-ms: 1200
+            airborne-watch-gap-ms: 500
+            confirm-gap-ms: 900
+            min-transaction-advance: 3
+            release-guard-min-gap-ms: 1000
+            release-guard-min-transactions: 3
+            release-guard-repeat-threshold: 2
+            protect-full-freeze-airborne: false
+        lockdown:
+            legacy-watch-gap-ms: 300
+            modern-watch-gap-ms: 900
+            airborne-watch-gap-ms: 400
+            confirm-gap-ms: 700
+            min-transaction-advance: 2
+            release-guard-min-gap-ms: 750
+            release-guard-min-transactions: 2
+            release-guard-repeat-threshold: 1
+            protect-full-freeze-airborne: false
+
+# Uses Grim's existing safe setback position once, only when a selective Blink release has enough evidence.
+movement-release-guard:
+    enabled: true
+    cooldown-ms: 2000
+    retention-seconds: 120
+
+movement-context-auto:
+    enabled: true
+    velocity-duration-ms: 900
+    teleport-duration-ms: 1200
+    cancelled-move-duration-ms: 300
+    flight-duration-ms: 3000
+
+ConnectionStall:
+    enabled: true
+    # Legacy 1.8 clients normally send a flying packet every tick, even while standing still.
+    legacy-watch-gap-ms: 350
+    # Modern clients may legally skip more movement packets while idle.
+    modern-watch-gap-ms: 1200
+    # Airborne gaps are more dangerous because they can suspend falling.
+    airborne-watch-gap-ms: 500
+    # A stall only becomes a cheat signal after this gap AND enough transaction replies continue.
+    confirm-gap-ms: 900
+    # Preserve historical combat on quit even if the final stall is shorter than the normal watch threshold.
+    disconnect-protect-gap-ms: 150
+    # Freeze combat time even for short sub-threshold stalls; this is protection only, not a cheat flag.
+    combat-hold-gap-ms: 150
+    modern-combat-hold-gap-ms: 500
+    min-transaction-advance: 3
+    # Full connection freezes can look legitimate, so this mitigates long airborne stalls without flagging them.
+    ambiguous-airborne-setback-ms: 1500
+    # Movement must remain clean this long before a protected combat tag resumes counting down.
+    recovery-clean-ms: 2000
+    flag-cooldown-ms: 3000
+    join-grace-ms: 5000
+    outside-combat-repeat-threshold: 2
+    protect-airborne: true
+    min-protected-fall-distance: 3.0
+    setbackvl: 0
+    decay: 0.10
+
+# Independent PvP ledger used by ConnectionStall. It does not require CombatPlus or another combat plugin.
+combat-integrity:
+    enabled: true
+    tag-seconds: 15
+    # Minimum tag restored after a stall. This stops a short freeze at the final milliseconds from becoming a free escape.
+    # Set to 0 if you want to preserve exactly the time that was left.
+    resume-minimum-tag-ms: 3000
+    pending-disconnect-window-seconds: 300
+    # false = only disconnects connected to a protected stall are handled here.
+    # Your normal combat plugin can keep handling ordinary combat-logouts.
+    punish-all-combat-quits: false
+    kill-on-unsafe-disconnect: true
+    kill-on-next-join-if-needed: true
+    block-commands: true
+    silent-protection: true
+    block-message: ""
+    allowed-commands:
+      - "msg"
+      - "tell"
+      - "r"
+    providers:
+        fallback-internal: true
+        combatplus:
+            enabled: true
+            refresh-during-protection-ms: 1000
+
 VehicleTimer:
     # Ziel 1,005 Timer
     setbackvl: 10
@@ -188,7 +316,7 @@ Reach:
 exploit:
     allow-sprint-jumping-when-using-elytra: true
     # Diese Option verhindert das Platzieren von Geisterblöcken auf weitere Geisterblöcke, indem der Spieler neu synchronisiert wird.
-    allow-building-on-ghostblocks: true
+    allow-building-on-ghostblocks: false
     # Diese Option, abhängig von der oben genannten Einstellung, definiert wie weit man nach Geisterblöcken suchen soll
     # Ihr gültiger Bereich ist von 2 bis 4 begrenzt
     distance-to-check-if-ghostblocks: 2
@@ -239,4 +367,149 @@ max-ping-firework-boost: 1000
 update-permission-ticks: -1
 
 config-flavor: V2
-config-version: 11
+config-version: 14
+# Preserves predicted fall debt across freeze/Blink stalls so packet silence cannot erase fall damage bookkeeping.
+fall-integrity:
+    enabled: true
+    enforce-platform-fall-distance: true
+    minimum-distance: 3.0
+    maximum-enforced-distance: 256.0
+    recovery-retention-ms: 8000
+    disconnect-retention-ms: 60000
+
+# Correlates independent evidence in short/long windows. It never punishes by score alone.
+integrity-correlation:
+    enabled: true
+    short-window-ms: 2500
+    long-window-ms: 15000
+    decay-per-second: 0.18
+    long-window-multiplier: 0.35
+    retention-seconds: 30
+    # Repeated Simulation flags from one continuous context are one evidence episode, not unlimited independent proof.
+    simulation-episodes:
+        enabled: true
+        window-ms: 1200
+        repeated-weight-multiplier: 0.15
+        max-contribution: 1.0
+    weights:
+        simulation: 0.5
+        selective-stall: 3.0
+        airborne-stall: 2.0
+        packet-burst: 1.0
+        no-fall: 2.5
+        phase: 3.0
+        cancelled-block-support: 2.5
+        unsafe-disconnect: 3.0
+        queued-action: 2.5
+        inventory-frequency: 1.0
+        fast-consume: 2.5
+        packet-order: 1.5
+        multi-action: 1.5
+        attack-burst: 2.0
+        block-place-burst: 1.5
+
+# Adds packet-rate/burst evidence on top of Grim Timer/NegativeTimer and ConnectionStall.
+packet-integrity:
+    enabled: true
+    legacy-gap-ms: 250
+    modern-gap-ms: 700
+    recovery-window-ms: 500
+    minimum-burst-packets: 5
+    minimum-transaction-advance: 2
+    selective-stall-causal-window-ms: 2000
+    short-window-limit: 7.0
+    one-second-limit: 25.0
+    flag-buffer: 2.0
+    flag-cooldown-ms: 1500
+
+# Interaction integrity reuses CompensatedInventory, PacketOrder, MultiActions and NoSlow.
+interaction-integrity:
+    enabled: true
+    consume:
+        enabled: true
+        minimum-ratio: 0.72
+        absolute-lenience-ms: 120
+        stale-extra-ms: 3000
+        flag-cooldown-ms: 1200
+        require-item-match: true
+    inventory-frequency:
+        enabled: true
+        short-limit: 7.0
+        one-second-limit: 22.0
+        four-second-limit: 60.0
+        flag-buffer: 1.5
+        flag-cooldown-ms: 1500
+        # Normal fast inventory use is evidence first; protocol correlation or an extreme ratio is required to flag.
+        require-protocol-correlation: true
+        protocol-causal-window-ms: 1500
+        standalone-extreme-ratio: 1.75
+
+# Attack frequency only becomes strong Blink-combat evidence when paired with stall/burst state.
+combat-frequency:
+    enabled: true
+    burst-attacks: 4
+    burst-window-ms: 350
+    causal-window-ms: 1500
+    flag-cooldown-ms: 1200
+
+# Central confidence reduction for heuristic evidence during server lag. Deterministic Grim checks remain active.
+lag-protection:
+    enabled: true
+    minimum-tps: 17.0
+    degraded-tps: 18.5
+    tick-spike-ms: 250
+    severe-tick-spike-ms: 1000
+    degraded-confidence: 0.70
+    severe-confidence: 0.30
+    # Keep reduced heuristic confidence briefly after a real server spike; the queued packets arrive after the bad tick ended.
+    spike-recovery-ms: 2500
+    severe-spike-recovery-ms: 4000
+    player-network:
+        high-jitter-ms: 120.0
+        severe-jitter-ms: 250.0
+        high-ping-ms: 300.0
+        severe-ping-ms: 600.0
+        unstable-confidence: 0.75
+        severe-confidence: 0.50
+        retention-seconds: 120
+
+# Reuse Grim's own block history before Phase flags immediately after a real world change.
+# Phase 4A context layer. It only changes confidence for heuristic Simulation evidence; it never disables Phase/Reach/Timer.
+environment-context:
+    enabled: true
+    recent-block-change-ticks: 4
+    simulation-multipliers:
+        cobweb: 0.35
+        climbable: 0.55
+        liquid: 0.60
+        complex-collision: 0.70
+        piston: 0.55
+        recent-block-change: 0.55
+
+world-integrity:
+    phase-recent-block-grace-ticks: 4
+
+
+# Tracks placements cancelled by protection plugins (WorldGuard, build deny, etc.) so they cannot become client-only movement support.
+cancelled-block-integrity:
+    enabled: true
+    retention-ms: 2500
+    max-entries-per-player: 32
+
+ExploitCancelledBlock:
+    flag-after: 3
+    setbackvl: 0
+    decay: 0.20
+
+# Blocks queued attacks/places/breaks released after a confirmed selective packet stall.
+StallActions:
+    block-attacks: true
+    block-places: true
+    block-breaks: true
+    flag-cooldown-ms: 750
+    setbackvl: -1
+    decay: 0.20
+
+# Multiple distinct placements without an intervening client tick are not vanilla behavior.
+MultiPlace:
+    cancelVL: 2

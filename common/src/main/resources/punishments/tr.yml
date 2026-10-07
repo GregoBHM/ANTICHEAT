@@ -18,6 +18,8 @@ Punishments:
       - "GroundSpoof"
       - "Timer"
       - "TimerLimit"
+      - "ConnectionStall"
+      - "PacketBurst"
       - "NoFall"
     # Eşik:Aralık Komutu
     #
@@ -93,6 +95,9 @@ Punishments:
       - "Elytra"
       - "Chat"
       - "Exploit"
+      - "StallActions"
+      - "InventoryFrequency"
+      - "FastConsume"
     commands:
       - "10:5 [alert]"
       - "1:1 [log]"
@@ -103,6 +108,7 @@ Punishments:
     checks:
       - "Interact"
       - "Aim"
+      - "AttackBurst"
     commands:
       - "20:40 [alert]"
       - "1:1 [log]"

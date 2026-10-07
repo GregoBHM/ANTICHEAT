@@ -236,7 +236,7 @@ final class V2InstanceRegistry {
         }
     }
 
-    @SuppressWarnings("deprecation")
+    @SuppressWarnings({"deprecation", "removal"})
     private static final class RouterSentinelBackend implements Backend {
         private final CheckCatalogPersistence checkCatalog = new InMemoryCheckCatalogPersistence();
 

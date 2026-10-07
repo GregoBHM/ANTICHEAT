@@ -17,9 +17,15 @@ import ac.grim.grimac.checks.impl.chat.ChatD;
 import ac.grim.grimac.checks.impl.combat.*;
 import ac.grim.grimac.checks.impl.crash.*;
 import ac.grim.grimac.checks.impl.elytra.*;
+import ac.grim.grimac.checks.impl.exploit.CancelledBlockClimb;
 import ac.grim.grimac.checks.impl.exploit.ExploitA;
+import ac.grim.grimac.checks.impl.exploit.StallActions;
 import ac.grim.grimac.checks.impl.exploit.ExploitB;
 import ac.grim.grimac.checks.impl.groundspoof.NoFall;
+import ac.grim.grimac.checks.impl.integrity.AttackFrequency;
+import ac.grim.grimac.checks.impl.integrity.ConsumeTiming;
+import ac.grim.grimac.checks.impl.integrity.InventoryFrequency;
+import ac.grim.grimac.checks.impl.integrity.PacketBurst;
 import ac.grim.grimac.checks.impl.misc.ClientBrand;
 import ac.grim.grimac.checks.impl.misc.GhostBlockMitigation;
 import ac.grim.grimac.checks.impl.misc.Post;
@@ -127,6 +133,12 @@ public class CheckManager implements BasicReloadable {
                 .put(NoFall.class, new NoFall(player))
                 .put(ExploitA.class, new ExploitA(player))
                 .put(ExploitB.class, new ExploitB(player))
+                .put(CancelledBlockClimb.class, new CancelledBlockClimb(player))
+                .put(StallActions.class, new StallActions(player))
+                .put(PacketBurst.class, new PacketBurst(player))
+                .put(InventoryFrequency.class, new InventoryFrequency(player))
+                .put(ConsumeTiming.class, new ConsumeTiming(player))
+                .put(AttackFrequency.class, new AttackFrequency(player))
                 .put(BadPacketsD.class, new BadPacketsD(player))
                 .put(BadPacketsE.class, new BadPacketsE(player))
                 .put(BadPacketsJ.class, new BadPacketsJ(player))
@@ -222,6 +234,7 @@ public class CheckManager implements BasicReloadable {
                 .put(DuplicateRotPlace.class, new DuplicateRotPlace(player))
                 .put(GhostBlockMitigation.class, new GhostBlockMitigation(player))
 
+                .put(ConnectionStall.class, new ConnectionStall(player))
                 .put(Timer.class, new Timer(player))
                 .put(TickTimer.class, new TickTimer(player))
                 .put(TimerLimit.class, new TimerLimit(player))

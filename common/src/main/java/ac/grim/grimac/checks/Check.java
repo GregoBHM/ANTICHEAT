@@ -147,6 +147,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
         player.punishmentManager.handleViolation(this);
         lastViolationTime = System.currentTimeMillis();
         violations++;
+        GrimAPI.INSTANCE.getIntegrityCorrelationManager().recordCheckFlag(player, this);
         return true;
     }
 
@@ -163,6 +164,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
         player.punishmentManager.handleViolation(this);
         lastViolationTime = System.currentTimeMillis();
         violations++;
+        GrimAPI.INSTANCE.getIntegrityCorrelationManager().recordCheckFlag(player, this);
         GrimAPI.INSTANCE.getDataStoreLifecycle().liveWriteHooks()
                 .recordFlagDataFromCheck(player, this, violations, verboseData);
         return true;
