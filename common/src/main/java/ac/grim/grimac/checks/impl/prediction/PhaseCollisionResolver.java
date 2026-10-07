@@ -62,10 +62,50 @@ final class PhaseCollisionResolver {
 
                     for (SimpleCollisionBox candidate : downcast) {
                         if (sameBox(target, candidate, matchEpsilon)) {
-                            return new Source(state, x, y, z);
+                            return new Source(state, candidate, x, y, z);
                         }
                     }
                 }
+            }
+        }
+
+        return null;
+    }
+
+    static @Nullable Source resolveAt(
+            GrimPlayer player,
+            SimpleCollisionBox playerBox,
+            int x,
+            int y,
+            int z
+    ) {
+        if (y < player.compensatedWorld.getMinHeight()
+                || y >= player.compensatedWorld.getMaxHeight()) {
+            return null;
+        }
+
+        WrappedBlockState state = player.compensatedWorld.getBlock(x, y, z);
+
+        if (state.getGlobalId() == 0) {
+            return null;
+        }
+
+        CollisionBox collision = CollisionData.getData(state.getType())
+                .getMovementCollisionBox(
+                        player,
+                        player.getClientVersion(),
+                        state,
+                        x,
+                        y,
+                        z
+                );
+
+        List<SimpleCollisionBox> downcast = new ArrayList<>(16);
+        collision.downCast(downcast);
+
+        for (SimpleCollisionBox candidate : downcast) {
+            if (playerBox.isIntersected(candidate)) {
+                return new Source(state, candidate, x, y, z);
             }
         }
 
@@ -85,6 +125,12 @@ final class PhaseCollisionResolver {
                 && Math.abs(first.maxZ - second.maxZ) <= epsilon;
     }
 
-    record Source(WrappedBlockState state, int x, int y, int z) {
+    record Source(
+            WrappedBlockState state,
+            SimpleCollisionBox box,
+            int x,
+            int y,
+            int z
+    ) {
     }
 }
