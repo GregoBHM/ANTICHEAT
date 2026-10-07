@@ -46,12 +46,12 @@ public class Phase extends Check implements PostPredictionListener {
     private int sourceSearchPaddingBlocks;
     private double sourceMatchEpsilon;
 
-    private Set<String> protectedMaterials = Collections.emptySet();
-    private Set<StateType> protectedTagStates = Collections.emptySet();
-    private Set<String> legacyExemptMaterials = Collections.emptySet();
-    private Set<StateType> legacyExemptTagStates = Collections.emptySet();
+    private Set<String> protectedMaterials;
+    private Set<StateType> protectedTagStates;
+    private Set<String> legacyExemptMaterials;
+    private Set<StateType> legacyExemptTagStates;
 
-    private final Map<BlockKey, Integer> pendingGrace = new HashMap<>();
+    private Map<BlockKey, Integer> pendingGrace;
 
     public Phase(GrimPlayer player) {
         super(player);
@@ -61,7 +61,9 @@ public class Phase extends Check implements PostPredictionListener {
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
         if (!configurationValid) {
-            pendingGrace.clear();
+            if (pendingGrace != null) {
+                pendingGrace.clear();
+            }
             oldBB = player.boundingBox;
             reward();
             return;
@@ -70,7 +72,9 @@ public class Phase extends Check implements PostPredictionListener {
         if (player.getSetbackTeleportUtil().blockOffsets
                 || predictionComplete.getData().isTeleport()
                 || !predictionComplete.isChecked()) {
-            pendingGrace.clear();
+            if (pendingGrace != null) {
+                pendingGrace.clear();
+            }
             oldBB = player.boundingBox;
             reward();
             return;
@@ -223,10 +227,14 @@ public class Phase extends Check implements PostPredictionListener {
 
     @Override
     public void onReload(@NotNull ConfigManager config) {
-        super.onReload(config);
+        if (pendingGrace == null) {
+            pendingGrace = new HashMap<>();
+        } else {
+            pendingGrace.clear();
+        }
 
         configurationValid = false;
-        pendingGrace.clear();
+        super.onReload(config);
 
         try {
 
