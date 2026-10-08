@@ -160,6 +160,14 @@ TimerLimit:
     # -1 to disable
     ping-abuse-limit-threshold: 1000
 
+    hard-prevention:
+        # TimerA already cancels pure Timer abuse. This layer may cancel movement
+        # when Blink/PacketBurst evidence exists, but Blink rollback is owned only
+        # by ConnectionStall's one-shot hard-release barrier.
+        enabled: true
+        cancel-movement: true
+        minimum-confidence: 0.55
+        causal-window-ms: 1500
 NegativeTimer:
     # Millisecondi persi prima di rilevare il timer negativo
     drift: 1200
@@ -172,6 +180,27 @@ integrity-profile: balanced
 blink-mitigation:
     enabled: true
     profile: balanced
+    hard-release:
+        # v20: a single movement gap NEVER causes a rollback by itself.
+        # The first packet only arms a candidate; a second movement packet must arrive
+        # inside burst-confirm-max-interval-ms to prove a compressed Blink release.
+        enabled: true
+        legacy-min-gap-ms: 120
+        modern-min-gap-ms: 700
+        max-gap-ms: 1600
+        min-transaction-advance: 1
+        minimum-confidence: 0.80
+        burst-confirm-max-interval-ms: 35
+        # Only the buffered tail is discarded. Accepted movement resumes immediately
+        # after this short window; no repeated setback is allowed during recovery.
+        cancel-window-ms: 180
+        recovery-no-setback-ms: 600
+        setback: true
+        # A single confirmed release is prevention first. Repeated confirmed releases
+        # become ConnectionStall evidence and can be sanctioned through punishments.yml.
+        flag-after-repeats: 3
+        repeat-window-ms: 8000
+        flag-cooldown-ms: 3000
     recovery:
         max-ms: 8000
         min-movement-packets: 8
@@ -211,7 +240,7 @@ blink-mitigation:
 # Uses Grim's existing safe setback position once, only when a selective Blink release has enough evidence.
 movement-release-guard:
     enabled: true
-    cooldown-ms: 2000
+    cooldown-ms: 500
     retention-seconds: 120
 
 movement-context-auto:
@@ -346,7 +375,18 @@ max-ping-firework-boost: 1000
 update-permission-ticks: -1
 
 config-flavor: V2
-config-version: 14
+config-version: 21
+
+# Staff-only diagnostic alert emitted only when Grim actually sends a movement
+# correction/resync. It does not add VL and does not execute punishments.
+# The normal Grim alert style is preserved; the verbose part tells you what the
+# correction was related to, e.g. related=cobweb or related=normal,blink,packet_burst.
+correction-diagnostics:
+    enabled: true
+    cooldown-ms: 125
+    recent-check-window-ms: 750
+    format: "%prefix% &f%player% &bfailed &f%check_name%%experimental% &f(x&c%vl%&f) &7%verbose% &8[p=%ping% tps=%tps% corr=%integrity_score%]"
+
 # Preserves predicted fall debt across freeze/Blink stalls so packet silence cannot erase fall damage bookkeeping.
 fall-integrity:
     enabled: true
@@ -411,6 +451,11 @@ interaction-integrity:
         stale-extra-ms: 3000
         flag-cooldown-ms: 1200
         require-item-match: true
+        prevent:
+            # Cancels the Bukkit consume event only when timing is impossible enough
+            # and lag confidence is sufficient.
+            enabled: true
+            minimum-confidence: 0.60
     inventory-frequency:
         enabled: true
         short-limit: 7.0
@@ -459,15 +504,95 @@ environment-context:
     recent-block-change-ticks: 4
     simulation-multipliers:
         cobweb: 0.35
+        stuck-movement: 0.50
         climbable: 0.55
         liquid: 0.60
         complex-collision: 0.70
         piston: 0.55
         recent-block-change: 0.55
+    enforcement-multipliers:
+        # These affect only the extra advantage-prevention layer, not Grim's predictor.
+        # 1.0 = normal aggressiveness, lower values = more tolerance in special physics.
+        cobweb: 0.15
+        stuck-movement: 0.35
+        climbable: 0.45
+        liquid: 0.55
+        complex-collision: 0.65
+        piston: 0.45
+        recent-block-change: 0.50
 
 world-integrity:
     phase-recent-block-grace-ticks: 4
 
+    phase-protection:
+        enabled: true
+        immediate-setback: true
+
+        protected-materials:
+          - BARRIER
+
+        protected-tags:
+          - DOORS
+          - TRAPDOORS
+          - FENCE_GATES
+
+        legacy-1_8-exemptions:
+            enabled: true
+            materials:
+              - CHEST
+              - TRAPPED_CHEST
+            tags:
+              - ANVIL
+
+        source-resolution:
+            search-padding-blocks: 1
+            match-epsilon: 0.0000001
+
+
+
+movement-enforcement:
+    enabled: true
+
+    environment:
+        # Prevent a special movement state from leaving the player trapped by a stale safe position.
+        recovery-ticks: 3
+        recovery-multiplier: 0.70
+        # Short-Blink heuristics are disabled only while special movement physics/recovery is active.
+        # Simulation, Phase, Timer and the normal Grim predictor remain active.
+        disable-short-blink: true
+
+    # Prediction evidence that is strong enough to stop the current position
+    # from replacing Grim's last known safe position.
+    quarantine-offset: 0.020
+
+    # Repeated strong evidence can setback even when one individual offset
+    # is below the severe threshold.
+    strong-offset: 0.050
+    severe-offset: 0.100
+    strong-consecutive-ticks: 2
+
+    # A quarantined player must move cleanly for this many checked movements
+    # before positions are promoted as safe again.
+    clean-recovery-ticks: 3
+
+    immediate-setback: true
+    ground-spoof-quarantine: true
+
+    # Short Blink mitigation is prevention-only. A short network gap does not
+    # become a standalone cheat flag. It only freezes safe-position promotion
+    # and rolls back a compressed movement release when packet/transaction
+    # evidence and gained distance are strong enough.
+    short-blink:
+        # Fallback only. v20 ConnectionStall owns Blink rollback to avoid duplicate setbacks.
+        enabled: false
+        min-gap-ms: 120
+        max-gap-ms: 1000
+        recovery-window-ms: 600
+        burst-interval-ms: 50
+        minimum-release-packets: 2
+        minimum-transaction-advance: 1
+        minimum-distance: 0.12
+        minimum-confidence: 0.45
 
 # Tracks placements cancelled by protection plugins (WorldGuard, build deny, etc.) so they cannot become client-only movement support.
 cancelled-block-integrity:
@@ -485,6 +610,11 @@ StallActions:
     block-attacks: true
     block-places: true
     block-breaks: true
+    block-use-items: true
+    block-entity-interactions: true
+    # Disabled by default to avoid inventory desync on heavily customized servers.
+    block-inventory-clicks: false
+    block-release-use-item: true
     flag-cooldown-ms: 750
     setbackvl: -1
     decay: 0.20

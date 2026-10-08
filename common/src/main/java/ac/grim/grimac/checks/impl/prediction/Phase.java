@@ -515,7 +515,7 @@ public class Phase extends Check implements PostPredictionListener {
         return new IllegalStateException(
                 "Invalid SparkGrim config key '" + key + "': expected "
                         + expected + ", got " + actualType
-                        + ". Update the bundled config to config-version 15."
+                        + ". Update the bundled config to config-version 20."
         );
     }
 

@@ -1,12 +1,16 @@
 package ac.grim.grimac.manager.integrity;
 
 /**
- * Lightweight movement-environment labels used to reduce false confidence without disabling Grim checks.
- * These are context signals only: none of them grants a Phase/Reach/Timer bypass.
+ * Lightweight movement-environment labels used to reduce false confidence
+ * without disabling Grim checks.
+ *
+ * These are context signals only. None of them grants a Phase, Reach,
+ * Timer or Simulation bypass.
  */
 public enum EnvironmentContext {
     NORMAL,
     COBWEB,
+    STUCK_MOVEMENT,
     CLIMBABLE,
     WATER,
     LAVA,

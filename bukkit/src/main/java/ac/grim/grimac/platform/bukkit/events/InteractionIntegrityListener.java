@@ -23,27 +23,72 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-/** Bukkit confirmation/reset bridge for packet-side interaction integrity state. */
 public final class InteractionIntegrityListener implements Listener {
+    private static final ConcurrentHashMap<UUID, ConsumeTiming.ConsumeDecision> PENDING_CONSUME = new ConcurrentHashMap<>();
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onConsume(PlayerItemConsumeEvent event) {
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onConsumePrevent(PlayerItemConsumeEvent event) {
         Player player = event.getPlayer();
-        GrimPlayer grim = grim(player.getUniqueId());
+        UUID uuid = player.getUniqueId();
+        GrimPlayer grim = grim(uuid);
         if (grim == null) return;
 
+        ConsumeTiming consume = grim.checkManager.get(ConsumeTiming.class);
+        if (consume == null) return;
+
         if (event.isCancelled()) {
-            GrimAPI.INSTANCE.getInteractionContextManager().begin(player.getUniqueId(),
-                    InteractionContextType.PLUGIN_CANCELLED_USE, "Bukkit:CancelledConsume", 700L,
-                    "item=" + event.getItem().getType().name());
-            grim.runSafely(() -> grim.checkManager.get(ConsumeTiming.class).reset());
+            PENDING_CONSUME.remove(uuid);
             return;
         }
 
         String material = event.getItem().getType().name();
-        long now = System.currentTimeMillis();
-        grim.runSafely(() -> grim.checkManager.get(ConsumeTiming.class).completeServerConsume(now, material));
+        ConsumeTiming.ConsumeDecision decision = consume.evaluateServerConsume(System.currentTimeMillis(), material);
+        PENDING_CONSUME.put(uuid, decision);
+
+        if (decision.shouldPrevent()) {
+            event.setCancelled(true);
+            try {
+                player.updateInventory();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onConsumeMonitor(PlayerItemConsumeEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        GrimPlayer grim = grim(uuid);
+        if (grim == null) {
+            PENDING_CONSUME.remove(uuid);
+            return;
+        }
+
+        ConsumeTiming consume = grim.checkManager.get(ConsumeTiming.class);
+        if (consume == null) {
+            PENDING_CONSUME.remove(uuid);
+            return;
+        }
+
+        ConsumeTiming.ConsumeDecision decision = PENDING_CONSUME.remove(uuid);
+
+        if (event.isCancelled() && (decision == null || !decision.shouldPrevent())) {
+            GrimAPI.INSTANCE.getInteractionContextManager().begin(
+                    uuid,
+                    InteractionContextType.PLUGIN_CANCELLED_USE,
+                    "Bukkit:CancelledConsume",
+                    700L,
+                    "item=" + event.getItem().getType().name()
+            );
+            grim.runSafely(consume::reset);
+            return;
+        }
+
+        if (decision != null) {
+            grim.runSafely(() -> consume.applyServerConsumeDecision(decision));
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -53,9 +98,13 @@ public final class InteractionIntegrityListener implements Listener {
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
 
         UUID uuid = event.getPlayer().getUniqueId();
-        GrimAPI.INSTANCE.getInteractionContextManager().begin(uuid,
-                InteractionContextType.PLUGIN_CANCELLED_USE, "Bukkit:CancelledInteract", 500L,
-                "item=" + event.getItem().getType().name());
+        GrimAPI.INSTANCE.getInteractionContextManager().begin(
+                uuid,
+                InteractionContextType.PLUGIN_CANCELLED_USE,
+                "Bukkit:CancelledInteract",
+                500L,
+                "item=" + event.getItem().getType().name()
+        );
         GrimPlayer grim = grim(uuid);
         if (grim != null) grim.runSafely(() -> grim.checkManager.get(ConsumeTiming.class).reset());
     }
@@ -98,6 +147,7 @@ public final class InteractionIntegrityListener implements Listener {
     }
 
     private static void clear(UUID uuid) {
+        PENDING_CONSUME.remove(uuid);
         GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
         GrimPlayer grim = grim(uuid);
         if (grim == null) return;

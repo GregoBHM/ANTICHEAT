@@ -3,6 +3,10 @@ package ac.grim.grimac.manager;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.event.events.GrimPlayerSetbackEvent;
 import ac.grim.grimac.api.event.events.GrimTeleportEvent;
+import ac.grim.grimac.api.AbstractCheck;
+import ac.grim.grimac.checks.Check;
+import ac.grim.grimac.checks.impl.timer.ConnectionStall;
+import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.checks.GrimProcessor;
 import ac.grim.grimac.checks.impl.badpackets.BadPacketsN;
 import ac.grim.grimac.checks.type.PostPredictionListener;
@@ -35,9 +39,6 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEn
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerPositionAndLook;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
@@ -46,25 +47,17 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class SetbackTeleportUtil extends GrimProcessor implements PostPredictionListener {
-    // Sync to netty
     public final ConcurrentLinkedQueue<TeleportData> pendingTeleports = new ConcurrentLinkedQueue<>();
     private final Random random = new Random();
     private static final GrimTeleportEvent.Channel TELEPORT_CHANNEL = GrimAPI.INSTANCE.getEventBus().get(GrimTeleportEvent.class);
     private static final GrimPlayerSetbackEvent.Channel PLAYER_SETBACK_CHANNEL = GrimAPI.INSTANCE.getEventBus().get(GrimPlayerSetbackEvent.class);
-    // Sync to netty, a player MUST accept a teleport to spawn into the world
-    // A teleport is used to end the loading screen.  Some cheats pretend to never end the loading screen
-    // in an attempt to disable the anticheat.  Be careful.
-    // We fix this by blocking serverbound movements until the player is out of the loading screen.
+
     public boolean hasAcceptedSpawnTeleport = false;
-    // Was there a ghost block that forces us to block offsets until the player accepts their teleport?
     public boolean blockOffsets = false;
     public SetbackPosWithVector lastKnownGoodPosition;
-    // Are we currently sending setback stuff?
     public boolean isSendingSetback = false;
     public int cheatVehicleInterpolationDelay = 0;
-    // This required setback data is the head of the teleport.
-    // It is set by both bukkit and netty due to going on the bukkit thread to setback players
-    @Getter
+
     private SetBackData requiredSetBack = null;
     private long lastWorldResync = 0;
 
@@ -74,21 +67,21 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
 
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
-        // Grab friction now when we know player on ground and other variables
         Vector3dm afterTickFriction = player.clientVelocity.clone();
 
-        // We must first check if the player has accepted their setback
-        // If the setback isn't complete, then this position is illegitimate
         if (predictionComplete.getData().getSetback() != null) {
-            // The player needs to now wait for their vehicle to go into the right place before getting back in
             if (cheatVehicleInterpolationDelay > 0) cheatVehicleInterpolationDelay = 10;
-            // Teleport, let velocity be reset
-            lastKnownGoodPosition = new SetbackPosWithVector(new Vector3d(player.x, player.y, player.z), afterTickFriction);
-        } else if (requiredSetBack == null || requiredSetBack.isComplete()) {
+            lastKnownGoodPosition = new SetbackPosWithVector(
+                    new Vector3d(player.x, player.y, player.z),
+                    afterTickFriction
+            );
+        } else if (!predictionComplete.isSafePositionUpdateBlocked()
+                && (requiredSetBack == null || requiredSetBack.isComplete())) {
             cheatVehicleInterpolationDelay--;
-            // No simulation... we can do that later. We just need to know the valid position.
-            // As we didn't setback here, the new position is known to be safe!
-            lastKnownGoodPosition = new SetbackPosWithVector(new Vector3d(player.x, player.y, player.z), afterTickFriction);
+            lastKnownGoodPosition = new SetbackPosWithVector(
+                    new Vector3d(player.x, player.y, player.z),
+                    afterTickFriction
+            );
         }
 
         if (requiredSetBack != null) requiredSetBack.tick();
@@ -96,44 +89,45 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
 
     public void executeForceResync() {
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
-            return; // We don't care about spectators, they don't flag
-        if (lastKnownGoodPosition == null) return; // Player hasn't spawned yet
-        blockMovementsUntilResync(true, true);
+            return;
+        if (lastKnownGoodPosition == null) return;
+        if (blockMovementsUntilResync(true, true)) {
+            emitCorrectionDiagnostic("resync");
+        }
     }
 
     public void executeNonSimulatingForceResync() {
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
-            return; // We don't care about spectators, they don't flag
-        if (lastKnownGoodPosition == null) return; // Player hasn't spawned yet
-        blockMovementsUntilResync(false, true);
+            return;
+        if (lastKnownGoodPosition == null) return;
+        if (blockMovementsUntilResync(false, true)) {
+            emitCorrectionDiagnostic("resync");
+        }
     }
 
     public void executeNonSimulatingSetback() {
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
-            return; // We don't care about spectators, they don't flag
-        if (lastKnownGoodPosition == null) return; // Player hasn't spawned yet
-        blockMovementsUntilResync(false, false);
+            return;
+        if (lastKnownGoodPosition == null) return;
+        if (blockMovementsUntilResync(false, false)) {
+            emitCorrectionDiagnostic("connection");
+        }
     }
 
     public boolean executeViolationSetback() {
         if (isExempt()) return false;
-        blockMovementsUntilResync(true, false);
+        if (!blockMovementsUntilResync(true, false)) return false;
+        emitCorrectionDiagnostic("prediction");
         return true;
     }
 
     private boolean isExempt() {
-        // Not exempting spectators here because timer check for spectators is actually valid.
-        // Player hasn't spawned yet
         if (lastKnownGoodPosition == null) return true;
-        // Setbacks aren't allowed
         if (player.disableGrim) return true;
-        // Player has permission to cheat, permission not given to OP by default.
         return player.platformPlayer != null && player.noSetbackPermission;
     }
 
     private void simulateFriction(Vector3dm vector) {
-        // We must always do this before simulating positions, as this is the last actual (safe) movement
-        // We must not do this for knockback or explosions, as they are at the start of the tick
         if (player.wasTouchingWater) {
             PredictionEngineWater.staticVectorEndOfTick(player, vector, 0.8F, player.gravity, true);
         } else if (player.wasTouchingLava) {
@@ -141,27 +135,34 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
             if (player.hasGravity)
                 vector.add(0.0D, -player.gravity / 4.0D, 0.0D);
         } else if (player.isGliding) {
-            PredictionEngineElytra.getElytraMovement(player, vector, ReachUtils.getLook(player, player.yaw, player.pitch)).multiply(player.stuckSpeedMultiplier).multiply(0.99F, 0.98F, 0.99F);
-            vector.setY(vector.getY() - 0.05); // Make the player fall a bit
-        } else { // Gliding doesn't have friction, we handle it differently
-            PredictionEngineNormal.staticVectorEndOfTick(player, vector); // Lava and normal movement
+            PredictionEngineElytra.getElytraMovement(
+                    player,
+                    vector,
+                    ReachUtils.getLook(player, player.yaw, player.pitch)
+            ).multiply(player.stuckSpeedMultiplier).multiply(0.99F, 0.98F, 0.99F);
+            vector.setY(vector.getY() - 0.05);
+        } else {
+            PredictionEngineNormal.staticVectorEndOfTick(player, vector);
         }
 
-        // Prevent abusing setbacks to move out of blocks like webs
         vector.multiply(player.stuckSpeedMultiplier);
 
-        // stop 1.8 players from stepping onto 1.25 high blocks, because why not?
-        new PredictionEngine().applyMovementThreshold(player, new HashSet<>(Collections.singletonList(new VectorData(vector, VectorData.VectorType.BestVelPicked))));
+        new PredictionEngine().applyMovementThreshold(
+                player,
+                new HashSet<>(Collections.singletonList(
+                        new VectorData(vector, VectorData.VectorType.BestVelPicked)
+                ))
+        );
     }
 
-    private void blockMovementsUntilResync(boolean simulateNextTickPosition, boolean isResync) {
-        if (requiredSetBack == null) return; // Hasn't spawned
+    private boolean blockMovementsUntilResync(boolean simulateNextTickPosition, boolean isResync) {
+        if (requiredSetBack == null) return false;
         if (player.platformPlayer != null && player.noSetbackPermission)
-            return; // The player has permission to cheat
-        requiredSetBack.setPlugin(false); // The player has illegal movement, block from vanilla ac override
-        if (isPendingSetback()) return; // Don't spam setbacks
+            return false;
 
-        // Only let us full resync once every five seconds to prevent unneeded bukkit load
+        requiredSetBack.setPlugin(false);
+        if (isPendingSetback()) return false;
+
         if (System.currentTimeMillis() - lastWorldResync > 5 * 1000) {
             player.resyncPositions(player.boundingBox.copy().expand(1));
             lastWorldResync = System.currentTimeMillis();
@@ -172,13 +173,10 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         Pair<VelocityData, Vector3dm> futureKb = player.checkManager.getKnockbackHandler().getFutureKnockback();
         VelocityData futureExplosion = player.checkManager.getExplosionHandler().getFutureExplosion();
 
-        // Velocity sets
-        // Don't let player reuse setback velocity
         if (futureKb.first() != null && !futureKb.first().isSetback) {
             clientVel = futureKb.second();
         }
 
-        // Explosion adds
         if (futureExplosion != null && (futureKb.first() == null
                 || (futureKb.first().transaction < futureExplosion.transaction && !futureKb.first().isSetback))) {
             clientVel.add(futureExplosion.vector);
@@ -187,47 +185,160 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         Vector3d position = lastKnownGoodPosition.pos;
 
         SimpleCollisionBox oldBB = player.boundingBox;
-        player.boundingBox = GetBoundingBox.getPlayerBoundingBox(player, position.getX(), position.getY(), position.getZ());
+        player.boundingBox = GetBoundingBox.getPlayerBoundingBox(
+                player,
+                position.getX(),
+                position.getY(),
+                position.getZ()
+        );
 
-        // Mini prediction engine - simulate collisions
         if (simulateNextTickPosition) {
-            Vector3dm collide = Collisions.collide(player, clientVel.getX(), clientVel.getY(), clientVel.getZ());
+            Vector3dm collide = Collisions.collide(
+                    player,
+                    clientVel.getX(),
+                    clientVel.getY(),
+                    clientVel.getZ()
+            );
 
             position = position.withX(position.getX() + collide.getX());
             position = position.withY(position.getY() + collide.getY());
-            // TODO: Is this even needed? Can't reproduce any phasing on vanilla 1.8 when being setback.
+
             if (player.getClientVersion().isOlderThan(ClientVersion.V_1_9)) {
-                // 1.8 players need the collision epsilon to not phase into blocks when being setback
-                // Due to simulation, this will not allow a flight bypass by sending a billion invalid movements
                 position = position.withY(position.getY() + SimpleCollisionBox.COLLISION_EPSILON);
             }
+
             position = position.withZ(position.getZ() + collide.getZ());
 
             if (clientVel.getX() != collide.getX()) {
-                clientVel.setX(BlockProperties.getVelocityAfterHorizontalCollision(player, clientVel.getX()));
+                clientVel.setX(BlockProperties.getVelocityAfterHorizontalCollision(
+                        player,
+                        clientVel.getX()
+                ));
             }
+
             if (clientVel.getY() != collide.getY()) {
-                clientVel.setY(BlockProperties.getVelocityAfterVerticalCollision(player, clientVel.getY(), collide.getY()));
+                clientVel.setY(BlockProperties.getVelocityAfterVerticalCollision(
+                        player,
+                        clientVel.getY(),
+                        collide.getY()
+                ));
             }
+
             if (clientVel.getZ() != collide.getZ()) {
-                clientVel.setZ(BlockProperties.getVelocityAfterHorizontalCollision(player, clientVel.getZ()));
+                clientVel.setZ(BlockProperties.getVelocityAfterHorizontalCollision(
+                        player,
+                        clientVel.getZ()
+                ));
             }
 
             simulateFriction(clientVel);
         }
 
-        player.boundingBox = oldBB; // reset back to the new bounding box
+        player.boundingBox = oldBB;
 
         if (!hasAcceptedSpawnTeleport || player.isFlying)
-            clientVel = null; // if the player is flying or hasn't spawned... don't force kb
+            clientVel = null;
 
-        // Something weird has occurred in the player's movement, block offsets until we resync
         if (isResync) {
             blockOffsets = true;
         }
 
-        SetBackData data = new SetBackData(new TeleportData(position, 0, 0, null, RelativeFlag.YAW.or(RelativeFlag.PITCH), player.lastTransactionSent.get(), 0), player.yaw, player.pitch, clientVel, player.inVehicle(), false);
+        SetBackData data = new SetBackData(
+                new TeleportData(
+                        position,
+                        0,
+                        0,
+                        null,
+                        RelativeFlag.YAW.or(RelativeFlag.PITCH),
+                        player.lastTransactionSent.get(),
+                        0
+                ),
+                player.yaw,
+                player.pitch,
+                clientVel,
+                player.inVehicle(),
+                false
+        );
+
         sendSetback(data);
+        return true;
+    }
+
+    private void emitCorrectionDiagnostic(String mode) {
+        long now = System.currentTimeMillis();
+        long recentWindow = player.punishmentManager
+                .getCorrectionDiagnosticsRecentCheckMillis();
+
+        Check recent = null;
+        long latest = 0L;
+
+        for (AbstractCheck abstractCheck : player.getChecks()) {
+            if (!(abstractCheck instanceof Check check)) {
+                continue;
+            }
+
+            long lastViolation = check.getLastViolationTime();
+            if (lastViolation <= 0L || now - lastViolation > recentWindow) {
+                continue;
+            }
+
+            if (lastViolation > latest) {
+                latest = lastViolation;
+                recent = check;
+            }
+        }
+
+        ConnectionStall stall = player.checkManager.get(ConnectionStall.class);
+        if (recent == null && stall != null
+                && (stall.shouldSuppressMovementSetbacks()
+                || stall.shouldBlockQueuedActions()
+                || stall.isStalling())) {
+            recent = stall;
+        }
+
+        String environment = GrimAPI.INSTANCE
+                .getEnvironmentContextManager()
+                .summary(player);
+
+        StringBuilder related = new StringBuilder();
+        related.append("related=").append(environment);
+
+        if (stall != null && (stall.shouldSuppressMovementSetbacks()
+                || stall.shouldBlockQueuedActions())) {
+            related.append(",blink");
+        }
+
+        long causalWindow = 1500L;
+        if (GrimAPI.INSTANCE.getIntegrityCorrelationManager().hasRecentWithin(
+                player.uuid, IntegritySignal.PACKET_BURST, causalWindow)) {
+            related.append(",packet_burst");
+        }
+        if (GrimAPI.INSTANCE.getIntegrityCorrelationManager().hasRecentWithin(
+                player.uuid, IntegritySignal.SELECTIVE_STALL, causalWindow)) {
+            related.append(",selective_stall");
+        }
+        if (GrimAPI.INSTANCE.getIntegrityCorrelationManager().hasRecentWithin(
+                player.uuid, IntegritySignal.PHASE, causalWindow)) {
+            related.append(",phase");
+        }
+        if (GrimAPI.INSTANCE.getIntegrityCorrelationManager().hasRecentWithin(
+                player.uuid, IntegritySignal.NO_FALL, causalWindow)) {
+            related.append(",no_fall");
+        }
+
+        related.append(" mode=").append(mode);
+
+        String fallback = switch (mode) {
+            case "resync" -> "MovementResync";
+            case "connection" -> "ConnectionCorrection";
+            default -> "MovementCorrection";
+        };
+
+        player.punishmentManager.handleCorrectionDiagnostic(
+                recent,
+                fallback,
+                related.toString()
+        );
     }
 
     private void sendSetback(SetBackData data) {
@@ -235,107 +346,178 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         Vector3d position = data.getTeleportData().getLocation();
 
         try {
-            // Player is in a vehicle
             if (player.inVehicle()) {
                 int vehicleId = player.getRidingVehicleId();
+
                 if (player.compensatedEntities.serverPlayerVehicle != null) {
-                    // Dismount player from vehicle
                     if (PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_9)) {
                         player.user.sendPacket(new WrapperPlayServerSetPassengers(vehicleId, new int[2]));
                     } else {
                         player.user.sendPacket(new WrapperPlayServerAttachEntity(vehicleId, -1, false));
                     }
 
-                    // Stop the player from being able to teleport vehicles and simply re-enter them to continue,
-                    // therefore, teleport the entity
-                    player.user.sendPacket(new WrapperPlayServerEntityTeleport(vehicleId, new Vector3d(position.getX(), position.getY(), position.getZ()), player.yaw % 360, 0, false));
-                    player.getSetbackTeleportUtil().cheatVehicleInterpolationDelay = Integer.MAX_VALUE; // Set to max until player accepts the new position
+                    player.user.sendPacket(
+                            new WrapperPlayServerEntityTeleport(
+                                    vehicleId,
+                                    new Vector3d(position.getX(), position.getY(), position.getZ()),
+                                    player.yaw % 360,
+                                    0,
+                                    false
+                            )
+                    );
 
-                    // Make sure bukkit also knows the player got teleported out of their vehicle, can't do this async
-                    GrimAPI.INSTANCE.getScheduler().getEntityScheduler().execute(player.platformPlayer, GrimAPI.INSTANCE.getGrimPlugin(), () -> {
-                        if (player.platformPlayer != null) {
-                            GrimEntity vehicle = player.platformPlayer.getVehicle();
-                            if (vehicle != null) {
-                                vehicle.eject();
-                            }
-                        }
-                    }, null, 0);
+                    player.getSetbackTeleportUtil().cheatVehicleInterpolationDelay = Integer.MAX_VALUE;
+
+                    GrimAPI.INSTANCE.getScheduler().getEntityScheduler().execute(
+                            player.platformPlayer,
+                            GrimAPI.INSTANCE.getGrimPlugin(),
+                            () -> {
+                                if (player.platformPlayer != null) {
+                                    GrimEntity vehicle = player.platformPlayer.getVehicle();
+                                    if (vehicle != null) {
+                                        vehicle.eject();
+                                    }
+                                }
+                            },
+                            null,
+                            0
+                    );
                 }
             }
 
             double y = position.getY();
+
             if (PacketEvents.getAPI().getServerManager().getVersion().isOlderThanOrEquals(ServerVersion.V_1_7_10)) {
-                y += 1.62; // 1.7 teleport offset if grim ever supports 1.7 again
+                y += 1.62;
             }
 
-            // Send a transaction now to make sure there's always transactions around teleport
             player.sendTransaction();
 
-            // Min value is 10000000000000000000000000000000 in binary, this makes sure the number is always < 0
             int teleportId = random.nextInt() | Integer.MIN_VALUE;
             data.setPlugin(false);
             data.getTeleportData().setTeleportId(teleportId);
             data.getTeleportData().setTransaction(player.lastTransactionSent.get());
 
-            // Use provided transaction ID to make sure it can never desync, although there's no reason to do this
-            addSentTeleport(new Location(null, position.getX(), y, position.getZ()),
-                    null, data.getTeleportData().getTransaction(), RelativeFlag.YAW.or(RelativeFlag.PITCH), false, teleportId);
-            // This must be done after setting the sent teleport, otherwise we lose velocity data
+            addSentTeleport(
+                    new Location(null, position.getX(), y, position.getZ()),
+                    null,
+                    data.getTeleportData().getTransaction(),
+                    RelativeFlag.YAW.or(RelativeFlag.PITCH),
+                    false,
+                    teleportId
+            );
+
             requiredSetBack = data;
-            // Send after tracking to fix race condition
-            PacketEvents.getAPI().getProtocolManager().sendPacketSilently(player.user.getChannel(), new WrapperPlayServerPlayerPositionAndLook(position.getX(), position.getY(), position.getZ(), 0, 0, data.getTeleportData().getFlags().getMask(), teleportId, false));
-            // Dual fire: packet-level signal for anticheat compat (GrimTeleportEvent),
-            // semantic signal for admin/observability consumers (GrimPlayerSetbackEvent).
+
+            PacketEvents.getAPI().getProtocolManager().sendPacketSilently(
+                    player.user.getChannel(),
+                    new WrapperPlayServerPlayerPositionAndLook(
+                            position.getX(),
+                            position.getY(),
+                            position.getZ(),
+                            0,
+                            0,
+                            data.getTeleportData().getFlags().getMask(),
+                            teleportId,
+                            false
+                    )
+            );
+
             long now = System.currentTimeMillis();
             TELEPORT_CHANNEL.fire(player, teleportId, now);
-            PLAYER_SETBACK_CHANNEL.fire(player, teleportId, position.getX(), position.getY(), position.getZ(), now);
+            PLAYER_SETBACK_CHANNEL.fire(
+                    player,
+                    teleportId,
+                    position.getX(),
+                    position.getY(),
+                    position.getZ(),
+                    now
+            );
+
             player.sendTransaction();
 
             if (data.getVelocity() != null && data.getVelocity().lengthSquared() > 0) {
-                player.user.sendPacket(new WrapperPlayServerEntityVelocity(player.entityID, new Vector3d(data.getVelocity().getX(), data.getVelocity().getY(), data.getVelocity().getZ())));
+                player.user.sendPacket(
+                        new WrapperPlayServerEntityVelocity(
+                                player.entityID,
+                                new Vector3d(
+                                        data.getVelocity().getX(),
+                                        data.getVelocity().getY(),
+                                        data.getVelocity().getZ()
+                                )
+                        )
+                );
             }
         } finally {
             isSendingSetback = false;
         }
     }
 
-    /**
-     * @param x - Player X position
-     * @param y - Player Y position
-     * @param z - Player Z position
-     * @return - Whether the player has completed a teleport by being at this position
-     */
-    public TeleportAcceptData checkTeleportQueue(double x, double y, double z, float yaw, float pitch) {
+    public TeleportAcceptData checkTeleportQueue(
+            double x,
+            double y,
+            double z,
+            float yaw,
+            float pitch
+    ) {
         return checkTeleportQueue(x, y, z, yaw, pitch, null);
     }
 
-    public TeleportAcceptData checkTeleportQueue(double x, double y, double z, float yaw, float pitch, @Nullable Integer teleportId) {
-        // Support teleports without teleport confirmations
-        // If the player is in a vehicle when teleported, they will exit their vehicle
+    public TeleportAcceptData checkTeleportQueue(
+            double x,
+            double y,
+            double z,
+            float yaw,
+            float pitch,
+            @Nullable Integer teleportId
+    ) {
         TeleportAcceptData teleportData = new TeleportAcceptData();
 
         TeleportData teleportPos;
+
         while ((teleportPos = pendingTeleports.peek()) != null) {
-            double trueTeleportX = (teleportPos.isRelativeX() ? player.x : 0) + teleportPos.getLocation().getX();
-            double trueTeleportY = (teleportPos.isRelativeY() ? player.y : 0) + teleportPos.getLocation().getY();
-            double trueTeleportZ = (teleportPos.isRelativeZ() ? player.z : 0) + teleportPos.getLocation().getZ();
+            double trueTeleportX =
+                    (teleportPos.isRelativeX() ? player.x : 0)
+                            + teleportPos.getLocation().getX();
 
-            // There seems to be a version difference in teleports past 30 million... just clamp the vector
-            Vector3d clamped = VectorUtils.clampVector(new Vector3d(trueTeleportX, trueTeleportY, trueTeleportZ));
-            double threshold = teleportPos.isRelativePos() ? player.getMovementThreshold() : 0;
-            boolean closeEnoughY = Math.abs(clamped.getY() - y) <= 1e-7 + threshold; // 1.7 rounding
-            // rotations are updated every frame, we can't accurately check them if they're relative
-            boolean correctRotations = (yaw == teleportPos.getYaw() || teleportPos.isRelativeYaw())
-                    && (pitch == teleportPos.getPitch() || teleportPos.isRelativePitch());
+            double trueTeleportY =
+                    (teleportPos.isRelativeY() ? player.y : 0)
+                            + teleportPos.getLocation().getY();
 
-            if ((teleportId == null || teleportId.equals(teleportPos.getTeleportId())) && player.lastTransactionReceived.get() == teleportPos.getTransaction() && Math.abs(clamped.getX() - x) <= threshold && closeEnoughY && Math.abs(clamped.getZ() - z) <= threshold && correctRotations) {
+            double trueTeleportZ =
+                    (teleportPos.isRelativeZ() ? player.z : 0)
+                            + teleportPos.getLocation().getZ();
+
+            Vector3d clamped = VectorUtils.clampVector(
+                    new Vector3d(trueTeleportX, trueTeleportY, trueTeleportZ)
+            );
+
+            double threshold = teleportPos.isRelativePos()
+                    ? player.getMovementThreshold()
+                    : 0;
+
+            boolean closeEnoughY =
+                    Math.abs(clamped.getY() - y) <= 1e-7 + threshold;
+
+            boolean correctRotations =
+                    (yaw == teleportPos.getYaw() || teleportPos.isRelativeYaw())
+                            && (pitch == teleportPos.getPitch() || teleportPos.isRelativePitch());
+
+            if ((teleportId == null || teleportId.equals(teleportPos.getTeleportId()))
+                    && player.lastTransactionReceived.get() == teleportPos.getTransaction()
+                    && Math.abs(clamped.getX() - x) <= threshold
+                    && closeEnoughY
+                    && Math.abs(clamped.getZ() - z) <= threshold
+                    && correctRotations) {
+
                 pendingTeleports.poll();
                 hasAcceptedSpawnTeleport = true;
                 blockOffsets = false;
 
-                // Player has accepted their setback!
-                // We can compare transactions to check if equals because each teleport gets its own transaction
-                if (requiredSetBack != null && requiredSetBack.getTeleportData().getTransaction() == teleportPos.getTransaction()) {
+                if (requiredSetBack != null
+                        && requiredSetBack.getTeleportData().getTransaction()
+                        == teleportPos.getTransaction()) {
+
                     teleportData.setSetback(requiredSetBack);
                     requiredSetBack.setComplete(true);
                 }
@@ -343,49 +525,49 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
                 teleportData.setTeleportData(teleportPos);
                 teleportData.setTeleport(true);
                 break;
+
             } else if (player.lastTransactionReceived.get() > teleportPos.getTransaction()) {
-                // The player ignored the teleport (and this teleport matters), resynchronize
                 player.checkManager.get(BadPacketsN.class).flag();
                 pendingTeleports.poll();
                 requiredSetBack.setPlugin(false);
+
                 if (pendingTeleports.isEmpty()) {
                     sendSetback(requiredSetBack);
                 }
+
                 continue;
             }
-            // No farther setbacks before the player's transaction
+
             break;
         }
 
         return teleportData;
     }
 
-    /**
-     * @param x - Player X position
-     * @param y - Player Y position
-     * @param z - Player Z position
-     * @return - Whether the player has completed a teleport by being at this position
-     */
     public boolean checkVehicleTeleportQueue(double x, double y, double z) {
         int lastTransaction = player.lastTransactionReceived.get();
 
         while (true) {
-            IntToObjectPair<Vector3d> teleportPos = player.vehicleData.vehicleTeleports.peek();
+            IntToObjectPair<Vector3d> teleportPos =
+                    player.vehicleData.vehicleTeleports.peek();
+
             if (teleportPos == null) break;
+
             if (lastTransaction < teleportPos.first()) {
                 break;
             }
 
             Vector3d position = teleportPos.second();
-            if (position.getX() == x && position.getY() == y && position.getZ() == z) {
-                player.vehicleData.vehicleTeleports.poll();
 
+            if (position.getX() == x
+                    && position.getY() == y
+                    && position.getZ() == z) {
+
+                player.vehicleData.vehicleTeleports.poll();
                 return true;
+
             } else if (lastTransaction > teleportPos.first() + 1) {
                 player.vehicleData.vehicleTeleports.poll();
-
-                // Vehicles have terrible netcode so just ignore it if the teleport wasn't from us setting the player back
-                // Players don't have to respond to vehicle teleports if they aren't controlling the entity anyways
                 continue;
             }
 
@@ -395,40 +577,43 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         return false;
     }
 
-    /**
-     * @return If the player is in a desync state and is waiting on information from the server
-     */
     public boolean shouldBlockMovement() {
-        // This is required to ensure protection from servers teleporting from CREATIVE to SURVIVAL
-        // I should likely refactor
-        return insideUnloadedChunk() || blockOffsets || (requiredSetBack != null && !requiredSetBack.isComplete());
+        return insideUnloadedChunk()
+                || blockOffsets
+                || (requiredSetBack != null && !requiredSetBack.isComplete());
     }
 
     private boolean isPendingSetback() {
-        // Relative setbacks shouldn't count
-        if (requiredSetBack != null && (requiredSetBack.getTeleportData().isRelativeX() || requiredSetBack.getTeleportData().isRelativeY() || requiredSetBack.getTeleportData().isRelativeZ())) {
+        if (requiredSetBack != null
+                && (requiredSetBack.getTeleportData().isRelativeX()
+                || requiredSetBack.getTeleportData().isRelativeY()
+                || requiredSetBack.getTeleportData().isRelativeZ())) {
             return false;
         }
-        // The setback is not complete
+
         return requiredSetBack != null && !requiredSetBack.isComplete();
     }
 
-    /**
-     * When the player is inside an unloaded chunk, they simply fall through the void which shouldn't be checked
-     *
-     * @return Whether the player has loaded the chunk and accepted a teleport to correct movement or not
-     */
     public boolean insideUnloadedChunk() {
-        Column column = player.compensatedWorld.getChunk(GrimMath.floor(player.x) >> 4, GrimMath.floor(player.z) >> 4);
+        Column column = player.compensatedWorld.getChunk(
+                GrimMath.floor(player.x) >> 4,
+                GrimMath.floor(player.z) >> 4
+        );
 
-        // If true, the player is in an unloaded chunk
-        return !player.disableGrim && (column == null || column.transaction() >= player.lastTransactionReceived.get() ||
-                // The player hasn't loaded past the DOWNLOADING TERRAIN screen
-                !player.getSetbackTeleportUtil().hasAcceptedSpawnTeleport);
+        return !player.disableGrim
+                && (column == null
+                || column.transaction() >= player.lastTransactionReceived.get()
+                || !player.getSetbackTeleportUtil().hasAcceptedSpawnTeleport);
     }
 
-    public void addSentTeleport(Location position, @Nullable Vector3d velocity, int transaction, RelativeFlag flags, boolean plugin, int teleportId) {
-        // Clients below 1.21.2 do not have this.
+    public void addSentTeleport(
+            Location position,
+            @Nullable Vector3d velocity,
+            int transaction,
+            RelativeFlag flags,
+            boolean plugin,
+            int teleportId
+    ) {
         if (player.getClientVersion().isOlderThan(ClientVersion.V_1_21_2)) {
             velocity = null;
         }
@@ -442,34 +627,79 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
                 transaction,
                 teleportId
         );
+
         pendingTeleports.add(data);
 
-        Vector3d safePosition = new Vector3d(position.getX(), position.getY(), position.getZ());
+        Vector3d safePosition = new Vector3d(
+                position.getX(),
+                position.getY(),
+                position.getZ()
+        );
 
-        // We must convert relative teleports to avoid them becoming client controlled in the case of setback
         if (flags.has(RelativeFlag.X)) {
-            safePosition = safePosition.withX(safePosition.getX() + lastKnownGoodPosition.pos.getX());
+            safePosition = safePosition.withX(
+                    safePosition.getX() + lastKnownGoodPosition.pos.getX()
+            );
         }
 
         if (flags.has(RelativeFlag.Y)) {
-            safePosition = safePosition.withY(safePosition.getY() + lastKnownGoodPosition.pos.getY());
+            safePosition = safePosition.withY(
+                    safePosition.getY() + lastKnownGoodPosition.pos.getY()
+            );
         }
 
         if (flags.has(RelativeFlag.Z)) {
-            safePosition = safePosition.withZ(safePosition.getZ() + lastKnownGoodPosition.pos.getZ());
+            safePosition = safePosition.withZ(
+                    safePosition.getZ() + lastKnownGoodPosition.pos.getZ()
+            );
         }
 
-        data = new TeleportData(safePosition, 0, 0, velocity, RelativeFlag.YAW.or(RelativeFlag.PITCH), transaction, teleportId);
-        requiredSetBack = new SetBackData(data, player.yaw, player.pitch, null, false, plugin);
+        data = new TeleportData(
+                safePosition,
+                0,
+                0,
+                velocity,
+                RelativeFlag.YAW.or(RelativeFlag.PITCH),
+                transaction,
+                teleportId
+        );
 
-        this.lastKnownGoodPosition = new SetbackPosWithVector(safePosition, new Vector3dm());
+        requiredSetBack = new SetBackData(
+                data,
+                player.yaw,
+                player.pitch,
+                null,
+                false,
+                plugin
+        );
+
+        this.lastKnownGoodPosition =
+                new SetbackPosWithVector(safePosition, new Vector3dm());
     }
 
-    @AllArgsConstructor
-    @Getter
-    @Setter
+    public SetBackData getRequiredSetBack() {
+        return requiredSetBack;
+    }
+
     public static class SetbackPosWithVector {
         private final Vector3d pos;
         private Vector3dm vector;
+
+        public SetbackPosWithVector(Vector3d pos, Vector3dm vector) {
+            this.pos = pos;
+            this.vector = vector;
+        }
+
+        public Vector3d getPos() {
+            return pos;
+        }
+
+        public Vector3dm getVector() {
+            return vector;
+        }
+
+        public void setVector(Vector3dm vector) {
+            this.vector = vector;
+        }
     }
 }
