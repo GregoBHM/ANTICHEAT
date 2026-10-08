@@ -122,3 +122,13 @@ Punishments:
     commands:
       - "20:40 [alert]"
       - "1:1 [log]"
+  Regen:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "Regen"
+    commands:
+      - "3:3 [alert]"
+      - "1:1 [log]"
+      - "10:10 [webhook]"
+      - "10:10 [proxy]"

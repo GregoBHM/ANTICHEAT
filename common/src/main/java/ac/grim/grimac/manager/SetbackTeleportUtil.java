@@ -6,6 +6,7 @@ import ac.grim.grimac.api.event.events.GrimTeleportEvent;
 import ac.grim.grimac.api.AbstractCheck;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.impl.timer.ConnectionStall;
+import ac.grim.grimac.checks.impl.velocity.KnockbackHandler;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.checks.GrimProcessor;
 import ac.grim.grimac.checks.impl.badpackets.BadPacketsN;
@@ -91,6 +92,15 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
             return;
         if (lastKnownGoodPosition == null) return;
+
+        // v22: routine ground/0.03/ghost resyncs must not fight legitimate
+        // special movement physics. Phase and confirmed Simulation setbacks use
+        // executeViolationSetback() and remain fully active.
+        if (GrimAPI.INSTANCE.getEnvironmentContextManager()
+                .shouldSuppressRoutineForceResync(player)) {
+            return;
+        }
+
         if (blockMovementsUntilResync(true, true)) {
             emitCorrectionDiagnostic("resync");
         }
@@ -306,6 +316,11 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         if (stall != null && (stall.shouldSuppressMovementSetbacks()
                 || stall.shouldBlockQueuedActions())) {
             related.append(",blink");
+        }
+
+        KnockbackHandler knockback = player.checkManager.get(KnockbackHandler.class);
+        if (knockback != null && knockback.shouldSuppressCompetingMovementSetbacks()) {
+            related.append(",velocity");
         }
 
         long causalWindow = 1500L;

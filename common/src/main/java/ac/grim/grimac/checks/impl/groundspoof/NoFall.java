@@ -19,7 +19,9 @@ import java.util.List;
 
 // Catches NoFalls for LOOK and GROUND packets
 // This check runs AFTER the predictions
-@CheckData(name = "NoFall", stableKey = "grim.groundspoof.no_fall", description = "Sent an on-ground packet while not colliding with the ground", setback = 10)
+@CheckData(name = "NoFall", stableKey = "grim.groundspoof.no_fall",
+        description = "Sent an on-ground packet while not colliding with the ground",
+        setback = -1)
 public class NoFall extends Check implements PacketReceiveListener {
 
     public boolean flipPlayerGroundStatus = false;
@@ -30,24 +32,25 @@ public class NoFall extends Check implements PacketReceiveListener {
 
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
-        if (event.getPacketType() == PacketType.Play.Client.PLAYER_FLYING || event.getPacketType() == PacketType.Play.Client.PLAYER_ROTATION) {
-            // The player hasn't spawned yet
+        if (event.getPacketType() == PacketType.Play.Client.PLAYER_FLYING
+                || event.getPacketType() == PacketType.Play.Client.PLAYER_ROTATION) {
             if (player.getSetbackTeleportUtil().insideUnloadedChunk()) return;
-            // The player has already been flagged, and
             if (player.getSetbackTeleportUtil().blockOffsets) return;
 
             WrapperPlayClientPlayerFlying wrapper = new WrapperPlayClientPlayerFlying(event);
 
-            // If the player claims to be on the ground
-            // Run this code IFF the player doesn't send the position, as that won't get processed by predictions
             if (wrapper.isOnGround() && !wrapper.hasPositionChanged()) {
-                if (!isNearGround(wrapper.isOnGround())) { // If player isn't near ground
-                    // 1.8 boats have a mind on their own... only flag if they're not near a boat or are on 1.9+
+                if (!isNearGround(true)) {
                     if (!GhostBlockDetector.isGhostBlock(player)) {
                         double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
                                 .record(player.uuid, IntegritySignal.NO_FALL);
-                        flagWithSetback("corr=" + String.format("%.2f", correlation));
+
+                        // v22: NoFall removes the advantage by correcting the packet
+                        // state. It keeps VL/punishments, but does not teleport the
+                        // player merely because the client lied about onGround.
+                        flag("corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation));
                     }
+
                     if (shouldModifyPackets()) {
                         wrapper.setOnGround(false);
                         event.markForReEncode(true);
@@ -58,13 +61,7 @@ public class NoFall extends Check implements PacketReceiveListener {
 
         if (WrapperPlayClientPlayerFlying.isFlying(event.getPacketType())) {
             WrapperPlayClientPlayerFlying wrapper = new WrapperPlayClientPlayerFlying(event);
-            // The prediction based NoFall check (that runs before us without the packet)
-            // has asked us to flip the player's onGround status
-            // This happens to make both checks use the same logic... and
-            // since we don't have access to modify the packet with prediction based checks
-            // I could add that feature but ehh... this works and is better anyway.
-            //
-            // Also flip teleports because I don't trust vanilla's handling of teleports and ground
+
             if (flipPlayerGroundStatus) {
                 flipPlayerGroundStatus = false;
                 if (shouldModifyPackets()) {
@@ -72,6 +69,7 @@ public class NoFall extends Check implements PacketReceiveListener {
                     event.markForReEncode(true);
                 }
             }
+
             if (player.packetStateData.lastPacketWasTeleport) {
                 if (shouldModifyPackets()) {
                     wrapper.setOnGround(false);
@@ -83,9 +81,10 @@ public class NoFall extends Check implements PacketReceiveListener {
 
     private boolean isNearGround(boolean onGround) {
         if (onGround) {
-            SimpleCollisionBox feetBB = GetBoundingBox.getBoundingBoxFromPosAndSize(player, player.x, player.y, player.z, 0.6f, 0.001f);
-            feetBB.expand(player.getMovementThreshold()); // Movement threshold can be in any direction
-
+            SimpleCollisionBox feetBB = GetBoundingBox.getBoundingBoxFromPosAndSize(
+                    player, player.x, player.y, player.z, 0.6f, 0.001f
+            );
+            feetBB.expand(player.getMovementThreshold());
             return checkForBoxes(feetBB);
         }
         return true;
@@ -96,7 +95,7 @@ public class NoFall extends Check implements PacketReceiveListener {
         Collisions.getCollisionBoxes(player, playerBB, boxes, false);
 
         for (SimpleCollisionBox box : boxes) {
-            if (playerBB.collidesVertically(box)) { // If we collide vertically but aren't in the block
+            if (playerBB.collidesVertically(box)) {
                 return true;
             }
         }

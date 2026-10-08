@@ -41,9 +41,12 @@ public final class GrimConfigSpecs {
      * v20 -> v21: adds staff-only correction diagnostics at the central movement
      * correction path so every real rollback/resync can be tied to the most recent
      * check and environment without adding VL or executing punishments.
+     * v21 -> v22: centralizes special-environment correction policy, converts
+     * NoFall/GroundSpoof to state enforcement, makes AntiKB velocity-owned, and
+     * adds sanctionable packet-driven Regen correlation.
      */
     public static @NotNull ConfigUpdater.Spec mainConfig() {
-        return ConfigUpdater.Spec.builder("/config/", 21, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/config/", 22, ConfigUpdater.ConfigFlavor.V2)
                 .migration(10, ctx -> {
                     String typeRaw = ctx.input().getString("history.database.type");
                     String type = typeRaw == null ? null : typeRaw.trim().toUpperCase(Locale.ROOT);

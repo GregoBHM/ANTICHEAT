@@ -13,6 +13,7 @@ import org.jetbrains.annotations.NotNull;
 @CheckData(name = "Timer", stableKey = "grim.timer.timer", configName = "TimerA", description = "The players game is running faster than normal", setback = 10)
 public class Timer extends Check implements PrePredictionPacketReceiveListener {
     protected long timerBalanceRealTime = 0;
+    private volatile long lastAheadNanos;
 
     protected long knownPlayerClockTime = (long) (System.nanoTime() - 6e10);
     protected long lastMovementPlayerClock = (long) (System.nanoTime() - 6e10);
@@ -43,7 +44,10 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
     }
 
     public void doCheck(final PacketReceiveEvent event) {
-        if (timerBalanceRealTime > System.nanoTime()) {
+        long now = System.nanoTime();
+        lastAheadNanos = Math.max(0L, timerBalanceRealTime - now);
+
+        if (timerBalanceRealTime > now) {
             if (flag()) {
                 if (shouldModifyPackets()) {
                     event.setCancelled(true);
@@ -73,6 +77,11 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
     public void acknowledgeMitigatedBlink(long nowNanos) {
         timerBalanceRealTime = Math.min(timerBalanceRealTime, nowNanos);
         hasGottenMovementAfterTransaction = false;
+    }
+
+    /** Last positive client-clock lead observed on the current/most recent tick packet. */
+    public long getLastAheadMillis() {
+        return lastAheadNanos / 1_000_000L;
     }
 
     protected void limitFallBehind() {

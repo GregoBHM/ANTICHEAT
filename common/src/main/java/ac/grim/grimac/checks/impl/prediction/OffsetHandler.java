@@ -8,6 +8,7 @@ import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.checks.impl.timer.ConnectionStall;
+import ac.grim.grimac.checks.impl.velocity.KnockbackHandler;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.LogUtil;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
@@ -47,8 +48,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private int environmentRecoveryTicks;
     private double environmentRecoveryMultiplier;
     private boolean disableShortBlinkInSpecialEnvironment;
+    private int specialEnvironmentCorrectionStrongTicks;
     private int environmentRecoveryTicksRemaining;
     private boolean wasSpecialEnvironment;
+    private int specialEnvironmentCorrectionStreak;
 
     private boolean shortBlinkEnabled;
     private long shortBlinkMinGapNanos;
@@ -112,6 +115,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         final boolean blinkRecovery = blinkOwner != null && blinkOwner.shouldSuppressMovementSetbacks();
         final boolean blinkFreezeSafe = blinkOwner != null && blinkOwner.shouldFreezeSafePosition();
 
+        final KnockbackHandler knockbackOwner = player.checkManager.get(KnockbackHandler.class);
+        final boolean velocityRecovery = knockbackOwner != null
+                && knockbackOwner.shouldSuppressCompetingMovementSetbacks();
+
         if (blinkRecovery) {
             // The release was already mitigated by the one-shot Blink owner.
             // Remove any Simulation debt/quarantine left by the discarded burst.
@@ -138,6 +145,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
         double enforcementMultiplier = 1.0D;
         boolean specialEnvironment = false;
+        double specialEnvironmentCorrectionMinRawOffset = 0.0D;
 
         if (enforcementEligible) {
             specialEnvironment = GrimAPI.INSTANCE.getEnvironmentContextManager()
@@ -146,6 +154,9 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             double configuredEnvironmentMultiplier =
                     GrimAPI.INSTANCE.getEnvironmentContextManager()
                             .enforcementMultiplier(player);
+            specialEnvironmentCorrectionMinRawOffset =
+                    GrimAPI.INSTANCE.getEnvironmentContextManager()
+                            .minimumCorrectionRawOffset(player);
 
             if (specialEnvironment) {
                 environmentRecoveryTicksRemaining = environmentRecoveryTicks;
@@ -166,6 +177,8 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         final double enforcementOffset = offset * enforcementMultiplier;
         final double setbackEvidenceOffset =
                 enforcementEligible ? enforcementOffset : offset;
+        final boolean environmentProtectedWindow = specialEnvironment
+                || environmentRecoveryTicksRemaining > 0;
 
         if (!enforcementEligible) {
             resetEnforcementState();
@@ -188,7 +201,12 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             }
 
             if (enforcementQuarantineActive) {
-                if (enforcementOffset < enforcementQuarantineOffset) {
+                if (environmentProtectedWindow
+                        && offset < specialEnvironmentCorrectionMinRawOffset) {
+                    // Do not keep a stale safe position merely because special
+                    // movement physics produced a small/medium offset.
+                    resetEnforcementState();
+                } else if (enforcementOffset < enforcementQuarantineOffset) {
                     enforcementCleanTicks++;
 
                     if (enforcementCleanTicks >= enforcementCleanRecoveryTicks) {
@@ -218,8 +236,12 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         }
 
         if (offset >= threshold || offset >= immediateSetbackThreshold) {
-            if (!blinkRecovery) {
+            if (!blinkRecovery && !environmentProtectedWindow) {
                 advantageGained += setbackEvidenceOffset;
+            } else if (environmentProtectedWindow) {
+                // Never carry special-physics debt out of cobweb/liquid/climbable
+                // recovery and then setback a player after the environment ended.
+                advantageGained = 0.0D;
             }
             giveOffsetLenienceNextTick(offset);
 
@@ -238,7 +260,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     boolean severeMovement = false;
 
                     if (enforcementEligible) {
-                        if (enforcementOffset >= enforcementQuarantineOffset) {
+                        boolean allowQuarantine = !environmentProtectedWindow
+                                || offset >= specialEnvironmentCorrectionMinRawOffset;
+
+                        if (allowQuarantine && enforcementOffset >= enforcementQuarantineOffset) {
                             enforcementQuarantineActive = true;
                             enforcementCleanTicks = 0;
                             predictionComplete.setSafePositionUpdateBlocked(true);
@@ -250,17 +275,35 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                             enforcementStrongStreak = 0;
                         }
 
-                        severeMovement = enforcementOffset >= enforcementSevereOffset
-                                || enforcementStrongStreak >= enforcementStrongConsecutiveTicks;
+                        if (environmentProtectedWindow) {
+                            if (offset >= specialEnvironmentCorrectionMinRawOffset
+                                    && enforcementOffset >= enforcementStrongOffset) {
+                                specialEnvironmentCorrectionStreak++;
+                            } else {
+                                specialEnvironmentCorrectionStreak = 0;
+                            }
+
+                            severeMovement = offset >= specialEnvironmentCorrectionMinRawOffset
+                                    && (enforcementOffset >= enforcementSevereOffset
+                                    || specialEnvironmentCorrectionStreak
+                                    >= specialEnvironmentCorrectionStrongTicks);
+                        } else {
+                            specialEnvironmentCorrectionStreak = 0;
+                            severeMovement = enforcementOffset >= enforcementSevereOffset
+                                    || enforcementStrongStreak >= enforcementStrongConsecutiveTicks;
+                        }
                     }
 
                     if (!blinkRecovery
+                            && !velocityRecovery
                             && severeMovement
                             && enforcementImmediateSetback
                             && !isNoSetbackPermission()) {
                         predictionComplete.setSafePositionUpdateBlocked(true);
                         player.getSetbackTeleportUtil().executeViolationSetback();
                     } else if (!blinkRecovery
+                            && !velocityRecovery
+                            && !environmentProtectedWindow
                             && (advantageGained >= maxAdvantage
                             || setbackEvidenceOffset >= immediateSetbackThreshold)
                             && !isNoSetbackPermission()
@@ -412,6 +455,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private void resetEnvironmentState() {
         environmentRecoveryTicksRemaining = 0;
         wasSpecialEnvironment = false;
+        specialEnvironmentCorrectionStreak = 0;
     }
 
     @Override
@@ -490,6 +534,12 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     requireBoolean(
                             config,
                             "movement-enforcement.environment.disable-short-blink"
+                    );
+
+            specialEnvironmentCorrectionStrongTicks =
+                    requirePositiveInt(
+                            config,
+                            "movement-enforcement.environment.correction-strong-ticks"
                     );
 
             shortBlinkEnabled =

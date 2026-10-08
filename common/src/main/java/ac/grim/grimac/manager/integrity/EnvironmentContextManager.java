@@ -12,6 +12,7 @@ import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -34,6 +35,20 @@ public final class EnvironmentContextManager {
     private volatile double complexCollisionEnforcementMultiplier = 0.65D;
     private volatile double pistonEnforcementMultiplier = 0.45D;
     private volatile double recentBlockEnforcementMultiplier = 0.50D;
+
+    private volatile Set<EnvironmentContext> routineForceResyncSuppressedContexts = Set.of(
+            EnvironmentContext.COBWEB,
+            EnvironmentContext.STUCK_MOVEMENT,
+            EnvironmentContext.CLIMBABLE
+    );
+
+    private volatile double cobwebCorrectionMinRawOffset = 0.30D;
+    private volatile double stuckMovementCorrectionMinRawOffset = 0.22D;
+    private volatile double climbableCorrectionMinRawOffset = 0.18D;
+    private volatile double liquidCorrectionMinRawOffset = 0.18D;
+    private volatile double complexCollisionCorrectionMinRawOffset = 0.12D;
+    private volatile double pistonCorrectionMinRawOffset = 0.20D;
+    private volatile double recentBlockCorrectionMinRawOffset = 0.15D;
 
     public void reload(@NotNull ConfigManager config) {
         enabled = config.getBooleanElse("environment-context.enabled", true);
@@ -114,6 +129,32 @@ public final class EnvironmentContextManager {
                 0.0D,
                 1.0D
         );
+
+        routineForceResyncSuppressedContexts = parseContexts(
+                config.getStringListElse(
+                        "environment-context.correction-policy.suppress-routine-force-resync-contexts",
+                        List.of(
+                                "COBWEB",
+                                "STUCK_MOVEMENT",
+                                "CLIMBABLE"
+                        )
+                )
+        );
+
+        cobwebCorrectionMinRawOffset = positive(config.getDoubleElse(
+                "environment-context.correction-min-raw-offsets.cobweb", 0.30D));
+        stuckMovementCorrectionMinRawOffset = positive(config.getDoubleElse(
+                "environment-context.correction-min-raw-offsets.stuck-movement", 0.22D));
+        climbableCorrectionMinRawOffset = positive(config.getDoubleElse(
+                "environment-context.correction-min-raw-offsets.climbable", 0.18D));
+        liquidCorrectionMinRawOffset = positive(config.getDoubleElse(
+                "environment-context.correction-min-raw-offsets.liquid", 0.18D));
+        complexCollisionCorrectionMinRawOffset = positive(config.getDoubleElse(
+                "environment-context.correction-min-raw-offsets.complex-collision", 0.12D));
+        pistonCorrectionMinRawOffset = positive(config.getDoubleElse(
+                "environment-context.correction-min-raw-offsets.piston", 0.20D));
+        recentBlockCorrectionMinRawOffset = positive(config.getDoubleElse(
+                "environment-context.correction-min-raw-offsets.recent-block-change", 0.15D));
     }
 
     public @NotNull Set<EnvironmentContext> classify(@NotNull GrimPlayer player) {
@@ -215,6 +256,56 @@ public final class EnvironmentContextManager {
         Set<EnvironmentContext> contexts = classify(player);
         return !(contexts.size() == 1
                 && contexts.contains(EnvironmentContext.NORMAL));
+    }
+
+    /**
+     * Routine force-resync is intentionally softer than Phase or a confirmed
+     * Simulation correction. Special movement physics may make an isolated
+     * ground/0.03 resync ambiguous, so callers can defer that resync while the
+     * normal predictor continues checking the player.
+     */
+    public boolean shouldSuppressRoutineForceResync(@NotNull GrimPlayer player) {
+        if (!enabled || routineForceResyncSuppressedContexts.isEmpty()) return false;
+        for (EnvironmentContext context : classify(player)) {
+            if (routineForceResyncSuppressedContexts.contains(context)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Velocity is legitimately distorted by these movement states. AntiKB may
+     * still collect evidence there, but should not re-apply a raw server vector
+     * as if the player were in normal air/ground physics.
+     */
+    public boolean isVelocityUncertainEnvironment(@NotNull GrimPlayer player) {
+        for (EnvironmentContext context : classify(player)) {
+            switch (context) {
+                case COBWEB, STUCK_MOVEMENT, WATER, LAVA, PISTON, RECENT_BLOCK_CHANGE -> {
+                    return true;
+                }
+                default -> {
+                }
+            }
+        }
+        return false;
+    }
+
+    public double minimumCorrectionRawOffset(@NotNull GrimPlayer player) {
+        double minimum = 0.0D;
+        for (EnvironmentContext context : classify(player)) {
+            double candidate = switch (context) {
+                case COBWEB -> cobwebCorrectionMinRawOffset;
+                case STUCK_MOVEMENT -> stuckMovementCorrectionMinRawOffset;
+                case CLIMBABLE -> climbableCorrectionMinRawOffset;
+                case WATER, LAVA -> liquidCorrectionMinRawOffset;
+                case COMPLEX_COLLISION -> complexCollisionCorrectionMinRawOffset;
+                case PISTON -> pistonCorrectionMinRawOffset;
+                case RECENT_BLOCK_CHANGE -> recentBlockCorrectionMinRawOffset;
+                case NORMAL -> 0.0D;
+            };
+            minimum = Math.max(minimum, candidate);
+        }
+        return minimum;
     }
 
     public @NotNull String summary(@NotNull GrimPlayer player) {
@@ -319,6 +410,25 @@ public final class EnvironmentContextManager {
         }
 
         return false;
+    }
+
+    private static Set<EnvironmentContext> parseContexts(List<String> configured) {
+        EnumSet<EnvironmentContext> result = EnumSet.noneOf(EnvironmentContext.class);
+        for (String raw : configured) {
+            if (raw == null || raw.isBlank()) continue;
+            String normalized = raw.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+            try {
+                EnvironmentContext context = EnvironmentContext.valueOf(normalized);
+                if (context != EnvironmentContext.NORMAL) result.add(context);
+            } catch (IllegalArgumentException ignored) {
+                // Invalid names are ignored so a typo never prevents player construction.
+            }
+        }
+        return Set.copyOf(result);
+    }
+
+    private static double positive(double value) {
+        return Math.max(0.001D, value);
     }
 
     private static long clamp(long value, long min, long max) {

@@ -1,5 +1,6 @@
 package ac.grim.grimac.checks.impl.prediction;
 
+import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.api.storage.verbose.Verbose;
 import ac.grim.grimac.checks.Check;
@@ -13,7 +14,7 @@ import com.github.retrooper.packetevents.manager.server.ServerVersion;
 import com.github.retrooper.packetevents.protocol.player.GameMode;
 import org.jetbrains.annotations.NotNull;
 
-@CheckData(name = "GroundSpoof", stableKey = "grim.groundspoof.fake", description = "Claimed to be on ground when predicted otherwise", setback = 10, decay = 0.01)
+@CheckData(name = "GroundSpoof", stableKey = "grim.groundspoof.fake", description = "Claimed to be on ground when predicted otherwise", setback = -1, decay = 0.01)
 public class GroundSpoof extends Check implements PostPredictionListener {
     private static final Verbose V = Verbose.of("claimed {bool}");
 
@@ -47,11 +48,15 @@ public class GroundSpoof extends Check implements PostPredictionListener {
             ConnectionStall blinkOwner = player.checkManager.get(ConnectionStall.class);
             boolean blinkRecovery = blinkOwner != null && blinkOwner.shouldSuppressMovementSetbacks();
 
-            boolean accepted = blinkRecovery
-                    ? flag(V.write(verbose()).bool(claimed))
-                    : flagWithSetback(V.write(verbose()).bool(claimed));
+            // Ground spoof is a state violation, not a position violation.
+            // v22 keeps the evidence/VL but lets NoFall rewrite the client ground
+            // bit instead of teleporting the player every time this fires.
+            boolean accepted = flag(V.write(verbose()).bool(claimed));
 
-            if (accepted && quarantineUnsafeGround && !blinkRecovery) {
+            boolean specialEnvironment = GrimAPI.INSTANCE.getEnvironmentContextManager()
+                    .isSpecialMovementEnvironment(player);
+
+            if (accepted && quarantineUnsafeGround && !blinkRecovery && !specialEnvironment) {
                 predictionComplete.setSafePositionUpdateBlocked(true);
             }
 

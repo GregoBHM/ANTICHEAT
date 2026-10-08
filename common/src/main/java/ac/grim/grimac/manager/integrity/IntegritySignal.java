@@ -15,6 +15,7 @@ public enum IntegritySignal {
     QUEUED_ACTION(2.5D, false),
     INVENTORY_FREQUENCY(1.0D, true),
     FAST_CONSUME(2.5D, true),
+    REGEN_PACKET(2.5D, true),
     PACKET_ORDER(1.5D, false),
     MULTI_ACTION(1.5D, false),
     ATTACK_BURST(2.0D, true),

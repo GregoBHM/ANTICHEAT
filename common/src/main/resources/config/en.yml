@@ -150,6 +150,16 @@ Knockback:
     max-advantage: 1
     # This is to stop the player from gathering too many violations and never being able to clear them all
     max-ceiling: 4
+    # v22: AntiKB owns velocity mitigation. Instead of teleporting the player,
+    # re-apply only the missing portion of the authoritative server velocity.
+    enforcement:
+        enabled: true
+        cooldown-ms: 120
+        recovery-ms: 350
+        episode-reset-ms: 1200
+        max-retries: 2
+        minimum-reapply-scale: 0.35
+        suppress-in-special-environments: true
 
 Explosion:
     threshold: 0.001
@@ -397,7 +407,7 @@ update-permission-ticks: -1
 #   config-version: bumped on every breaking shape change. Old configs
 #                   auto-migrate up via the bundled updater on next start.
 config-flavor: V2
-config-version: 21
+config-version: 22
 
 # Staff-only diagnostic alert emitted only when Grim actually sends a movement
 # correction/resync. It does not add VL and does not execute punishments.
@@ -444,6 +454,7 @@ integrity-correlation:
         queued-action: 2.5
         inventory-frequency: 1.0
         fast-consume: 2.5
+        regen-packet: 2.5
         packet-order: 1.5
         multi-action: 1.5
         attack-burst: 2.0
@@ -462,6 +473,28 @@ packet-integrity:
     one-second-limit: 25.0
     flag-buffer: 2.0
     flag-cooldown-ms: 1500
+
+# Packet-driven Regen guard. Timer remains the owner of extra-tick cancellation;
+# this layer correlates a real server health increase with an impossible client
+# clock lead / packet burst, produces dedicated sanctionable Regen VL, and only
+# cancels a still-unblocked packet when the evidence is already strong.
+regen-guard:
+    enabled: true
+    heal-correlation-window-ms: 1500
+    packet-abuse-window-ms: 1200
+    minimum-timer-ahead-ms: 35
+    minimum-packets-250ms: 7
+    minimum-heal-amount: 0.25
+    minimum-confidence: 0.60
+    flag-buffer: 2.0
+    flag-cooldown-ms: 900
+    prevent:
+        enabled: true
+        minimum-timer-ahead-ms: 80
+
+Regen:
+    setbackvl: -1
+    decay: 0.15
 
 # Interaction integrity reuses CompensatedInventory, PacketOrder, MultiActions and NoSlow.
 interaction-integrity:
@@ -542,6 +575,22 @@ environment-context:
         complex-collision: 0.65
         piston: 0.45
         recent-block-change: 0.50
+    correction-min-raw-offsets:
+        # Raw Simulation offset required before a special-physics correction can occur.
+        cobweb: 0.30
+        stuck-movement: 0.22
+        climbable: 0.18
+        liquid: 0.18
+        complex-collision: 0.12
+        piston: 0.20
+        recent-block-change: 0.15
+    correction-policy:
+        # Context names, not material IDs. Routine ghost/ground force-resyncs are
+        # deferred here while Phase and strong Simulation correction stay active.
+        suppress-routine-force-resync-contexts:
+          - COBWEB
+          - STUCK_MOVEMENT
+          - CLIMBABLE
 
 world-integrity:
     phase-recent-block-grace-ticks: 4
@@ -582,6 +631,9 @@ movement-enforcement:
         # Short-Blink heuristics are disabled only while special movement physics/recovery is active.
         # Simulation, Phase, Timer and the normal Grim predictor remain active.
         disable-short-blink: true
+        # Special physics still gets corrected when the raw deviation is clearly
+        # impossible and persists; smaller offsets never trap the safe position.
+        correction-strong-ticks: 3
 
     # Prediction evidence that is strong enough to stop the current position
     # from replacing Grim's last known safe position.
