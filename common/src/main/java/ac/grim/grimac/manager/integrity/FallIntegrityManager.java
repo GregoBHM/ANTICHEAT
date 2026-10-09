@@ -6,6 +6,7 @@ import ac.grim.grimac.player.GrimPlayer;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -20,6 +21,7 @@ import java.util.concurrent.TimeUnit;
  */
 public final class FallIntegrityManager {
     private final Map<UUID, FallState> states = new ConcurrentHashMap<>();
+    private final Set<UUID> platformApplyScheduled = ConcurrentHashMap.newKeySet();
 
     private volatile boolean enabled = true;
     private volatile boolean enforcePlatformFallDistance = true;
@@ -37,7 +39,10 @@ public final class FallIntegrityManager {
         recoveryRetentionNanos = TimeUnit.MILLISECONDS.toNanos(retentionMs);
         long disconnectMs = clamp(config.getLongElse("fall-integrity.disconnect-retention-ms", 60_000L), 1000L, 300_000L);
         disconnectRetentionNanos = TimeUnit.MILLISECONDS.toNanos(disconnectMs);
-        if (!enabled) states.clear();
+        if (!enabled) {
+            states.clear();
+            platformApplyScheduled.clear();
+        }
     }
 
     public void beginProtection(@NotNull UUID uuid, double predictedFallDistance, boolean selectiveEvidence) {
@@ -119,11 +124,55 @@ public final class FallIntegrityManager {
         }
 
         if (!enforcePlatformFallDistance || pending < minimumDistance) return;
-        float desired = (float) Math.min(maximumEnforcedDistance, pending);
-        float current = player.platformPlayer.getFallDistance();
-        if (current + 0.01F < desired) {
-            player.platformPlayer.setFallDistance(desired);
-        }
+        if (!platformApplyScheduled.add(uuid)) return;
+
+        var platformPlayer = player.platformPlayer;
+        Runnable cleanup = () -> platformApplyScheduled.remove(uuid);
+
+        GrimAPI.INSTANCE.getScheduler().getEntityScheduler().execute(
+                platformPlayer,
+                GrimAPI.INSTANCE.getGrimPlugin(),
+                () -> {
+                    try {
+                        if (!enabled || !enforcePlatformFallDistance) {
+                            return;
+                        }
+
+                        FallState latest = states.get(uuid);
+                        if (latest == null) {
+                            return;
+                        }
+
+                        double latestPending;
+                        boolean latestShouldEnforce;
+                        long taskNow = System.nanoTime();
+
+                        synchronized (latest) {
+                            latestPending = latest.pendingDistance;
+                            latestShouldEnforce = latest.protectedStall
+                                    || latest.enforceUntilNanos > taskNow;
+                        }
+
+                        if (!latestShouldEnforce || latestPending < minimumDistance) {
+                            return;
+                        }
+
+                        float desired = (float) Math.min(
+                                maximumEnforcedDistance,
+                                latestPending
+                        );
+                        float current = platformPlayer.getFallDistance();
+
+                        if (current + 0.01F < desired) {
+                            platformPlayer.setFallDistance(desired);
+                        }
+                    } finally {
+                        cleanup.run();
+                    }
+                },
+                cleanup,
+                0
+        );
     }
 
     /** Preserve a protected fall briefly across disconnects so freezing then relogging cannot erase it. */

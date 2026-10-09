@@ -227,9 +227,15 @@ public final class EnvironmentContextManager {
     }
 
     public double simulationCorrelationMultiplier(@NotNull GrimPlayer player) {
+        return simulationCorrelationMultiplier(classify(player));
+    }
+
+    public double simulationCorrelationMultiplier(
+            @NotNull Set<EnvironmentContext> contexts
+    ) {
         double multiplier = 1.0D;
 
-        for (EnvironmentContext context : classify(player)) {
+        for (EnvironmentContext context : contexts) {
             multiplier = Math.min(
                     multiplier,
                     simulationMultiplier(context)
@@ -240,9 +246,15 @@ public final class EnvironmentContextManager {
     }
 
     public double enforcementMultiplier(@NotNull GrimPlayer player) {
+        return enforcementMultiplier(classify(player));
+    }
+
+    public double enforcementMultiplier(
+            @NotNull Set<EnvironmentContext> contexts
+    ) {
         double multiplier = 1.0D;
 
-        for (EnvironmentContext context : classify(player)) {
+        for (EnvironmentContext context : contexts) {
             multiplier = Math.min(
                     multiplier,
                     enforcementMultiplier(context)
@@ -253,7 +265,12 @@ public final class EnvironmentContextManager {
     }
 
     public boolean isSpecialMovementEnvironment(@NotNull GrimPlayer player) {
-        Set<EnvironmentContext> contexts = classify(player);
+        return isSpecialMovementEnvironment(classify(player));
+    }
+
+    public boolean isSpecialMovementEnvironment(
+            @NotNull Set<EnvironmentContext> contexts
+    ) {
         return !(contexts.size() == 1
                 && contexts.contains(EnvironmentContext.NORMAL));
     }
@@ -291,8 +308,14 @@ public final class EnvironmentContextManager {
     }
 
     public double minimumCorrectionRawOffset(@NotNull GrimPlayer player) {
+        return minimumCorrectionRawOffset(classify(player));
+    }
+
+    public double minimumCorrectionRawOffset(
+            @NotNull Set<EnvironmentContext> contexts
+    ) {
         double minimum = 0.0D;
-        for (EnvironmentContext context : classify(player)) {
+        for (EnvironmentContext context : contexts) {
             double candidate = switch (context) {
                 case COBWEB -> cobwebCorrectionMinRawOffset;
                 case STUCK_MOVEMENT -> stuckMovementCorrectionMinRawOffset;
@@ -309,8 +332,12 @@ public final class EnvironmentContextManager {
     }
 
     public @NotNull String summary(@NotNull GrimPlayer player) {
-        Set<EnvironmentContext> contexts = classify(player);
+        return summary(classify(player));
+    }
 
+    public @NotNull String summary(
+            @NotNull Set<EnvironmentContext> contexts
+    ) {
         if (contexts.size() == 1
                 && contexts.contains(EnvironmentContext.NORMAL)) {
             return "NORMAL";

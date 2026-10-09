@@ -43,7 +43,7 @@ public final class MovementContextListener implements Listener {
 
         long duration = config().getLongElse("movement-context-auto.velocity-duration-ms", 900L);
         String detail = String.format(Locale.ROOT, "v=%.3f,%.3f,%.3f", velocity.getX(), velocity.getY(), velocity.getZ());
-        GrimAPI.INSTANCE.getMovementContextManager().begin(player.getUniqueId(), type, "Bukkit:Velocity", duration, detail);
+        GrimAPI.INSTANCE.getMovementContextManager().beginObserved(player.getUniqueId(), type, "Bukkit:Velocity", duration, detail);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -51,7 +51,7 @@ public final class MovementContextListener implements Listener {
         if (!enabled()) return;
         long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
         String cause = event.getCause() == null ? "UNKNOWN" : event.getCause().name();
-        GrimAPI.INSTANCE.getMovementContextManager().begin(
+        GrimAPI.INSTANCE.getMovementContextManager().beginObserved(
                 event.getPlayer().getUniqueId(), MovementContextType.TELEPORT, "Bukkit:Teleport", duration, "cause=" + cause);
     }
 
@@ -59,7 +59,7 @@ public final class MovementContextListener implements Listener {
     public void onCancelledMove(PlayerMoveEvent event) {
         if (!enabled() || !event.isCancelled()) return;
         long duration = config().getLongElse("movement-context-auto.cancelled-move-duration-ms", 300L);
-        GrimAPI.INSTANCE.getMovementContextManager().begin(
+        GrimAPI.INSTANCE.getMovementContextManager().beginObserved(
                 event.getPlayer().getUniqueId(), MovementContextType.ROOT, "Bukkit:CancelledMove", duration);
     }
 
@@ -69,7 +69,7 @@ public final class MovementContextListener implements Listener {
         Player player = event.getPlayer();
         if (!event.isFlying() || !player.getAllowFlight()) return;
         long duration = config().getLongElse("movement-context-auto.flight-duration-ms", 3000L);
-        GrimAPI.INSTANCE.getMovementContextManager().begin(
+        GrimAPI.INSTANCE.getMovementContextManager().beginObserved(
                 player.getUniqueId(), MovementContextType.FLIGHT, "Bukkit:AllowedFlight", duration);
     }
 

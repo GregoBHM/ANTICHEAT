@@ -18,7 +18,7 @@ public final class CancelledBlockIntegrityListener implements Listener {
         Block block = event.getBlockPlaced();
         GrimAPI.INSTANCE.getCancelledBlockIntegrityManager().recordCancelledPlacement(
                 player.getUniqueId(),
-                block.getWorld().getUID(),
+                block.getWorld().getName(),
                 block.getX(),
                 block.getY(),
                 block.getZ()

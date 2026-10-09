@@ -51,9 +51,13 @@ public final class GrimConfigSpecs {
      * from player RTT sanction confidence, protects candidate/full-freeze queued
      * actions, removes the long-stall prevention bypass, and verifies rollback
      * ownership before suppressing competing movement corrections.
+     * v24 -> v25: player-safety hardening for legacy Blink. BadPacketsE observes
+     * raw pre-prediction movement, action-first prevention becomes opt-in,
+     * recovery cannot re-lock itself, and item-use ownership is left exclusively
+     * to ConsumeTiming/NoSlow instead of StallActions.
      */
     public static @NotNull ConfigUpdater.Spec mainConfig() {
-        return ConfigUpdater.Spec.builder("/config/", 24, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/config/", 28, ConfigUpdater.ConfigFlavor.V2)
                 .migration(10, ctx -> {
                     String typeRaw = ctx.input().getString("history.database.type");
                     String type = typeRaw == null ? null : typeRaw.trim().toUpperCase(Locale.ROOT);
@@ -117,6 +121,34 @@ public final class GrimConfigSpecs {
                         }
                     }
                 })
+                .migration(25, ctx ->
+                        ctx.output().put(
+                                "blink-mitigation.short-selective-action-guard.enabled",
+                                false
+                        )
+                )
+                .migration(26, ctx ->
+                        ctx.output().put(
+                                "correction-diagnostics.format",
+                                "[alert] &7%verbose%"
+                        )
+                )
+                .migration(27, ctx ->
+                        ctx.output().put(
+                                "Knockback.enforcement.enabled",
+                                false
+                        )
+                )
+                .migration(28, ctx -> {
+                    ctx.output().put(
+                            "combat-integrity.kill-on-unsafe-disconnect",
+                            false
+                    );
+                    ctx.output().put(
+                            "combat-integrity.kill-on-next-join-if-needed",
+                            false
+                    );
+                })
                 .build();
     }
 
@@ -145,9 +177,13 @@ public final class GrimConfigSpecs {
     public static @NotNull ConfigUpdater.Spec messages() {
         return ConfigUpdater.Spec.builder(
                         "/messages/",
-                        3,
+                        4,
                         ConfigUpdater.ConfigFlavor.V2
                 )
+                .migration(4, ctx -> {
+                    ctx.output().put("verbose-format", "[alert] &7%verbose%");
+                    ctx.output().put("alerts-format-proxy", "&8[proxy] [alert]");
+                })
                 .build();
     }
 

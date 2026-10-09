@@ -1,9 +1,11 @@
 package ac.grim.grimac.manager.integrity;
 
 import ac.grim.grimac.api.config.ConfigManager;
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.LogUtil;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.UUID;
@@ -64,6 +66,14 @@ public final class MovementReleaseGuard {
     }
 
     public boolean apply(@NotNull GrimPlayer player, boolean enoughEvidence) {
+        return apply(player, enoughEvidence, null);
+    }
+
+    public boolean apply(
+            @NotNull GrimPlayer player,
+            boolean enoughEvidence,
+            @Nullable Check source
+    ) {
         if (!enabled || !enoughEvidence || player.disableGrim) {
             return false;
         }
@@ -81,7 +91,7 @@ public final class MovementReleaseGuard {
                 return false;
             }
 
-            player.getSetbackTeleportUtil().executeNonSimulatingSetback();
+            player.getSetbackTeleportUtil().executeNonSimulatingSetback(source);
             lastApplied.put(player.uuid, now);
             return true;
         }

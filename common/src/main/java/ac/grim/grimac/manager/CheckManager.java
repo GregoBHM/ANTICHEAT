@@ -26,6 +26,7 @@ import ac.grim.grimac.checks.impl.integrity.AttackFrequency;
 import ac.grim.grimac.checks.impl.integrity.ConsumeTiming;
 import ac.grim.grimac.checks.impl.integrity.InventoryFrequency;
 import ac.grim.grimac.checks.impl.integrity.PacketBurst;
+import ac.grim.grimac.checks.impl.integrity.RegenPacket;
 import ac.grim.grimac.checks.impl.misc.ClientBrand;
 import ac.grim.grimac.checks.impl.misc.GhostBlockMitigation;
 import ac.grim.grimac.checks.impl.misc.Post;
@@ -236,6 +237,9 @@ public class CheckManager implements BasicReloadable {
 
                 .put(ConnectionStall.class, new ConnectionStall(player))
                 .put(Timer.class, new Timer(player))
+                // RegenPacket reads Timer's current clock lead, so keep it
+                // immediately after Timer in pre-prediction dispatch order.
+                .put(RegenPacket.class, new RegenPacket(player))
                 .put(TickTimer.class, new TickTimer(player))
                 .put(TimerLimit.class, new TimerLimit(player))
                 .put(CrashA.class, new CrashA(player))

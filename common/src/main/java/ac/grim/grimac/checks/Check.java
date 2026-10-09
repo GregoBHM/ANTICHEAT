@@ -247,7 +247,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
 
     public boolean setbackIfAboveSetbackVL() {
         if (shouldSetback()) {
-            return player.getSetbackTeleportUtil().executeViolationSetback();
+            return player.getSetbackTeleportUtil().executeViolationSetback(this);
         }
         return false;
     }
@@ -257,7 +257,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
     }
 
     public boolean executeViolationSetback() {
-        return !noSetbackPermission && player.getSetbackTeleportUtil().executeViolationSetback();
+        return !noSetbackPermission && player.getSetbackTeleportUtil().executeViolationSetback(this);
     }
 
     public String formatOffset(double offset) {

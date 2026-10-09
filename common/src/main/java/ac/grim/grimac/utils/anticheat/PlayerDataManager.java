@@ -121,6 +121,7 @@ public class PlayerDataManager {
             // simply by disconnecting after another combat plugin's timer reached zero.
             GrimAPI.INSTANCE.getCombatIntegrityManager().recordDisconnect(uuid);
             GrimAPI.INSTANCE.getFallIntegrityManager().recordDisconnect(uuid);
+            GrimAPI.INSTANCE.getCancelledBlockIntegrityManager().clear(uuid);
             GrimAPI.INSTANCE.getMovementContextManager().clear(uuid);
             GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
             GrimAPI.INSTANCE.getAlertAggregationManager().clear(uuid);

@@ -60,7 +60,7 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                         || stall.isHardReleaseCandidateActive());
 
                 if (!blinkOwned && shouldSetback()) {
-                    player.getSetbackTeleportUtil().executeNonSimulatingSetback();
+                    player.getSetbackTeleportUtil().executeNonSimulatingSetback(this);
                 }
             }
 

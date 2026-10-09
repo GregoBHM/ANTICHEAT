@@ -184,6 +184,15 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             return;
         }
 
+        if (GrimAPI.INSTANCE.getMovementContextManager().hasTrustedVelocityContext(player.uuid)) {
+            forceExempt();
+            knockbackPointThree = false;
+            enforcementEpisodeStartedNanos = 0L;
+            enforcementRetries = 0;
+            suppressCompetingUntilNanos = 0L;
+            return;
+        }
+
         boolean wasZero = knockbackPointThree;
         knockbackPointThree = false;
 
@@ -238,6 +247,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
 
     private boolean enforceVelocity(VelocityData data, boolean ignored) {
         if (!enforcementEnabled || !shouldModifyPackets()) return false;
+        if (GrimAPI.INSTANCE.getMovementContextManager().hasTrustedVelocityContext(player.uuid)) return false;
         if (data == null || data.vector == null || data.vector.lengthSquared() <= 1.0E-8D) return false;
 
         if (suppressInSpecialEnvironments
@@ -273,7 +283,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
     }
 
     public boolean shouldSuppressCompetingMovementSetbacks() {
-        return System.nanoTime() < suppressCompetingUntilNanos;
+        return enforcementEnabled && System.nanoTime() < suppressCompetingUntilNanos;
     }
 
     public boolean shouldIgnoreForPrediction(VectorData data) {
@@ -306,7 +316,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         if (maxAdv < 0) maxAdv = Double.MAX_VALUE;
         if (immediate < 0) immediate = Double.MAX_VALUE;
 
-        enforcementEnabled = config.getBooleanElse("Knockback.enforcement.enabled", true);
+        enforcementEnabled = config.getBooleanElse("Knockback.enforcement.enabled", false);
         suppressInSpecialEnvironments = config.getBooleanElse(
                 "Knockback.enforcement.suppress-in-special-environments", true);
         enforcementCooldownNanos = TimeUnit.MILLISECONDS.toNanos(clamp(
@@ -319,6 +329,11 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 config.getLongElse("Knockback.enforcement.max-retries", 2L), 1L, 8L);
         enforcementMinimumScale = clamp(
                 config.getDoubleElse("Knockback.enforcement.minimum-reapply-scale", 0.35D), 0.05D, 1.0D);
+        if (!enforcementEnabled) {
+            suppressCompetingUntilNanos = 0L;
+            enforcementEpisodeStartedNanos = 0L;
+            enforcementRetries = 0;
+        }
     }
 
     private static long clamp(long value, long min, long max) {

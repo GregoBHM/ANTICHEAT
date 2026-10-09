@@ -41,7 +41,6 @@ public class PunishmentManager implements ConfigReloadable {
     // movement correction. They never add VL and never execute punishments.
     private boolean correctionDiagnosticsEnabled = true;
     private long correctionDiagnosticsCooldownMillis = 125L;
-    private long correctionDiagnosticsRecentCheckMillis = 750L;
     private String correctionDiagnosticsFormat;
     private final Map<String, Long> correctionDiagnosticsCooldowns = new java.util.HashMap<>();
 
@@ -65,9 +64,7 @@ public class PunishmentManager implements ConfigReloadable {
 
         verboseAlertString = config.getStringElse(
                 "verbose-format",
-                "%prefix% &f%player% &bfailed &f%check_name%%experimental% "
-                        + "&f(x&c%vl%&f) &7%verbose% "
-                        + "&8[p=%ping% tps=%tps% corr=%integrity_score%]"
+                "[alert] &7%verbose%"
         );
 
         correctionDiagnosticsEnabled =
@@ -76,14 +73,9 @@ public class PunishmentManager implements ConfigReloadable {
         correctionDiagnosticsCooldownMillis = Math.max(0L, Math.min(5000L,
                 config.getLongElse("correction-diagnostics.cooldown-ms", 125L)));
 
-        correctionDiagnosticsRecentCheckMillis = Math.max(50L, Math.min(5000L,
-                config.getLongElse("correction-diagnostics.recent-check-window-ms", 750L)));
-
         correctionDiagnosticsFormat = config.getStringElse(
                 "correction-diagnostics.format",
-                "%prefix% &f%player% &bfailed &f%check_name%%experimental% "
-                        + "&f(x&c%vl%&f) &7%verbose% "
-                        + "&8[p=%ping% tps=%tps% corr=%integrity_score%]"
+                "[alert] &7%verbose%"
         );
 
         correctionDiagnosticsCooldowns.clear();
@@ -93,11 +85,7 @@ public class PunishmentManager implements ConfigReloadable {
 
         proxyAlertString = config.getStringElse(
                 "alerts-format-proxy",
-                "%prefix% &f[&cproxy&f] &f%player% &bfailed "
-                        + "<hover:show_text:\"&b%check_name%%experimental%\\n"
-                        + "&8Description: &f%description%\">"
-                        + "&f%check_name%%experimental%</hover> "
-                        + "&f(x&c%vl%&f) &7%verbose%"
+                "&8[proxy] [alert]"
         );
 
         try {
@@ -318,30 +306,60 @@ public class PunishmentManager implements ConfigReloadable {
             String verbose,
             int suppressed
     ) {
+        return replaceAlertPlaceholders(
+                original,
+                vl,
+                groupVl,
+                check.getDisplayName(),
+                check.isExperimental(),
+                check.getDescription(),
+                check.getStableKey(),
+                componentFor(check),
+                verbose,
+                suppressed
+        );
+    }
+
+    private String replaceAlertPlaceholders(
+            String original,
+            int vl,
+            int groupVl,
+            String sourceName,
+            boolean experimental,
+            String description,
+            String stableKey,
+            String component,
+            String verbose,
+            int suppressed
+    ) {
         String severity =
                 GrimAPI.INSTANCE.getAlertAggregationManager()
                         .severity(player.uuid)
                         .name();
 
+        String template = StaffAlertTemplate.expand(
+                original,
+                alertString,
+                verboseAlertString,
+                proxyAlertString
+        );
+
         return MessageUtil.replacePlaceholders(
                 player,
-                original
-                        .replace("[alert]", alertString)
-                        .replace("[verbose]", verboseAlertString)
-                        .replace("[proxy]", proxyAlertString)
-                        .replace("%check_name%", check.getDisplayName())
+                template
+                        .replace("%check_name%", sourceName == null ? "Unknown" : sourceName)
                         .replace(
                                 "%experimental%",
-                                check.isExperimental()
+                                experimental
                                         ? experimentalSymbol
                                         : ""
                         )
                         .replace("%vl%", Integer.toString(vl))
                         .replace("%check_vl%", Integer.toString(vl))
                         .replace("%group_vl%", Integer.toString(groupVl))
-                        .replace("%description%", check.getDescription())
-                        .replace("%stable_key%", check.getStableKey())
-                        .replace("%component%", componentFor(check))
+                        .replace("%description%", description == null ? "" : description)
+                        .replace("%stable_key%", stableKey == null ? "" : stableKey)
+                        .replace("%component%", component == null ? "Other" : component)
                         .replace("%severity%", severity)
                         .replace(
                                 "%suppressed%",
@@ -357,14 +375,14 @@ public class PunishmentManager implements ConfigReloadable {
                         )
         ).replace(
                 "%verbose%",
-                MessageUtil.miniMessageSafe(verbose)
+                MessageUtil.miniMessageSafe(verbose == null ? "" : verbose)
         );
     }
 
     /**
      * v21 movement-correction diagnostic. This deliberately bypasses punishment
      * thresholds and does not call handleViolation(): it is only a staff alert
-     * so a real movement correction can be tied back to its most recent check.
+     * so a real movement correction can carry its explicit source without adding VL.
      */
     public void handleCorrectionDiagnostic(
             @Nullable Check check,
@@ -419,36 +437,24 @@ public class PunishmentManager implements ConfigReloadable {
                 ? "sparkgrim.correction.unknown"
                 : check.getStableKey();
 
-        String experimental = check != null && check.isExperimental()
-                ? experimentalSymbol
-                : "";
-
         String component = check == null
                 ? "Movement"
                 : componentFor(check);
 
-        String severity = GrimAPI.INSTANCE
-                .getAlertAggregationManager()
-                .severity(player.uuid)
-                .name();
+        String correctionVerbose = "type=correction "
+                + (verbose == null ? "" : verbose);
 
-        String rendered = MessageUtil.replacePlaceholders(
-                player,
-                correctionDiagnosticsFormat
-                        .replace("%check_name%", sourceName)
-                        .replace("%experimental%", experimental)
-                        .replace("%vl%", Integer.toString(checkVl))
-                        .replace("%check_vl%", Integer.toString(checkVl))
-                        .replace("%group_vl%", Integer.toString(groupVl))
-                        .replace("%description%", description)
-                        .replace("%stable_key%", stableKey)
-                        .replace("%component%", component)
-                        .replace("%severity%", severity)
-                        .replace("%suppressed%", "0")
-                        .replace("%suppressed_suffix%", "")
-        ).replace(
-                "%verbose%",
-                MessageUtil.miniMessageSafe(verbose == null ? "" : verbose)
+        String rendered = replaceAlertPlaceholders(
+                correctionDiagnosticsFormat,
+                checkVl,
+                groupVl,
+                sourceName,
+                check != null && check.isExperimental(),
+                description,
+                stableKey,
+                component,
+                correctionVerbose,
+                0
         );
 
         Component message = MessageUtil.miniMessage(rendered);
@@ -458,10 +464,6 @@ public class PunishmentManager implements ConfigReloadable {
         } else {
             GrimAPI.INSTANCE.getAlertManager().sendAlert(message, null);
         }
-    }
-
-    public long getCorrectionDiagnosticsRecentCheckMillis() {
-        return correctionDiagnosticsRecentCheckMillis;
     }
 
     public boolean handleAlert(
@@ -916,8 +918,25 @@ public class PunishmentManager implements ConfigReloadable {
         }
 
         if (key.startsWith("grim.packetorder.")
-                || key.startsWith("grim.multiactions.")) {
+                || key.startsWith("grim.multiactions.")
+                || key.startsWith("grim.badpackets.")
+                || key.startsWith("grim.crash.")) {
             return "Protocol";
+        }
+
+        if (key.startsWith("grim.velocity.")) {
+            return "Velocity";
+        }
+
+        if (key.startsWith("grim.movement.")
+                || key.startsWith("grim.elytra.")
+                || key.startsWith("grim.sprint.")
+                || key.startsWith("grim.vehicle.")) {
+            return "Movement";
+        }
+
+        if (key.startsWith("grim.breaking.")) {
+            return "World";
         }
 
         return "Other";

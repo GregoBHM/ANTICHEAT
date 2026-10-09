@@ -43,8 +43,8 @@ webhook-test-failed: "Discord webhook test failed!"
 # %vl% - violations
 # %verbose% - Informations supplémentaires sur les vérifivations comme les écarts, toutes les vérifications n'ajoutent pas d'information
 alerts-format: "%prefix% &f%player% &ba échoué <hover:show_text:\"&b%check_name%%experimental%\n&8Description: &f%description%\">&f%check_name%%experimental%</hover> &f(x&c%vl%&f) &7%verbose%"
-alerts-format-proxy: "%prefix% &f[&cproxy&f] &f%player% &ba échoué <hover:show_text:\"&b%check_name%%experimental%\n&8Description: &f%description%\">&f%check_name%%experimental%</hover> &f(x&c%vl%&f) &7%verbose%"
-verbose-format: "%prefix% &f%player% &b%check_name%%experimental% &f(x&c%vl%&f) &7%verbose% &8[p=%ping% tps=%tps% corr=%integrity_score%]"
+alerts-format-proxy: "&8[proxy] [alert]"
+verbose-format: "[alert] &7%verbose%"
 experimental-symbol: "*"
 
 profile:
@@ -134,4 +134,4 @@ grim-history-check-count: "&f%check_name%&7 x&c%count%"
 
 # Marqueurs de schéma — voir le commentaire d'en-tête dans config.yml.
 config-flavor: V2
-config-version: 3
+config-version: 4

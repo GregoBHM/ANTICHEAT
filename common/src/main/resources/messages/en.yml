@@ -43,8 +43,8 @@ webhook-test-failed: "Discord webhook test failed!"
 # %vl% - violations
 # %verbose% - extra information from the check such as offsets, not all checks will add information
 alerts-format: "%prefix% &f%player% &bfailed <hover:show_text:\"&b%check_name%%experimental%\n&8Component: &f%component%\n&8Description: &f%description%\n&8VL: &f%vl%\n&8Severity: &f%severity%\n&8Ping: &f%ping%ms\n&8TPS: &f%tps%\n&8Correlation: &f%integrity_score% &8(short &f%integrity_short%&8 / long &f%integrity_long%&8)\n&8Contexts: &f%integrity_contexts%\n&8Suppressed: &f%suppressed%\">&f%check_name%%experimental%</hover> &f(x&c%vl%&f) &8[%severity%]%suppressed_suffix%"
-alerts-format-proxy: "%prefix% &f[&cproxy&f] &f%player% &bfailed &f%check_name%%experimental% &f(x&c%vl%&f) &8[%severity%]"
-verbose-format: "%prefix% &f%player% &bfailed &f%check_name%%experimental% &f(x&c%vl%&f) &7%verbose% &8[p=%ping% tps=%tps% corr=%integrity_score%]"
+alerts-format-proxy: "&8[proxy] [alert]"
+verbose-format: "[alert] &7%verbose%"
 experimental-symbol: "*"
 
 profile:
@@ -132,4 +132,4 @@ grim-history-check-count: "&f%check_name%&7 x&c%count%"
 
 # Schema markers — see header comment in config.yml.
 config-flavor: V2
-config-version: 3
+config-version: 4

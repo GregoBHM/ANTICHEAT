@@ -3,11 +3,11 @@ package ac.grim.grimac.manager;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.event.events.GrimPlayerSetbackEvent;
 import ac.grim.grimac.api.event.events.GrimTeleportEvent;
-import ac.grim.grimac.api.AbstractCheck;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.checks.impl.velocity.KnockbackHandler;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
+import ac.grim.grimac.manager.integrity.MovementCorrectionCoordinator;
 import ac.grim.grimac.checks.GrimProcessor;
 import ac.grim.grimac.checks.impl.badpackets.BadPacketsN;
 import ac.grim.grimac.checks.type.PostPredictionListener;
@@ -61,6 +61,8 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
 
     private SetBackData requiredSetBack = null;
     private long lastWorldResync = 0;
+    private final MovementCorrectionCoordinator correctionCoordinator =
+            new MovementCorrectionCoordinator();
 
     public SetbackTeleportUtil(GrimPlayer player) {
         super(player);
@@ -89,45 +91,142 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
     }
 
     public void executeForceResync() {
+        executeForceResync(null);
+    }
+
+    public void executeForceResync(@Nullable Check source) {
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
             return;
         if (lastKnownGoodPosition == null) return;
 
-        // v22: routine ground/0.03/ghost resyncs must not fight legitimate
-        // special movement physics. Phase and confirmed Simulation setbacks use
-        // executeViolationSetback() and remain fully active.
+        // Routine ground/0.03/ghost resyncs must not fight legitimate
+        // special movement physics. Explicit check sources are diagnostic only;
+        // they do not bypass this safety policy.
         if (GrimAPI.INSTANCE.getEnvironmentContextManager()
                 .shouldSuppressRoutineForceResync(player)) {
             return;
         }
 
-        if (blockMovementsUntilResync(true, true)) {
-            emitCorrectionDiagnostic("resync");
+        if (applyCorrection(
+                source,
+                correctionPriority(source, false),
+                true,
+                true
+        )) {
+            emitCorrectionDiagnostic(source, "resync");
         }
     }
 
     public void executeNonSimulatingForceResync() {
+        executeNonSimulatingForceResync(null);
+    }
+
+    public void executeNonSimulatingForceResync(@Nullable Check source) {
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
             return;
         if (lastKnownGoodPosition == null) return;
-        if (blockMovementsUntilResync(false, true)) {
-            emitCorrectionDiagnostic("resync");
+        if (applyCorrection(
+                source,
+                correctionPriority(source, false),
+                false,
+                true
+        )) {
+            emitCorrectionDiagnostic(source, "resync");
         }
     }
 
     public void executeNonSimulatingSetback() {
+        executeNonSimulatingSetback(null);
+    }
+
+    public void executeNonSimulatingSetback(@Nullable Check source) {
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
             return;
         if (lastKnownGoodPosition == null) return;
-        if (blockMovementsUntilResync(false, false)) {
-            emitCorrectionDiagnostic("connection");
+        if (applyCorrection(
+                source,
+                correctionPriority(source, false),
+                false,
+                false
+        )) {
+            emitCorrectionDiagnostic(source, "connection");
         }
     }
 
     public boolean executeViolationSetback() {
+        return executeViolationSetback(null);
+    }
+
+    public boolean executeViolationSetback(@Nullable Check source) {
         if (isExempt()) return false;
-        if (!blockMovementsUntilResync(true, false)) return false;
-        emitCorrectionDiagnostic("prediction");
+        if (!applyCorrection(
+                source,
+                correctionPriority(source, true),
+                true,
+                false
+        )) {
+            return false;
+        }
+        emitCorrectionDiagnostic(source, "prediction");
+        return true;
+    }
+
+    private MovementCorrectionCoordinator.Priority correctionPriority(
+            @Nullable Check source,
+            boolean violation
+    ) {
+        if (violation && source == null) {
+            return MovementCorrectionCoordinator.Priority.AUTHORITATIVE;
+        }
+
+        if (source != null
+                && source.getStableKey() != null
+                && source.getStableKey().startsWith("grim.crash.")) {
+            return MovementCorrectionCoordinator.Priority.AUTHORITATIVE;
+        }
+
+        return source == null
+                ? MovementCorrectionCoordinator.Priority.ROUTINE
+                : MovementCorrectionCoordinator.Priority.CHECK;
+    }
+
+    private boolean applyCorrection(
+            @Nullable Check source,
+            MovementCorrectionCoordinator.Priority priority,
+            boolean simulateNextTickPosition,
+            boolean isResync
+    ) {
+        ConnectionStall stall = player.checkManager.get(ConnectionStall.class);
+        long connectionEpisodeId = stall == null
+                ? 0L
+                : stall.getCorrectionEpisodeId();
+
+        KnockbackHandler knockback = player.checkManager.get(KnockbackHandler.class);
+        boolean velocityOwnsRecovery = knockback != null
+                && knockback.shouldSuppressCompetingMovementSetbacks();
+
+        boolean sourceIsConnectionStall = source instanceof ConnectionStall;
+        long now = System.nanoTime();
+
+        if (!correctionCoordinator.canApply(
+                priority,
+                sourceIsConnectionStall,
+                connectionEpisodeId,
+                velocityOwnsRecovery,
+                isPendingSetback(),
+                now
+        )) {
+            return false;
+        }
+
+        if (!blockMovementsUntilResync(simulateNextTickPosition, isResync)) {
+            return false;
+        }
+
+        correctionCoordinator.markApplied(
+                sourceIsConnectionStall,
+                connectionEpisodeId
+        );
         return true;
     }
 
@@ -274,37 +373,8 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         return true;
     }
 
-    private void emitCorrectionDiagnostic(String mode) {
-        long now = System.currentTimeMillis();
-        long recentWindow = player.punishmentManager
-                .getCorrectionDiagnosticsRecentCheckMillis();
-
-        Check recent = null;
-        long latest = 0L;
-
-        for (AbstractCheck abstractCheck : player.getChecks()) {
-            if (!(abstractCheck instanceof Check check)) {
-                continue;
-            }
-
-            long lastViolation = check.getLastViolationTime();
-            if (lastViolation <= 0L || now - lastViolation > recentWindow) {
-                continue;
-            }
-
-            if (lastViolation > latest) {
-                latest = lastViolation;
-                recent = check;
-            }
-        }
-
+    private void emitCorrectionDiagnostic(@Nullable Check source, String mode) {
         ConnectionStall stall = player.checkManager.get(ConnectionStall.class);
-        if (recent == null && stall != null
-                && (stall.shouldSuppressMovementSetbacks()
-                || stall.shouldBlockQueuedActions()
-                || stall.isStalling())) {
-            recent = stall;
-        }
 
         String environment = GrimAPI.INSTANCE
                 .getEnvironmentContextManager()
@@ -350,7 +420,7 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
         };
 
         player.punishmentManager.handleCorrectionDiagnostic(
-                recent,
+                source,
                 fallback,
                 related.toString()
         );
@@ -535,6 +605,10 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
 
                     teleportData.setSetback(requiredSetBack);
                     requiredSetBack.setComplete(true);
+
+                    if (!requiredSetBack.isPlugin()) {
+                        correctionCoordinator.acknowledge(System.nanoTime());
+                    }
                 }
 
                 teleportData.setTeleportData(teleportPos);

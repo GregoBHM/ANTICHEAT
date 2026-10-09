@@ -10,6 +10,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -79,9 +80,11 @@ public final class IntegrityCorrelationManager {
                 : 1.0D;
         String episodeKey = null;
         if (signal == IntegritySignal.SIMULATION) {
-            EnvironmentContextManager environment = GrimAPI.INSTANCE.getEnvironmentContextManager();
-            confidence *= environment.simulationCorrelationMultiplier(player);
-            episodeKey = environment.summary(player);
+            EnvironmentContextManager environment =
+                    GrimAPI.INSTANCE.getEnvironmentContextManager();
+            Set<EnvironmentContext> contexts = environment.classify(player);
+            confidence *= environment.simulationCorrelationMultiplier(contexts);
+            episodeKey = environment.summary(contexts);
         }
         return recordInternal(player.uuid, signal, confidence, episodeKey);
     }

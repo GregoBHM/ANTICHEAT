@@ -17,6 +17,7 @@ public final class CombatPlusProvider implements CombatProvider {
     private volatile ClassLoader cachedLoader;
     private volatile Method getApiMethod;
     private volatile Method tagMethod;
+    private volatile Method timedTagMethod;
     private volatile Method untagMethod;
 
     @Override
@@ -39,29 +40,35 @@ public final class CombatPlusProvider implements CombatProvider {
 
     @Override
     public void tagPlayer(@NotNull UUID uuid, long durationMillis) {
-        invoke(uuid, true);
+        invoke(uuid, true, durationMillis);
     }
 
     @Override
     public void untagPlayer(@NotNull UUID uuid) {
-        invoke(uuid, false);
+        invoke(uuid, false, 0L);
     }
 
     public void clearCache() {
         cachedLoader = null;
         getApiMethod = null;
         tagMethod = null;
+        timedTagMethod = null;
         untagMethod = null;
     }
 
-    private void invoke(UUID uuid, boolean tag) {
+    private void invoke(UUID uuid, boolean tag, long durationMillis) {
         Plugin plugin = Bukkit.getPluginManager().getPlugin(PLUGIN_NAME);
         if (plugin == null || !plugin.isEnabled()) return;
         try {
             Object api = api(plugin);
             if (api == null) return;
-            Method method = tag ? tagMethod : untagMethod;
-            method.invoke(api, uuid);
+
+            if (tag && timedTagMethod != null) {
+                timedTagMethod.invoke(api, uuid, durationMillis);
+            } else {
+                Method method = tag ? tagMethod : untagMethod;
+                method.invoke(api, uuid);
+            }
         } catch (ReflectiveOperationException | LinkageError ex) {
             clearCache();
             if (ex instanceof InvocationTargetException invocation && invocation.getCause() instanceof RuntimeException runtime) {
@@ -81,10 +88,22 @@ public final class CombatPlusProvider implements CombatProvider {
                     Object api = getter.invoke(null);
                     if (api == null) return null;
                     Method tag = api.getClass().getMethod("tagPlayer", UUID.class);
+                    Method timedTag = null;
+                    try {
+                        timedTag = api.getClass().getMethod(
+                                "tagPlayer",
+                                UUID.class,
+                                long.class
+                        );
+                    } catch (NoSuchMethodException ignored) {
+                        // Older CombatPlus API. UUID-only tagging remains
+                        // supported, but exact duration cannot be mirrored.
+                    }
                     Method untag = api.getClass().getMethod("unTagPlayer", UUID.class);
                     cachedLoader = loader;
                     getApiMethod = getter;
                     tagMethod = tag;
+                    timedTagMethod = timedTag;
                     untagMethod = untag;
                     return api;
                 }

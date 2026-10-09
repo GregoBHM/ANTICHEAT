@@ -43,6 +43,9 @@ public class NoSlow extends Check implements PostPredictionListener {
                 reward();
                 flaggedLastTick = false;
             }
+        } else {
+            // Consecutive evidence is scoped to one continuous item-use session.
+            flaggedLastTick = false;
         }
         bestOffset = 1;
     }

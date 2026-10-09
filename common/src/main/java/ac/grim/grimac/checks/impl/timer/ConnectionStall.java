@@ -151,7 +151,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         boolean mitigationOwned = false;
         if (hardDecision.confirmed) {
             if (hardDecision.applySetback && !isNoSetbackPermission()) {
-                mitigationOwned = GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true);
+                mitigationOwned = GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true, this);
                 if (!mitigationOwned && player.getSetbackTeleportUtil().shouldBlockMovement()) {
                     // Another authoritative movement correction is already active.
                     mitigationOwned = true;
@@ -289,17 +289,29 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             );
         }
 
-        // 1.9-1.21.1 clients may legally omit movement packets while idle. For
-        // those versions, never let a raw packet gap alone arm hard prevention;
-        // require the slower ConnectionStall state machine to have independently
-        // confirmed a selective stall first. 1.8 cannot skip ticks and 1.21.2+
-        // has CLIENT_TICK_END, so they keep the fast release path.
+        // Modern clients may legally omit movement packets while idle, so they
+        // still require the state machine to confirm a selective stall first.
         if (player.canSkipTicks()) {
             synchronized (lock) {
                 if (!stallActive || !selectiveConfirmed) {
                     return HardReleaseDecision.NONE;
                 }
             }
+        }
+
+        // On legacy clients BALANCED/SAFE no longer perform destructive
+        // prevention from the old 80 ms + 1 transaction fast path. LOCKDOWN
+        // intentionally preserves that strict behaviour.
+        if (ConnectionStallPolicy.requiresConfirmedLegacyRelease(
+                player.canSkipTicks(),
+                blinkProfile
+        ) && !ConnectionStallPolicy.hasConfirmedSelectiveEvidence(
+                gap,
+                transactionAdvance,
+                confirmGapNanos,
+                minTransactionAdvance
+        )) {
+            return HardReleaseDecision.NONE;
         }
 
         long minimumGap = player.canSkipTicks()
@@ -440,12 +452,22 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 ? shortSelectiveModernGapNanos
                 : shortSelectiveLegacyGapNanos;
 
-        if (gap < minimumGap || transactionAdvance < shortSelectiveMinTransactions) {
-            return false;
-        }
+        double serverConfidence = GrimAPI.INSTANCE.getLagProtectionManager()
+                .heuristicConfidence();
+        double playerConfidence = GrimAPI.INSTANCE.getLagProtectionManager()
+                .heuristicConfidence(player);
 
-        return GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence()
-                >= shortSelectiveMinServerConfidence;
+        return ConnectionStallPolicy.hasStrongPreReleaseEvidence(
+                gap,
+                transactionAdvance,
+                minimumGap,
+                confirmGapNanos,
+                shortSelectiveMinTransactions,
+                minTransactionAdvance,
+                serverConfidence,
+                playerConfidence,
+                shortSelectiveMinServerConfidence
+        );
     }
 
     private void acknowledgeMitigatedRelease(long now) {
@@ -471,7 +493,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
 
     public void poll() {
         GrimAPI.INSTANCE.getFallIntegrityManager().tickPlayer(player);
-        GrimAPI.INSTANCE.getCombatIntegrityManager().refreshProtectedProviderTag(player.uuid);
+        GrimAPI.INSTANCE.getCombatIntegrityManager().refreshProtectedProviderTag(player);
         if (!integrityEnabled || player.disableGrim || isExemptPermission()) {
             boolean releaseHold;
             synchronized (lock) {
@@ -506,7 +528,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             action = evaluateGapLocked(now, false);
         }
         if (microHoldStart != 0L) {
-            GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player.uuid, microHoldStart, false);
+            GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player, microHoldStart, false);
         }
         execute(action, now);
     }
@@ -593,13 +615,6 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
 
         if (!stallActive) return Action.NONE;
 
-        if (!movementArrived && recoveryStartNanos != 0L && gap >= watchGap) {
-            recoveryStartNanos = 0L;
-            recoveryMovementPackets = 0;
-            recoveryTransactionStart = player.lastTransactionReceived.get();
-            protectionState = selectiveConfirmed ? ConnectionProtectionState.LOCKDOWN : ConnectionProtectionState.PROTECTED;
-        }
-
         protectedFallDistance = Math.max(protectedFallDistance, lastKnownFallDistance);
         int transactionAdvance = player.lastTransactionReceived.get() - transactionAtStallStart;
         boolean selective = gap >= confirmGapNanos && transactionAdvance >= minTransactionAdvance;
@@ -649,14 +664,21 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         int actionRepeatedStalls = repeatedStalls;
 
         boolean releaseCombat = false;
-        if (movementArrived && protectionState == ConnectionProtectionState.RECOVERY && recoveryStartNanos != 0L) {
+        if (protectionState == ConnectionProtectionState.RECOVERY && recoveryStartNanos != 0L) {
             long recoveryElapsed = now - recoveryStartNanos;
             int recoveryTransactions = player.lastTransactionReceived.get() - recoveryTransactionStart;
-            boolean cleanEnough = recoveryElapsed >= recoveryCleanNanos
-                    && recoveryMovementPackets >= recoveryMinMovements
-                    && recoveryTransactions >= recoveryMinTransactions;
-            boolean safetyTimeout = recoveryElapsed >= recoveryMaxNanos && recoveryMovementPackets > 0;
-            if (cleanEnough || safetyTimeout) {
+            int observedRecoveryMovements = recoveryMovementPackets + (movementArrived ? 1 : 0);
+
+            if (ConnectionStallPolicy.shouldFinishRecovery(
+                    movementArrived,
+                    recoveryElapsed,
+                    observedRecoveryMovements,
+                    recoveryTransactions,
+                    recoveryCleanNanos,
+                    recoveryMinMovements,
+                    recoveryMinTransactions,
+                    recoveryMaxNanos
+            )) {
                 releaseCombat = true;
                 finishStallLocked(now);
             }
@@ -670,7 +692,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         if (action == Action.NONE) return;
         CombatIntegrityManager combat = GrimAPI.INSTANCE.getCombatIntegrityManager();
 
-        combat.beginStall(player.uuid, action.stallStartNanos, action.selective);
+        combat.beginStall(player, action.stallStartNanos, action.selective);
         if (action.selective) combat.markSelectiveEvidence(player.uuid);
 
         FallIntegrityManager fall = GrimAPI.INSTANCE.getFallIntegrityManager();
@@ -682,7 +704,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 && !action.flag
                 && !shouldSuppressMovementSetbacks()
                 && !isNoSetbackPermission()) {
-            if (GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true)) {
+            if (GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true, this)) {
                 synchronized (lock) {
                     setbackApplied = true;
                 }
@@ -707,15 +729,20 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                     + " fall=" + formatOffset(action.airborneFallDistance)
                     + " corr=" + String.format("%.2f", correlation);
 
+            boolean accepted;
             if (shouldSuppressMovementSetbacks()) {
-                flag(verbose);
+                accepted = flag(verbose);
             } else {
-                flagWithSetback(verbose);
+                accepted = flagWithSetback(verbose);
+            }
+
+            if (accepted) {
+                combat.markSanctionableEvidence(player.uuid);
             }
         } else if (action.setback
                 && !shouldSuppressMovementSetbacks()
                 && !isNoSetbackPermission()) {
-            player.getSetbackTeleportUtil().executeNonSimulatingSetback();
+            player.getSetbackTeleportUtil().executeNonSimulatingSetback(this);
             synchronized (lock) {
                 setbackApplied = true;
             }
@@ -760,7 +787,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             if (gap < requiredGap) return;
             start = lastMovementNanos;
         }
-        GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player.uuid, start, false);
+        GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player, start, false);
     }
 
     public boolean isStalling() {
@@ -785,6 +812,38 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         synchronized (lock) {
             return hardReleaseCandidateUntilNanos != 0L
                     && System.nanoTime() <= hardReleaseCandidateUntilNanos;
+        }
+    }
+
+    /**
+     * Stable token for the movement-correction episode currently owned by
+     * ConnectionStall. Zero means ConnectionStall does not own physical
+     * correction at this moment.
+     */
+    public long getCorrectionEpisodeId() {
+        synchronized (lock) {
+            long now = System.nanoTime();
+
+            if (hardReleaseEpisodeActive && now < hardReleaseRecoveryUntilNanos) {
+                if (hardReleaseLastNanos != 0L) {
+                    return hardReleaseLastNanos;
+                }
+                return stallStartNanos;
+            }
+
+            if (!stallActive || !selectiveConfirmed) {
+                return 0L;
+            }
+
+            if (protectionState == ConnectionProtectionState.LOCKDOWN) {
+                return stallStartNanos;
+            }
+
+            if (protectionState == ConnectionProtectionState.RECOVERY && setbackApplied) {
+                return stallStartNanos;
+            }
+
+            return 0L;
         }
     }
 
@@ -835,43 +894,33 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
 
     public boolean shouldBlockQueuedActions() {
         long now = System.nanoTime();
-
-        // Close-range/action-first Blink: on legacy clients, transaction progress
-        // while the normal movement stream is absent is selective evidence. A
-        // plain gap or high ping alone NEVER reaches this branch.
-        if (hasStrongPreReleaseSelectiveEvidence(now)) {
-            return true;
-        }
+        boolean strongPreReleaseEvidence = hasStrongPreReleaseSelectiveEvidence(now);
 
         synchronized (lock) {
-            boolean candidate = hardReleaseCandidateUntilNanos != 0L
-                    && now <= hardReleaseCandidateUntilNanos;
-            boolean hardReleaseProtected =
-                    hardReleaseEpisodeActive && now < hardReleaseRecoveryUntilNanos;
-            boolean ambiguousRelease = now < ambiguousReleaseProtectUntilNanos;
-
-            // Do not cancel legal PvP merely because a full freeze is in progress.
-            // Full-freeze protection freezes the safe position/fall ledger; queued
-            // actions are only blocked after release-protection begins.
-            return candidate
-                    || hardReleaseProtected
-                    || ambiguousRelease
-                    || stallActive && selectiveConfirmed
-                    && (protectionState == ConnectionProtectionState.LOCKDOWN
-                        || protectionState == ConnectionProtectionState.RECOVERY);
+            return ConnectionStallPolicy.shouldBlockQueuedActions(
+                    strongPreReleaseEvidence,
+                    hardReleaseEpisodeActive,
+                    now,
+                    hardReleaseCancelUntilNanos,
+                    stallActive,
+                    selectiveConfirmed,
+                    protectionState
+            );
         }
     }
 
-    /** Prevention may happen earlier than punishment. */
+    /** Only confirmed mitigation windows are sanctionable queued-action evidence. */
     public boolean shouldFlagQueuedActions() {
         synchronized (lock) {
             long now = System.nanoTime();
-            boolean confirmedHardRelease = hardReleaseEpisodeActive
-                    && now < hardReleaseRecoveryUntilNanos;
-            return confirmedHardRelease
-                    || stallActive && selectiveConfirmed
-                    && (protectionState == ConnectionProtectionState.LOCKDOWN
-                        || protectionState == ConnectionProtectionState.RECOVERY);
+            return ConnectionStallPolicy.shouldFlagQueuedActions(
+                    hardReleaseEpisodeActive,
+                    now,
+                    hardReleaseCancelUntilNanos,
+                    stallActive,
+                    selectiveConfirmed,
+                    protectionState
+            );
         }
     }
 
@@ -1153,7 +1202,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 1.0D
         );
         shortSelectiveActionGuardEnabled = config.getBooleanElse(
-                "blink-mitigation.short-selective-action-guard.enabled", true
+                "blink-mitigation.short-selective-action-guard.enabled", false
         );
         shortSelectiveModernActionGuardEnabled = config.getBooleanElse(
                 "blink-mitigation.short-selective-action-guard.modern-enabled", false

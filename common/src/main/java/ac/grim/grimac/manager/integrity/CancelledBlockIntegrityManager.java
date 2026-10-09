@@ -1,13 +1,14 @@
 package ac.grim.grimac.manager.integrity;
 
 import ac.grim.grimac.api.config.ConfigManager;
-import ac.grim.grimac.platform.api.world.PlatformWorld;
+import ac.grim.grimac.utils.latency.CompensatedWorld;
 import ac.grim.grimac.utils.collisions.datatypes.SimpleCollisionBox;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -28,24 +29,25 @@ public final class CancelledBlockIntegrityManager {
         if (!enabled) entries.clear();
     }
 
-    public void recordCancelledPlacement(@NotNull UUID playerId, @NotNull UUID worldId, int x, int y, int z) {
+    public void recordCancelledPlacement(@NotNull UUID playerId, @NotNull String worldName, int x, int y, int z) {
         if (!enabled) return;
         long expires = System.nanoTime() + retentionNanos;
         Deque<Entry> deque = entries.computeIfAbsent(playerId, ignored -> new ArrayDeque<>());
         synchronized (deque) {
             cleanupLocked(deque, System.nanoTime());
-            deque.addLast(new Entry(worldId.toString(), x, y, z, expires));
+            deque.addLast(new Entry(normalizeWorldKey(worldName), x, y, z, expires));
             while (deque.size() > maxEntriesPerPlayer) deque.pollFirst();
         }
     }
 
     public boolean isUsingCancelledSupport(@NotNull UUID playerId,
-                                           @NotNull PlatformWorld world,
+                                           @NotNull String worldName,
+                                           @NotNull CompensatedWorld world,
                                            @NotNull SimpleCollisionBox playerBox) {
         if (!enabled) return false;
         Deque<Entry> deque = entries.get(playerId);
         if (deque == null) return false;
-        String worldKey = worldKey(world);
+        String worldKey = normalizeWorldKey(worldName);
         long now = System.nanoTime();
 
         synchronized (deque) {
@@ -55,8 +57,9 @@ public final class CancelledBlockIntegrityManager {
 
                 // The authoritative server block must still be non-supporting; otherwise another plugin/player
                 // legitimately placed something there after the cancellation.
-                if (!world.getBlockAt(entry.x, entry.y, entry.z).getType().isAir()
-                        && !world.getBlockAt(entry.x, entry.y, entry.z).getType().isReplaceable()) {
+                var current = world.getBlock(entry.x, entry.y, entry.z);
+                if (!current.getType().isAir()
+                        && !current.getType().isReplaceable()) {
                     continue;
                 }
 
@@ -94,9 +97,8 @@ public final class CancelledBlockIntegrityManager {
         });
     }
 
-    private static String worldKey(PlatformWorld world) {
-        UUID uid = world.getUID();
-        return uid != null ? uid.toString() : world.getName();
+    private static String normalizeWorldKey(String worldName) {
+        return worldName.trim().toLowerCase(Locale.ROOT);
     }
 
     private static void cleanupLocked(Deque<Entry> deque, long now) {

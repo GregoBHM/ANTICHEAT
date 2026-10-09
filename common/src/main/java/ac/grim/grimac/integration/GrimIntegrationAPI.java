@@ -25,7 +25,7 @@ public final class GrimIntegrationAPI {
                                                                       @NotNull MovementContextType type,
                                                                       @NotNull String sourcePlugin,
                                                                       long durationMillis) {
-        return GrimAPI.INSTANCE.getMovementContextManager().begin(playerId, type, sourcePlugin, durationMillis);
+        return GrimAPI.INSTANCE.getMovementContextManager().beginTrusted(playerId, type, sourcePlugin, durationMillis);
     }
 
     public static MovementContextManager.Context beginMovementContext(@NotNull UUID playerId,
@@ -33,7 +33,7 @@ public final class GrimIntegrationAPI {
                                                                       @NotNull String sourcePlugin,
                                                                       long durationMillis,
                                                                       String detail) {
-        return GrimAPI.INSTANCE.getMovementContextManager().begin(playerId, type, sourcePlugin, durationMillis, detail);
+        return GrimAPI.INSTANCE.getMovementContextManager().beginTrusted(playerId, type, sourcePlugin, durationMillis, detail);
     }
 
     public static MovementContextManager.Context beginMagicSpellContext(@NotNull UUID playerId,
@@ -48,6 +48,13 @@ public final class GrimIntegrationAPI {
                                                                      @NotNull String powerName,
                                                                      long durationMillis) {
         return beginMovementContext(playerId, type, "RPGItems:" + powerName, durationMillis, "power=" + powerName);
+    }
+
+    public static MovementContextManager.Context beginCombatPlusMovementContext(@NotNull UUID playerId,
+                                                                                @NotNull MovementContextType type,
+                                                                                @NotNull String mechanicName,
+                                                                                long durationMillis) {
+        return beginMovementContext(playerId, type, "CombatPlus:" + mechanicName, durationMillis, "mechanic=" + mechanicName);
     }
 
     public static boolean hasMovementContext(@NotNull UUID playerId, @NotNull MovementContextType type) {

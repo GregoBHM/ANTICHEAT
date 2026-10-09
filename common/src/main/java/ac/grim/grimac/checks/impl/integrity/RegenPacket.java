@@ -169,6 +169,19 @@ public final class RegenPacket extends Check implements PrePredictionPacketRecei
         return timestamp > 0L && now >= timestamp && now - timestamp <= window;
     }
 
+    public void handleRespawn() {
+        ringIndex = 0;
+        ringCount = 0;
+        lastObservedHealth = Float.NaN;
+        lastHealNanos = 0L;
+        lastHealAmount = 0.0D;
+        lastAbuseNanos = 0L;
+        lastAheadMs = 0L;
+        lastPackets250 = 0;
+        buffer = 0.0D;
+        lastFlagNanos = 0L;
+    }
+
     @Override
     public void onReload(@NotNull ConfigManager config) {
         super.onReload(config);

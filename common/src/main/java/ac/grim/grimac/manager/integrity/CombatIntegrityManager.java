@@ -2,6 +2,7 @@ package ac.grim.grimac.manager.integrity;
 
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
+import ac.grim.grimac.player.GrimPlayer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,8 +32,8 @@ public final class CombatIntegrityManager {
     private volatile long pendingPenaltyMillis = TimeUnit.MINUTES.toMillis(5);
     private volatile long providerRefreshNanos = TimeUnit.SECONDS.toNanos(1);
     private volatile boolean punishAllCombatQuits = false;
-    private volatile boolean killOnUnsafeDisconnect = true;
-    private volatile boolean killOnNextJoin = true;
+    private volatile boolean killOnUnsafeDisconnect = false;
+    private volatile boolean killOnNextJoin = false;
     private volatile boolean blockCommands = true;
     private volatile boolean silentProtection = true;
     private volatile boolean externalIntegrationEnabled = true;
@@ -46,8 +47,8 @@ public final class CombatIntegrityManager {
         resumeMinimumNanos = TimeUnit.MILLISECONDS.toNanos(clamp(config.getLongElse("combat-integrity.resume-minimum-tag-ms", 3000L), 0L, 60_000L));
         pendingPenaltyMillis = TimeUnit.SECONDS.toMillis(clamp(config.getLongElse("combat-integrity.pending-disconnect-window-seconds", 300L), 10L, 3600L));
         punishAllCombatQuits = config.getBooleanElse("combat-integrity.punish-all-combat-quits", false);
-        killOnUnsafeDisconnect = config.getBooleanElse("combat-integrity.kill-on-unsafe-disconnect", true);
-        killOnNextJoin = config.getBooleanElse("combat-integrity.kill-on-next-join-if-needed", true);
+        killOnUnsafeDisconnect = config.getBooleanElse("combat-integrity.kill-on-unsafe-disconnect", false);
+        killOnNextJoin = config.getBooleanElse("combat-integrity.kill-on-next-join-if-needed", false);
         blockCommands = config.getBooleanElse("combat-integrity.block-commands", true);
         silentProtection = config.getBooleanElse("combat-integrity.silent-protection", true);
         blockMessage = config.getStringElse("combat-integrity.block-message", "");
@@ -134,13 +135,20 @@ public final class CombatIntegrityManager {
         pendingPenalties.remove(uuid);
     }
 
-    public void beginStall(@NotNull UUID uuid, long stallStartNanos, boolean selectiveEvidence) {
+    public void beginStall(
+            @NotNull GrimPlayer player,
+            long stallStartNanos,
+            boolean selectiveEvidence
+    ) {
         if (!enabled) return;
+        UUID uuid = player.uuid;
         CombatState state = states.get(uuid);
         if (state == null) return;
         boolean refreshExternal = false;
         synchronized (state) {
-            long remainingAtStart = state.stallHold ? state.heldRemainingNanos : Math.max(0L, state.combatUntilNanos - stallStartNanos);
+            long remainingAtStart = state.stallHold
+                    ? state.heldRemainingNanos
+                    : Math.max(0L, state.combatUntilNanos - stallStartNanos);
             if (remainingAtStart <= 0L) return;
             if (!state.stallHold) {
                 state.heldRemainingNanos = remainingAtStart;
@@ -148,35 +156,66 @@ public final class CombatIntegrityManager {
                 state.holdStartedNanos = stallStartNanos;
                 refreshExternal = true;
             } else {
-                state.heldRemainingNanos = Math.max(state.heldRemainingNanos, remainingAtStart);
+                state.heldRemainingNanos = Math.max(
+                        state.heldRemainingNanos,
+                        remainingAtStart
+                );
             }
             state.protectedSession = true;
             state.selectiveEvidence |= selectiveEvidence;
         }
-        if (refreshExternal) refreshExternalTag(uuid, true);
+        if (refreshExternal) refreshExternalTag(player);
     }
 
-    public void refreshProtectedProviderTag(@NotNull UUID uuid) {
+    public void refreshProtectedProviderTag(@NotNull GrimPlayer player) {
         if (!enabled || !externalIntegrationEnabled) return;
+        UUID uuid = player.uuid;
         CombatState state = states.get(uuid);
         if (state == null) return;
         long now = System.nanoTime();
         boolean refresh = false;
         synchronized (state) {
-            if (state.stallHold && now - state.lastProviderRefreshNanos >= providerRefreshNanos) {
+            if (state.stallHold
+                    && now - state.lastProviderRefreshNanos >= providerRefreshNanos) {
                 state.lastProviderRefreshNanos = now;
                 refresh = true;
             }
         }
-        if (refresh) refreshExternalTag(uuid, false);
+        if (refresh) refreshExternalTag(player);
     }
 
-    private void refreshExternalTag(UUID uuid, boolean force) {
+    /**
+     * ConnectionStall may reach this path from PacketEvents/async polling.
+     * External Bukkit plugin APIs must therefore be invoked on the player's
+     * entity scheduler rather than directly from the integrity thread.
+     */
+    private void refreshExternalTag(@NotNull GrimPlayer player) {
         CombatProvider provider = externalProvider;
-        if (!externalIntegrationEnabled || provider == null || !safeAvailable(provider)) return;
+        if (!externalIntegrationEnabled
+                || provider == null
+                || player.platformPlayer == null) {
+            return;
+        }
+
+        UUID uuid = player.uuid;
         long remaining = Math.max(1L, getRemainingMillis(uuid));
-        try { provider.tagPlayer(uuid, remaining); }
-        catch (RuntimeException ignored) { if (!fallbackInternal) externalProvider = null; }
+
+        GrimAPI.INSTANCE.getScheduler().getEntityScheduler().execute(
+                player.platformPlayer,
+                GrimAPI.INSTANCE.getGrimPlugin(),
+                () -> {
+                    if (!safeAvailable(provider)) return;
+                    try {
+                        provider.tagPlayer(uuid, remaining);
+                    } catch (RuntimeException ignored) {
+                        if (!fallbackInternal) {
+                            externalProvider = null;
+                        }
+                    }
+                },
+                null,
+                0
+        );
     }
 
     public void markSelectiveEvidence(@NotNull UUID uuid) {
@@ -185,6 +224,21 @@ public final class CombatIntegrityManager {
         synchronized (state) {
             if (state.stallHold || isTaggedLocked(state, System.nanoTime())) {
                 state.selectiveEvidence = true;
+                state.protectedSession = true;
+            }
+        }
+    }
+
+    /**
+     * Destructive combat-logout consequences require an accepted anti-cheat
+     * violation, not merely prevention-only/selective suspicion.
+     */
+    public void markSanctionableEvidence(@NotNull UUID uuid) {
+        CombatState state = states.get(uuid);
+        if (state == null) return;
+        synchronized (state) {
+            if (state.stallHold || isTaggedLocked(state, System.nanoTime())) {
+                state.sanctionableEvidence = true;
                 state.protectedSession = true;
             }
         }
@@ -249,8 +303,13 @@ public final class CombatIntegrityManager {
         CombatState state = states.get(uuid);
         if (state == null) return false;
         synchronized (state) {
-            boolean active = state.stallHold || isTaggedLocked(state, System.nanoTime());
-            return active && (punishAllCombatQuits || state.selectiveEvidence);
+            boolean active = state.stallHold
+                    || isTaggedLocked(state, System.nanoTime());
+            return CombatDisconnectPolicy.shouldPunish(
+                    active,
+                    punishAllCombatQuits,
+                    state.sanctionableEvidence
+            );
         }
     }
 
@@ -258,16 +317,28 @@ public final class CombatIntegrityManager {
         if (!enabled) return;
         if (shouldPunishIntegrityDisconnect(uuid)) {
             CombatState state = states.get(uuid);
-            boolean selective = false;
+            boolean sanctionable = false;
             long remaining = 0L;
             if (state != null) {
                 synchronized (state) {
-                    selective = state.selectiveEvidence;
-                    remaining = state.stallHold ? state.heldRemainingNanos : Math.max(0L, state.combatUntilNanos - System.nanoTime());
+                    sanctionable = state.sanctionableEvidence;
+                    remaining = state.stallHold
+                            ? state.heldRemainingNanos
+                            : Math.max(
+                                    0L,
+                                    state.combatUntilNanos - System.nanoTime()
+                            );
                 }
             }
             long now = System.currentTimeMillis();
-            pendingPenalties.put(uuid, new PendingPenalty(now + pendingPenaltyMillis, selective, remaining));
+            pendingPenalties.put(
+                    uuid,
+                    new PendingPenalty(
+                            now + pendingPenaltyMillis,
+                            sanctionable,
+                            remaining
+                    )
+            );
             GrimAPI.INSTANCE.getIntegrityCorrelationManager().record(uuid, IntegritySignal.UNSAFE_DISCONNECT);
             if (state != null) {
                 synchronized (state) {
@@ -368,17 +439,23 @@ public final class CombatIntegrityManager {
         long lastProviderRefreshNanos;
         boolean protectedSession;
         boolean selectiveEvidence;
+        boolean sanctionableEvidence;
         boolean disconnected;
         long disconnectCleanupAtMillis;
     }
 
     private static final class PendingPenalty {
         final long expiresAtMillis;
-        final boolean selectiveEvidence;
+        final boolean sanctionableEvidence;
         final long remainingNanos;
-        PendingPenalty(long expiresAtMillis, boolean selectiveEvidence, long remainingNanos) {
+
+        PendingPenalty(
+                long expiresAtMillis,
+                boolean sanctionableEvidence,
+                long remainingNanos
+        ) {
             this.expiresAtMillis = expiresAtMillis;
-            this.selectiveEvidence = selectiveEvidence;
+            this.sanctionableEvidence = sanctionableEvidence;
             this.remainingNanos = remainingNanos;
         }
     }

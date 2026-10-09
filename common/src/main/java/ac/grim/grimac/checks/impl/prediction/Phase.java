@@ -23,12 +23,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -51,7 +49,7 @@ public class Phase extends Check implements PostPredictionListener {
     private Set<String> legacyExemptMaterials;
     private Set<StateType> legacyExemptTagStates;
 
-    private Map<BlockKey, Integer> pendingGrace;
+    private Set<BlockKey> pendingGrace;
 
     public Phase(GrimPlayer player) {
         super(player);
@@ -83,9 +81,7 @@ public class Phase extends Check implements PostPredictionListener {
         final SimpleCollisionBox newBB = player.boundingBox;
         final int currentTick = GrimAPI.INSTANCE.getTickManager().currentTick;
 
-        if (processPendingGrace(newBB, currentTick)) {
-            return;
-        }
+        processPendingGrace(newBB);
 
         List<SimpleCollisionBox> boxes = new ArrayList<>();
         Collisions.getCollisionBoxes(player, newBB, boxes, false);
@@ -110,9 +106,8 @@ public class Phase extends Check implements PostPredictionListener {
                     source.z(),
                     currentTick,
                     recentBlockGraceTicks)) {
-                pendingGrace.putIfAbsent(
-                        new BlockKey(source.x(), source.y(), source.z()),
-                        currentTick
+                pendingGrace.add(
+                        new BlockKey(source.x(), source.y(), source.z())
                 );
                 continue;
             }
@@ -126,16 +121,15 @@ public class Phase extends Check implements PostPredictionListener {
         reward();
     }
 
-    private boolean processPendingGrace(SimpleCollisionBox playerBox, int currentTick) {
+    private void processPendingGrace(SimpleCollisionBox playerBox) {
         if (pendingGrace.isEmpty()) {
-            return false;
+            return;
         }
 
-        Iterator<Map.Entry<BlockKey, Integer>> iterator = pendingGrace.entrySet().iterator();
+        Iterator<BlockKey> iterator = pendingGrace.iterator();
 
         while (iterator.hasNext()) {
-            Map.Entry<BlockKey, Integer> entry = iterator.next();
-            BlockKey key = entry.getKey();
+            BlockKey key = iterator.next();
 
             PhaseCollisionResolver.Source source = PhaseCollisionResolver.resolveAt(
                     player,
@@ -145,24 +139,15 @@ public class Phase extends Check implements PostPredictionListener {
                     key.z()
             );
 
+            // Grace applies to the whole collision episode. Once a recent
+            // server/client block reconciliation allowed this entry, remaining
+            // inside the same block must never become a delayed punishment.
+            // Leaving the collision closes the episode; a later re-entry is
+            // evaluated normally.
             if (source == null) {
                 iterator.remove();
-                continue;
-            }
-
-            int elapsedTicks = currentTick - entry.getValue();
-            if (elapsedTicks <= recentBlockGraceTicks) {
-                continue;
-            }
-
-            iterator.remove();
-
-            if (handleCollision(source.box(), source)) {
-                return true;
             }
         }
-
-        return false;
     }
 
     private boolean handleCollision(
@@ -189,9 +174,16 @@ public class Phase extends Check implements PostPredictionListener {
         }
 
         String material = state == null ? "WORLD_BORDER_OR_UNKNOWN" : materialKey(state.getType());
+        boolean explicitProtectedMaterial = state != null
+                && protectedMaterials.contains(materialKey(state.getType()));
         boolean reinforced = state != null
                 && phaseProtectionEnabled
                 && isProtected(state.getType());
+        boolean immediateProtected = PhaseProtectionPolicy.shouldImmediateSetback(
+                phaseProtectionEnabled,
+                protectedImmediateSetback,
+                explicitProtectedMaterial
+        );
 
         double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
                 .record(player.uuid, IntegritySignal.PHASE);
@@ -205,7 +197,9 @@ public class Phase extends Check implements PostPredictionListener {
                 .append(" block=")
                 .append(material)
                 .append(" reinforced=")
-                .append(reinforced);
+                .append(reinforced)
+                .append(" immediate=")
+                .append(immediateProtected);
 
         if (source != null) {
             verbose.append(" pos=")
@@ -214,7 +208,7 @@ public class Phase extends Check implements PostPredictionListener {
                     .append(source.z());
         }
 
-        if (reinforced && protectedImmediateSetback) {
+        if (immediateProtected) {
             if (flag(verbose.toString())) {
                 executeViolationSetback();
             }
@@ -228,7 +222,7 @@ public class Phase extends Check implements PostPredictionListener {
     @Override
     public void onReload(@NotNull ConfigManager config) {
         if (pendingGrace == null) {
-            pendingGrace = new HashMap<>();
+            pendingGrace = new HashSet<>();
         } else {
             pendingGrace.clear();
         }

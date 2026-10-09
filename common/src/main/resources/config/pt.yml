@@ -155,7 +155,7 @@ Knockback:
 
     # v22: AntiKB owns velocity mitigation instead of teleporting the player.
     enforcement:
-        enabled: true
+        enabled: false
         cooldown-ms: 120
         recovery-ms: 350
         episode-reset-ms: 1200
@@ -231,7 +231,7 @@ blink-mitigation:
     short-selective-action-guard:
         # Legacy close-range Blink guard: only selective transaction progress plus
         # a missing movement stream can block an action. A plain gap/high ping does not.
-        enabled: true
+        enabled: false
         # Modern clients can legally skip movement packets while idle. Keep
         # action-first blocking off there until explicitly validated for production.
         modern-enabled: false
@@ -333,8 +333,8 @@ combat-integrity:
     # false = only disconnects connected to a protected stall are handled here.
     # Your normal combat plugin can keep handling ordinary combat-logouts.
     punish-all-combat-quits: false
-    kill-on-unsafe-disconnect: true
-    kill-on-next-join-if-needed: true
+    kill-on-unsafe-disconnect: false
+    kill-on-next-join-if-needed: false
     block-commands: true
     silent-protection: true
     block-message: ""
@@ -434,7 +434,7 @@ max-ping-firework-boost: 1000
 update-permission-ticks: -1
 
 config-flavor: V2
-config-version: 24
+config-version: 28
 
 # Staff-only diagnostic alert emitted only when Grim actually sends a movement
 # correction/resync. It does not add VL and does not execute punishments.
@@ -443,8 +443,7 @@ config-version: 24
 correction-diagnostics:
     enabled: true
     cooldown-ms: 125
-    recent-check-window-ms: 750
-    format: "%prefix% &f%player% &bfailed &f%check_name%%experimental% &f(x&c%vl%&f) &7%verbose% &8[p=%ping% tps=%tps% corr=%integrity_score%]"
+    format: "[alert] &7%verbose%"
 
 # Preserves predicted fall debt across freeze/Blink stalls so packet silence cannot erase fall damage bookkeeping.
 fall-integrity:
@@ -708,11 +707,9 @@ StallActions:
     block-attacks: true
     block-places: true
     block-breaks: true
-    block-use-items: true
     block-entity-interactions: true
     # Disabled by default to avoid inventory desync on heavily customized servers.
     block-inventory-clicks: false
-    block-release-use-item: true
     flag-cooldown-ms: 750
     setbackvl: -1
     decay: 0.20

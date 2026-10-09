@@ -9,12 +9,15 @@ import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.checks.impl.velocity.KnockbackHandler;
+import ac.grim.grimac.manager.integrity.EnvironmentContext;
+import ac.grim.grimac.manager.integrity.EnvironmentContextManager;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.LogUtil;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import com.github.retrooper.packetevents.util.Vector3d;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -119,6 +122,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         final boolean velocityRecovery = knockbackOwner != null
                 && knockbackOwner.shouldSuppressCompetingMovementSetbacks();
 
+        final boolean trustedVelocityContext = GrimAPI.INSTANCE
+                .getMovementContextManager()
+                .hasTrustedVelocityContext(player.uuid);
+
         if (blinkRecovery) {
             // The release was already mitigated by the one-shot Blink owner.
             // Remove any Simulation debt/quarantine left by the discarded burst.
@@ -140,6 +147,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 && !player.inVehicle()
                 && !player.getSetbackTeleportUtil().shouldBlockMovement()
                 && !blinkRecovery
+                && !trustedVelocityContext
                 && !GrimAPI.INSTANCE.getMovementContextManager()
                 .suppressesConnectionStall(player.uuid);
 
@@ -148,15 +156,18 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         double specialEnvironmentCorrectionMinRawOffset = 0.0D;
 
         if (enforcementEligible) {
-            specialEnvironment = GrimAPI.INSTANCE.getEnvironmentContextManager()
-                    .isSpecialMovementEnvironment(player);
+            EnvironmentContextManager environment =
+                    GrimAPI.INSTANCE.getEnvironmentContextManager();
+            Set<EnvironmentContext> environmentContexts =
+                    environment.classify(player);
+
+            specialEnvironment =
+                    environment.isSpecialMovementEnvironment(environmentContexts);
 
             double configuredEnvironmentMultiplier =
-                    GrimAPI.INSTANCE.getEnvironmentContextManager()
-                            .enforcementMultiplier(player);
+                    environment.enforcementMultiplier(environmentContexts);
             specialEnvironmentCorrectionMinRawOffset =
-                    GrimAPI.INSTANCE.getEnvironmentContextManager()
-                            .minimumCorrectionRawOffset(player);
+                    environment.minimumCorrectionRawOffset(environmentContexts);
 
             if (specialEnvironment) {
                 environmentRecoveryTicksRemaining = environmentRecoveryTicks;
@@ -236,7 +247,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         }
 
         if (offset >= threshold || offset >= immediateSetbackThreshold) {
-            if (!blinkRecovery && !environmentProtectedWindow) {
+            if (!blinkRecovery && !trustedVelocityContext && !environmentProtectedWindow) {
                 advantageGained += setbackEvidenceOffset;
             } else if (environmentProtectedWindow) {
                 // Never carry special-physics debt out of cobweb/liquid/climbable
@@ -296,19 +307,21 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
                     if (!blinkRecovery
                             && !velocityRecovery
+                            && !trustedVelocityContext
                             && severeMovement
                             && enforcementImmediateSetback
                             && !isNoSetbackPermission()) {
                         predictionComplete.setSafePositionUpdateBlocked(true);
-                        player.getSetbackTeleportUtil().executeViolationSetback();
+                        player.getSetbackTeleportUtil().executeViolationSetback(this);
                     } else if (!blinkRecovery
                             && !velocityRecovery
+                            && !trustedVelocityContext
                             && !environmentProtectedWindow
                             && (advantageGained >= maxAdvantage
                             || setbackEvidenceOffset >= immediateSetbackThreshold)
                             && !isNoSetbackPermission()
                             && violations >= setbackViolationThreshold) {
-                        player.getSetbackTeleportUtil().executeViolationSetback();
+                        player.getSetbackTeleportUtil().executeViolationSetback(this);
                     }
                 } else if (enforcementEligible) {
                     resetEnforcementState();
@@ -398,7 +411,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
         if (!isNoSetbackPermission()
                 && GrimAPI.INSTANCE.getMovementReleaseGuard()
-                .apply(player, true)) {
+                .apply(player, true, this)) {
             predictionComplete.setSafePositionUpdateBlocked(true);
             resetShortBlinkState();
         }
