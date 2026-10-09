@@ -44,9 +44,16 @@ public final class GrimConfigSpecs {
      * v21 -> v22: centralizes special-environment correction policy, converts
      * NoFall/GroundSpoof to state enforcement, makes AntiKB velocity-owned, and
      * adds sanctionable packet-driven Regen correlation.
+     * v22 -> v24: production-safe Blink ownership with short/action-first and
+     * long-selective mitigation, prevention/sanction separation, one-shot
+     * TimerLimit correction, and conservative full-freeze PvP handling.
+     * v22 -> v23: makes Blink prevention own selective releases independently
+     * from player RTT sanction confidence, protects candidate/full-freeze queued
+     * actions, removes the long-stall prevention bypass, and verifies rollback
+     * ownership before suppressing competing movement corrections.
      */
     public static @NotNull ConfigUpdater.Spec mainConfig() {
-        return ConfigUpdater.Spec.builder("/config/", 22, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/config/", 24, ConfigUpdater.ConfigFlavor.V2)
                 .migration(10, ctx -> {
                     String typeRaw = ctx.input().getString("history.database.type");
                     String type = typeRaw == null ? null : typeRaw.trim().toUpperCase(Locale.ROOT);

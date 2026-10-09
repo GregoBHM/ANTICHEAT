@@ -57,7 +57,7 @@ public class TimerLimit extends Timer {
                     // one-shot hard release barrier does. Outside such an episode,
                     // preserve Grim's original TimerLimit setback behavior.
                     if (!suppressSetback && shouldSetback()) {
-                        player.getSetbackTeleportUtil().executeNonSimulatingSetback();
+                        GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true);
                     }
                 }
             }
@@ -88,7 +88,7 @@ public class TimerLimit extends Timer {
             return false;
         }
 
-        if (GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence(player)
+        if (GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence()
                 < preventionMinimumConfidence) {
             return false;
         }

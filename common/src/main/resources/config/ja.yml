@@ -209,12 +209,17 @@ blink-mitigation:
         # The first packet only arms a candidate; a second movement packet must arrive
         # inside burst-confirm-max-interval-ms to prove a compressed Blink release.
         enabled: true
-        legacy-min-gap-ms: 120
+        legacy-min-gap-ms: 80
         modern-min-gap-ms: 700
-        max-gap-ms: 1600
+        # Threshold used only to label LONG_SELECTIVE releases. It is NOT an
+        # upper limit anymore; long selective stalls remain preventable.
+        long-selective-threshold-ms: 1600
         min-transaction-advance: 1
-        minimum-confidence: 0.80
-        burst-confirm-max-interval-ms: 35
+        # Player ping/jitter confidence gates sanction/VL, not prevention.
+        sanction-minimum-confidence: 0.80
+        # Prevention is disabled only when the SERVER itself is unhealthy.
+        prevention-minimum-server-confidence: 0.55
+        burst-confirm-max-interval-ms: 100
         # Only the buffered tail is discarded. Accepted movement resumes immediately
         # after this short window; no repeated setback is allowed during recovery.
         cancel-window-ms: 180
@@ -225,6 +230,23 @@ blink-mitigation:
         flag-after-repeats: 3
         repeat-window-ms: 8000
         flag-cooldown-ms: 3000
+    short-selective-action-guard:
+        # Legacy close-range Blink guard: only selective transaction progress plus
+        # a missing movement stream can block an action. A plain gap/high ping does not.
+        enabled: true
+        # Modern clients can legally skip movement packets while idle. Keep
+        # action-first blocking off there until explicitly validated for production.
+        modern-enabled: false
+        legacy-min-gap-ms: 80
+        modern-min-gap-ms: 700
+        min-transaction-advance: 1
+        minimum-server-confidence: 0.55
+    # Ambiguous full freezes are prevention-only: protect the safe position and
+    # queued actions briefly after release, but do not add VL by themselves.
+    full-freeze-protection:
+        enabled: true
+        min-gap-ms: 1500
+        release-protect-ms: 350
     recovery:
         max-ms: 8000
         min-movement-packets: 8
@@ -414,7 +436,7 @@ max-ping-firework-boost: 1000
 update-permission-ticks: -1
 
 config-flavor: V2
-config-version: 22
+config-version: 24
 
 # Staff-only diagnostic alert emitted only when Grim actually sends a movement
 # correction/resync. It does not add VL and does not execute punishments.

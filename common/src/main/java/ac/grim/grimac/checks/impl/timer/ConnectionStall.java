@@ -63,9 +63,19 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
     private boolean hardReleaseEnabled;
     private long hardReleaseLegacyMinGapNanos;
     private long hardReleaseModernMinGapNanos;
-    private long hardReleaseMaxGapNanos;
+    private long hardReleaseLongSelectiveThresholdNanos;
     private int hardReleaseMinTransactions;
-    private double hardReleaseMinConfidence;
+    private double hardReleaseSanctionMinConfidence;
+    private double hardReleasePreventionMinServerConfidence;
+    private boolean shortSelectiveActionGuardEnabled;
+    private boolean shortSelectiveModernActionGuardEnabled;
+    private long shortSelectiveLegacyGapNanos;
+    private long shortSelectiveModernGapNanos;
+    private int shortSelectiveMinTransactions;
+    private double shortSelectiveMinServerConfidence;
+    private boolean fullFreezeProtectionEnabled;
+    private long fullFreezeProtectionMinGapNanos;
+    private long fullFreezeReleaseProtectNanos;
     private long hardReleaseBurstConfirmNanos;
     private long hardReleaseCancelWindowNanos;
     private long hardReleaseRecoveryNanos;
@@ -102,9 +112,11 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
 
     private boolean hardReleaseEpisodeActive;
     private boolean hardReleaseEpisodeSetbackApplied;
+    private boolean hardReleaseEpisodeMitigationOwned;
     private long hardReleaseCancelUntilNanos;
     private long hardReleaseRecoveryUntilNanos;
     private int hardReleaseBlockedPackets;
+    private int hardReleaseBlockedActions;
     private int hardReleaseAcceptedRecoveryPackets;
 
     private int hardReleaseRepeats;
@@ -112,6 +124,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
     private long hardReleaseLastFlagNanos;
     private long hardReleaseSourceGapNanos;
     private int hardReleaseSourceTransactionAdvance;
+    private long ambiguousReleaseProtectUntilNanos;
 
     public ConnectionStall(GrimPlayer player) {
         super(player);
@@ -130,24 +143,34 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
 
         HardReleaseDecision hardDecision = evaluateHardRelease(now);
 
-        if (hardDecision.confirmed) {
-            acknowledgeMitigatedRelease(now);
-
-            if (hardDecision.applySetback) {
-                synchronized (lock) {
-                    hardReleaseEpisodeSetbackApplied = true;
-                    setbackApplied = true;
-                }
-            }
-        }
-
         if (!hardDecision.cancel || !shouldModifyPackets()) return;
 
         event.setCancelled(true);
         player.onPacketCancel();
 
-        if (hardDecision.applySetback && !isNoSetbackPermission()) {
-            GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true);
+        boolean mitigationOwned = false;
+        if (hardDecision.confirmed) {
+            if (hardDecision.applySetback && !isNoSetbackPermission()) {
+                mitigationOwned = GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true);
+                if (!mitigationOwned && player.getSetbackTeleportUtil().shouldBlockMovement()) {
+                    // Another authoritative movement correction is already active.
+                    mitigationOwned = true;
+                }
+            } else if (!hardDecision.applySetback) {
+                // Packet-tail cancellation itself owns the episode when rollback
+                // is disabled by configuration.
+                mitigationOwned = true;
+            }
+
+            synchronized (lock) {
+                hardReleaseEpisodeSetbackApplied = mitigationOwned && hardDecision.applySetback;
+                hardReleaseEpisodeMitigationOwned = mitigationOwned;
+                if (mitigationOwned) setbackApplied = true;
+            }
+
+            if (mitigationOwned) {
+                acknowledgeMitigatedRelease(now);
+            }
         }
 
         boolean regularFlagged;
@@ -159,9 +182,14 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
                     .record(player, ac.grim.grimac.manager.integrity.IntegritySignal.SELECTIVE_STALL);
 
-            if (flag("hard-release gap=" + TimeUnit.NANOSECONDS.toMillis(hardDecision.gapNanos)
+            if (flag("hard-release type=" + hardDecision.releaseType
+                    + " gap=" + TimeUnit.NANOSECONDS.toMillis(hardDecision.gapNanos)
                     + "ms trans=" + hardDecision.transactionAdvance
+                    + " blockedPackets=" + getHardReleaseBlockedPackets()
+                    + " blockedActions=" + getHardReleaseBlockedActions()
                     + " repeated=" + hardDecision.repeats
+                    + " prevention=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.preventionConfidence)
+                    + " sanction=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.sanctionConfidence)
                     + " corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation))) {
                 synchronized (lock) {
                     if (stallActive) {
@@ -185,7 +213,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         onMovement(now);
 
         synchronized (lock) {
-            if (hardReleaseEpisodeActive
+                if (hardReleaseEpisodeActive
                     && now >= hardReleaseCancelUntilNanos
                     && now < hardReleaseRecoveryUntilNanos) {
                 hardReleaseAcceptedRecoveryPackets++;
@@ -227,9 +255,6 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 );
             }
 
-            // The first accepted packet after our own cancel window naturally has
-            // a large gap because v20 discarded the burst tail. Never interpret
-            // that self-induced gap as a brand-new Blink episode.
             if (hardReleaseEpisodeActive
                     && now < hardReleaseRecoveryUntilNanos
                     && hardReleaseAcceptedRecoveryPackets == 0) {
@@ -243,50 +268,11 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 if (spacing > 0L
                         && spacing <= hardReleaseBurstConfirmNanos
                         && now <= hardReleaseCandidateUntilNanos) {
-                    int repeats;
-                    boolean shouldFlag;
-
-                    boolean rollbackAlreadyApplied = setbackApplied;
-
-                    hardReleaseEpisodeActive = true;
-                    hardReleaseEpisodeSetbackApplied = rollbackAlreadyApplied;
-                    hardReleaseCancelUntilNanos = now + hardReleaseCancelWindowNanos;
-                    hardReleaseRecoveryUntilNanos =
-                            hardReleaseCancelUntilNanos + hardReleaseRecoveryNanos;
-                    hardReleaseBlockedPackets = 1;
-                    hardReleaseAcceptedRecoveryPackets = 0;
-                    hardReleaseSourceGapNanos = hardReleaseCandidateGapNanos;
-                    hardReleaseSourceTransactionAdvance = hardReleaseCandidateTransactionAdvance;
-
-                    if (hardReleaseLastNanos == 0L
-                            || now - hardReleaseLastNanos > hardReleaseRepeatWindowNanos) {
-                        hardReleaseRepeats = 1;
-                    } else {
-                        hardReleaseRepeats++;
-                    }
-
-                    hardReleaseLastNanos = now;
-                    repeats = hardReleaseRepeats;
-
-                    shouldFlag = repeats >= hardReleaseFlagAfterRepeats
-                            && now - hardReleaseLastFlagNanos >= hardReleaseFlagCooldownNanos;
-
-                    if (shouldFlag) {
-                        hardReleaseLastFlagNanos = now;
-                    }
-
                     long sourceGap = hardReleaseCandidateGapNanos;
                     int sourceTransactions = hardReleaseCandidateTransactionAdvance;
                     clearHardReleaseCandidateLocked();
-
-                    return new HardReleaseDecision(
-                            true,
-                            hardReleaseSetback && !rollbackAlreadyApplied,
-                            shouldFlag,
-                            true,
-                            sourceGap,
-                            sourceTransactions,
-                            repeats
+                    return confirmHardReleaseLocked(
+                            now, sourceGap, sourceTransactions, "SELECTIVE"
                     );
                 }
 
@@ -303,25 +289,61 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             );
         }
 
+        // 1.9-1.21.1 clients may legally omit movement packets while idle. For
+        // those versions, never let a raw packet gap alone arm hard prevention;
+        // require the slower ConnectionStall state machine to have independently
+        // confirmed a selective stall first. 1.8 cannot skip ticks and 1.21.2+
+        // has CLIENT_TICK_END, so they keep the fast release path.
+        if (player.canSkipTicks()) {
+            synchronized (lock) {
+                if (!stallActive || !selectiveConfirmed) {
+                    return HardReleaseDecision.NONE;
+                }
+            }
+        }
+
         long minimumGap = player.canSkipTicks()
                 ? hardReleaseModernMinGapNanos
                 : hardReleaseLegacyMinGapNanos;
 
-        if (gap < minimumGap || gap > hardReleaseMaxGapNanos) {
+        if (gap < minimumGap) {
             return HardReleaseDecision.NONE;
         }
 
+        // Full connection freezes remain ambiguous. They are protection-only,
+        // never sanctionable from the freeze itself.
         if (transactionAdvance < hardReleaseMinTransactions) {
+            if (fullFreezeProtectionEnabled && gap >= fullFreezeProtectionMinGapNanos) {
+                synchronized (lock) {
+                    ambiguousReleaseProtectUntilNanos = Math.max(
+                            ambiguousReleaseProtectUntilNanos,
+                            now + fullFreezeReleaseProtectNanos
+                    );
+                }
+            }
             return HardReleaseDecision.NONE;
         }
 
-        double confidence = GrimAPI.INSTANCE.getLagProtectionManager()
-                .heuristicConfidence(player);
-
-        if (confidence < hardReleaseMinConfidence) {
+        // Prevention depends on server health, not player RTT. High ping therefore
+        // lowers sanction confidence but cannot become a Blink bypass.
+        double preventionConfidence = GrimAPI.INSTANCE.getLagProtectionManager()
+                .heuristicConfidence();
+        if (preventionConfidence < hardReleasePreventionMinServerConfidence) {
             return HardReleaseDecision.NONE;
         }
 
+        // Long selective stalls are stronger evidence. Cancel the FIRST released
+        // movement packet; never turn a long gap into an exemption.
+        if (gap >= hardReleaseLongSelectiveThresholdNanos) {
+            synchronized (lock) {
+                return confirmHardReleaseLocked(
+                        now, gap, transactionAdvance, "LONG_SELECTIVE"
+                );
+            }
+        }
+
+        // Short/normal selective release: first packet arms/freeze-safe-position,
+        // second compressed/tick-paced packet confirms the episode.
         synchronized (lock) {
             hardReleaseCandidateFirstPacketNanos = now;
             hardReleaseCandidateUntilNanos = now + hardReleaseBurstConfirmNanos;
@@ -330,6 +352,100 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         }
 
         return HardReleaseDecision.NONE;
+    }
+
+    private HardReleaseDecision confirmHardReleaseLocked(
+            long now,
+            long sourceGap,
+            int sourceTransactions,
+            String releaseType
+    ) {
+        boolean rollbackAlreadyApplied = setbackApplied || hardReleaseEpisodeSetbackApplied;
+
+        hardReleaseEpisodeActive = true;
+        hardReleaseEpisodeSetbackApplied = rollbackAlreadyApplied;
+        hardReleaseEpisodeMitigationOwned = rollbackAlreadyApplied;
+        hardReleaseCancelUntilNanos = now + hardReleaseCancelWindowNanos;
+        hardReleaseRecoveryUntilNanos = hardReleaseCancelUntilNanos + hardReleaseRecoveryNanos;
+        hardReleaseBlockedPackets = 1;
+        hardReleaseBlockedActions = 0;
+        hardReleaseAcceptedRecoveryPackets = 0;
+        hardReleaseSourceGapNanos = sourceGap;
+        hardReleaseSourceTransactionAdvance = sourceTransactions;
+
+        if (hardReleaseLastNanos == 0L
+                || now - hardReleaseLastNanos > hardReleaseRepeatWindowNanos) {
+            hardReleaseRepeats = 1;
+        } else {
+            hardReleaseRepeats++;
+        }
+        hardReleaseLastNanos = now;
+
+        double preventionConfidence = GrimAPI.INSTANCE.getLagProtectionManager()
+                .heuristicConfidence();
+        double sanctionConfidence = GrimAPI.INSTANCE.getLagProtectionManager()
+                .heuristicConfidence(player);
+
+        boolean shouldFlag = hardReleaseRepeats >= hardReleaseFlagAfterRepeats
+                && sanctionConfidence >= hardReleaseSanctionMinConfidence
+                && now - hardReleaseLastFlagNanos >= hardReleaseFlagCooldownNanos;
+        if (shouldFlag) hardReleaseLastFlagNanos = now;
+
+        return new HardReleaseDecision(
+                true,
+                hardReleaseSetback && !rollbackAlreadyApplied,
+                shouldFlag,
+                true,
+                releaseType,
+                sourceGap,
+                sourceTransactions,
+                hardReleaseRepeats,
+                preventionConfidence,
+                sanctionConfidence
+        );
+    }
+
+    private boolean hasStrongPreReleaseSelectiveEvidence(long now) {
+        if (!shortSelectiveActionGuardEnabled
+                || !hardReleaseEnabled
+                || !blinkMitigationEnabled
+                || player.disableGrim
+                || isExemptPermission()
+                || !shouldModifyPackets()
+                || player.canFly
+                || player.isFlying
+                || player.inVehicle()
+                || inJoinGrace()
+                || GrimAPI.INSTANCE.getMovementContextManager().suppressesConnectionStall(player.uuid)) {
+            return false;
+        }
+
+        // Modern clients may legally skip normal movement packets while idle.
+        // Action-first protection therefore stays legacy-only by default.
+        if (player.canSkipTicks() && !shortSelectiveModernActionGuardEnabled) {
+            return false;
+        }
+
+        long gap;
+        int transactionAdvance;
+        synchronized (lock) {
+            gap = Math.max(0L, now - lastMovementNanos);
+            transactionAdvance = Math.max(
+                    0,
+                    player.lastTransactionReceived.get() - transactionAtLastMovement
+            );
+        }
+
+        long minimumGap = player.canSkipTicks()
+                ? shortSelectiveModernGapNanos
+                : shortSelectiveLegacyGapNanos;
+
+        if (gap < minimumGap || transactionAdvance < shortSelectiveMinTransactions) {
+            return false;
+        }
+
+        return GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence()
+                >= shortSelectiveMinServerConfidence;
     }
 
     private void acknowledgeMitigatedRelease(long now) {
@@ -351,7 +467,6 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             simulation.acknowledgeBlinkMitigation();
         }
 
-        GrimAPI.INSTANCE.getMovementReleaseGuard().clear(player.uuid);
     }
 
     public void poll() {
@@ -684,7 +799,12 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                     && now <= hardReleaseCandidateUntilNanos;
             boolean discardingRelease = hardReleaseEpisodeActive
                     && now < hardReleaseCancelUntilNanos;
-            return candidate || discardingRelease;
+            boolean ambiguousFreeze = fullFreezeProtectionEnabled
+                    && stallActive
+                    && !selectiveConfirmed
+                    && now - lastMovementNanos >= fullFreezeProtectionMinGapNanos;
+            boolean ambiguousRelease = now < ambiguousReleaseProtectUntilNanos;
+            return candidate || discardingRelease || ambiguousFreeze || ambiguousRelease;
         }
     }
 
@@ -706,26 +826,70 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 return false;
             }
 
-            return true;
+            // Only suppress competing movement setbacks after the one-shot
+            // mitigation actually owns the episode. If rollback failed, let
+            // Simulation/Timer repair the first released movement normally.
+            return hardReleaseEpisodeMitigationOwned;
         }
     }
 
     public boolean shouldBlockQueuedActions() {
+        long now = System.nanoTime();
+
+        // Close-range/action-first Blink: on legacy clients, transaction progress
+        // while the normal movement stream is absent is selective evidence. A
+        // plain gap or high ping alone NEVER reaches this branch.
+        if (hasStrongPreReleaseSelectiveEvidence(now)) {
+            return true;
+        }
+
         synchronized (lock) {
-            long now = System.nanoTime();
+            boolean candidate = hardReleaseCandidateUntilNanos != 0L
+                    && now <= hardReleaseCandidateUntilNanos;
             boolean hardReleaseProtected =
                     hardReleaseEpisodeActive && now < hardReleaseRecoveryUntilNanos;
+            boolean ambiguousRelease = now < ambiguousReleaseProtectUntilNanos;
 
-            return hardReleaseProtected
+            // Do not cancel legal PvP merely because a full freeze is in progress.
+            // Full-freeze protection freezes the safe position/fall ledger; queued
+            // actions are only blocked after release-protection begins.
+            return candidate
+                    || hardReleaseProtected
+                    || ambiguousRelease
                     || stallActive && selectiveConfirmed
                     && (protectionState == ConnectionProtectionState.LOCKDOWN
                         || protectionState == ConnectionProtectionState.RECOVERY);
         }
     }
 
+    /** Prevention may happen earlier than punishment. */
+    public boolean shouldFlagQueuedActions() {
+        synchronized (lock) {
+            long now = System.nanoTime();
+            boolean confirmedHardRelease = hardReleaseEpisodeActive
+                    && now < hardReleaseRecoveryUntilNanos;
+            return confirmedHardRelease
+                    || stallActive && selectiveConfirmed
+                    && (protectionState == ConnectionProtectionState.LOCKDOWN
+                        || protectionState == ConnectionProtectionState.RECOVERY);
+        }
+    }
+
+    public void recordBlockedAction() {
+        synchronized (lock) {
+            hardReleaseBlockedActions++;
+        }
+    }
+
     public int getHardReleaseBlockedPackets() {
         synchronized (lock) {
             return hardReleaseBlockedPackets;
+        }
+    }
+
+    public int getHardReleaseBlockedActions() {
+        synchronized (lock) {
+            return hardReleaseBlockedActions;
         }
     }
 
@@ -740,6 +904,13 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             long now = System.nanoTime();
 
             if (!stallActive
+                    && hardReleaseCandidateUntilNanos != 0L
+                    && now <= hardReleaseCandidateUntilNanos
+                    && hardReleaseCandidateGapNanos > 0L) {
+                return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(hardReleaseCandidateGapNanos));
+            }
+
+            if (!stallActive
                     && hardReleaseEpisodeActive
                     && now < hardReleaseRecoveryUntilNanos
                     && hardReleaseSourceGapNanos > 0L) {
@@ -749,7 +920,9 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 );
             }
 
-            if (!stallActive) return 0L;
+            if (!stallActive) {
+                return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(now - lastMovementNanos));
+            }
 
             return Math.max(
                     0L,
@@ -851,6 +1024,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         protectionState = ConnectionProtectionState.NORMAL;
         recoveryTransactionStart = 0;
         recoveryMovementPackets = 0;
+        ambiguousReleaseProtectUntilNanos = 0L;
     }
 
     private void clearHardReleaseCandidateLocked() {
@@ -863,9 +1037,11 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
     private void finishHardReleaseEpisodeLocked() {
         hardReleaseEpisodeActive = false;
         hardReleaseEpisodeSetbackApplied = false;
+        hardReleaseEpisodeMitigationOwned = false;
         hardReleaseCancelUntilNanos = 0L;
         hardReleaseRecoveryUntilNanos = 0L;
         hardReleaseBlockedPackets = 0;
+        hardReleaseBlockedActions = 0;
         hardReleaseAcceptedRecoveryPackets = 0;
         hardReleaseSourceGapNanos = 0L;
         hardReleaseSourceTransactionAdvance = 0;
@@ -934,8 +1110,8 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
 
         hardReleaseEnabled = config.getBooleanElse("blink-mitigation.hard-release.enabled", true);
         hardReleaseLegacyMinGapNanos = millis(
-                config.getLongElse("blink-mitigation.hard-release.legacy-min-gap-ms", 120L),
-                100L,
+                config.getLongElse("blink-mitigation.hard-release.legacy-min-gap-ms", 80L),
+                50L,
                 5000L
         );
         hardReleaseModernMinGapNanos = millis(
@@ -943,8 +1119,15 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 250L,
                 10_000L
         );
-        hardReleaseMaxGapNanos = millis(
-                config.getLongElse("blink-mitigation.hard-release.max-gap-ms", 1600L),
+        long legacyLongSelectiveThreshold = config.getLongElse(
+                "blink-mitigation.hard-release.max-gap-ms",
+                1600L
+        );
+        hardReleaseLongSelectiveThresholdNanos = millis(
+                config.getLongElse(
+                        "blink-mitigation.hard-release.long-selective-threshold-ms",
+                        legacyLongSelectiveThreshold
+                ),
                 250L,
                 15_000L
         );
@@ -953,15 +1136,67 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 1L,
                 20L
         );
-        hardReleaseMinConfidence = clampDouble(
-                config.getDoubleElse("blink-mitigation.hard-release.minimum-confidence", 0.80D),
+        hardReleaseSanctionMinConfidence = clampDouble(
+                config.getDoubleElse(
+                        "blink-mitigation.hard-release.sanction-minimum-confidence",
+                        config.getDoubleElse("blink-mitigation.hard-release.minimum-confidence", 0.80D)
+                ),
                 0.0D,
                 1.0D
         );
+        hardReleasePreventionMinServerConfidence = clampDouble(
+                config.getDoubleElse(
+                        "blink-mitigation.hard-release.prevention-minimum-server-confidence",
+                        0.55D
+                ),
+                0.0D,
+                1.0D
+        );
+        shortSelectiveActionGuardEnabled = config.getBooleanElse(
+                "blink-mitigation.short-selective-action-guard.enabled", true
+        );
+        shortSelectiveModernActionGuardEnabled = config.getBooleanElse(
+                "blink-mitigation.short-selective-action-guard.modern-enabled", false
+        );
+        shortSelectiveLegacyGapNanos = millis(
+                config.getLongElse("blink-mitigation.short-selective-action-guard.legacy-min-gap-ms", 80L),
+                50L,
+                2000L
+        );
+        shortSelectiveModernGapNanos = millis(
+                config.getLongElse("blink-mitigation.short-selective-action-guard.modern-min-gap-ms", 700L),
+                250L,
+                5000L
+        );
+        shortSelectiveMinTransactions = (int) clamp(
+                config.getLongElse("blink-mitigation.short-selective-action-guard.min-transaction-advance", 1L),
+                1L,
+                20L
+        );
+        shortSelectiveMinServerConfidence = clampDouble(
+                config.getDoubleElse("blink-mitigation.short-selective-action-guard.minimum-server-confidence", 0.55D),
+                0.0D,
+                1.0D
+        );
+
+        fullFreezeProtectionEnabled = config.getBooleanElse(
+                "blink-mitigation.full-freeze-protection.enabled",
+                true
+        );
+        fullFreezeProtectionMinGapNanos = millis(
+                config.getLongElse("blink-mitigation.full-freeze-protection.min-gap-ms", 1500L),
+                500L,
+                15_000L
+        );
+        fullFreezeReleaseProtectNanos = millis(
+                config.getLongElse("blink-mitigation.full-freeze-protection.release-protect-ms", 350L),
+                100L,
+                2000L
+        );
         hardReleaseBurstConfirmNanos = millis(
-                config.getLongElse("blink-mitigation.hard-release.burst-confirm-max-interval-ms", 35L),
-                5L,
-                100L
+                config.getLongElse("blink-mitigation.hard-release.burst-confirm-max-interval-ms", 100L),
+                20L,
+                200L
         );
         hardReleaseCancelWindowNanos = millis(
                 config.getLongElse("blink-mitigation.hard-release.cancel-window-ms", 180L),
@@ -1010,12 +1245,15 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             boolean applySetback,
             boolean flag,
             boolean confirmed,
+            String releaseType,
             long gapNanos,
             int transactionAdvance,
-            int repeats
+            int repeats,
+            double preventionConfidence,
+            double sanctionConfidence
     ) {
         static final HardReleaseDecision NONE =
-                new HardReleaseDecision(false, false, false, false, 0L, 0, 0);
+                new HardReleaseDecision(false, false, false, false, "NONE", 0L, 0, 0, 0.0D, 0.0D);
 
         static HardReleaseDecision cancelOnly(
                 long gapNanos,
@@ -1023,13 +1261,8 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 int repeats
         ) {
             return new HardReleaseDecision(
-                    true,
-                    false,
-                    false,
-                    false,
-                    gapNanos,
-                    transactionAdvance,
-                    repeats
+                    true, false, false, false, "OWNED",
+                    gapNanos, transactionAdvance, repeats, 1.0D, 0.0D
             );
         }
     }

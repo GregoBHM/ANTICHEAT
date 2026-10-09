@@ -15,7 +15,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
 
-/** Attack bursts only become evidence when paired with a recent stall/burst; high CPS alone is not enough. */
+/** Attack bursts only become evidence when paired with a confirmed stall/burst; high CPS alone is not enough. */
 @CheckData(name = "AttackBurst", alternativeName = "Interact", stableKey = "grim.combat.attack_burst",
         description = "Released a burst of attacks correlated with packet stalling", setback = -1, decay = 0.20)
 public final class AttackFrequency extends Check implements PacketReceiveListener {
@@ -51,7 +51,9 @@ public final class AttackFrequency extends Check implements PacketReceiveListene
                 || GrimAPI.INSTANCE.getIntegrityCorrelationManager().hasRecentWithin(
                 player.uuid, IntegritySignal.PACKET_BURST, causalWindowMillis);
         ConnectionStall stall = player.checkManager.get(ConnectionStall.class);
-        if (stall != null && stall.shouldBlockQueuedActions()) stallEvidence = true;
+        // Prevention can start before sanction confidence. Never turn a
+        // prevention-only short/full-freeze guard into AttackBurst VL.
+        if (stall != null && stall.shouldFlagQueuedActions()) stallEvidence = true;
         if (!stallEvidence || GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence(player) < 0.45D) return;
         if (now - lastFlagNanos < flagCooldownNanos) return;
 

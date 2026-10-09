@@ -128,7 +128,7 @@ public final class MovementReleaseGuard {
         return new IllegalStateException(
                 "Invalid SparkGrim config key '" + key + "': expected "
                         + expected + ", got " + actualType
-                        + ". Update the bundled config to config-version 20."
+                        + ". Update the bundled config to config-version 23."
         );
     }
 }
