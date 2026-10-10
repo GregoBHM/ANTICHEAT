@@ -76,6 +76,7 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
      */
     public void acknowledgeMitigatedBlink(long nowNanos) {
         timerBalanceRealTime = Math.min(timerBalanceRealTime, nowNanos);
+        lastAheadNanos = 0L;
         hasGottenMovementAfterTransaction = false;
     }
 
