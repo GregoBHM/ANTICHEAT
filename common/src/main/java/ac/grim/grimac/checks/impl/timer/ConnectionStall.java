@@ -634,7 +634,10 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             protectionState = ConnectionProtectionState.PROTECTED;
         }
 
+        double sanctionConfidence = GrimAPI.INSTANCE.getLagProtectionManager()
+                .heuristicConfidence(player);
         boolean shouldFlag = selectiveConfirmed
+                && sanctionConfidence >= hardReleaseSanctionMinConfidence
                 && !flaggedThisStall
                 && now - lastFlagNanos >= flagCooldownNanos
                 && (combatTagged || stallStartedAirborne || repeatedStalls >= outsideCombatRepeatThreshold);
