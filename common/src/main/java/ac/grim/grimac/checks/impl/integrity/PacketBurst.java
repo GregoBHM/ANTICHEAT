@@ -29,6 +29,7 @@ public final class PacketBurst extends Check implements PacketReceiveListener {
     private long recoveryGapMillis;
     private int transactionAdvanceAtGap;
     private int recoveryPackets;
+    private boolean recoveryEvidenceRecorded;
     private double buffer;
     private long lastFlagNanos;
 
@@ -64,6 +65,7 @@ public final class PacketBurst extends Check implements PacketReceiveListener {
             recoveryGapMillis = gapMillis;
             transactionAdvanceAtGap = Math.max(0, player.lastTransactionReceived.get() - transactionAtLastMovement);
             recoveryPackets = 0;
+            recoveryEvidenceRecorded = false;
             recoveryUntilNanos = now + TimeUnit.MILLISECONDS.toNanos(recoveryWindowMs);
         }
 
@@ -84,7 +86,13 @@ public final class PacketBurst extends Check implements PacketReceiveListener {
             double confidence = GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence(player);
             if (confidence >= 0.45D) {
                 buffer += confidence;
-                double corr = GrimAPI.INSTANCE.getIntegrityCorrelationManager().record(player, IntegritySignal.PACKET_BURST);
+                double corr;
+                if (!recoveryEvidenceRecorded) {
+                    corr = GrimAPI.INSTANCE.getIntegrityCorrelationManager().record(player, IntegritySignal.PACKET_BURST);
+                    recoveryEvidenceRecorded = true;
+                } else {
+                    corr = GrimAPI.INSTANCE.getIntegrityCorrelationManager().getScore(player.uuid);
+                }
                 if (buffer >= flagBuffer && now - lastFlagNanos >= flagCooldownNanos) {
                     lastFlagNanos = now;
                     flag("gap=" + recoveryGapMillis + "ms burst250=" + (int) shortCount
@@ -129,6 +137,7 @@ public final class PacketBurst extends Check implements PacketReceiveListener {
         recoveryGapMillis = 0L;
         transactionAdvanceAtGap = 0;
         recoveryPackets = 0;
+        recoveryEvidenceRecorded = false;
         buffer = 0.0D;
     }
 

@@ -140,17 +140,23 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
     }
 
     public void executeNonSimulatingSetback(@Nullable Check source) {
+        tryExecuteNonSimulatingSetback(source);
+    }
+
+    public boolean tryExecuteNonSimulatingSetback(@Nullable Check source) {
         if (player.gamemode == GameMode.SPECTATOR || player.disableGrim)
-            return;
-        if (lastKnownGoodPosition == null) return;
-        if (applyCorrection(
+            return false;
+        if (lastKnownGoodPosition == null) return false;
+        if (!applyCorrection(
                 source,
                 correctionPriority(source, false),
                 false,
                 false
         )) {
-            emitCorrectionDiagnostic(source, "connection");
+            return false;
         }
+        emitCorrectionDiagnostic(source, "connection");
+        return true;
     }
 
     public boolean executeViolationSetback() {

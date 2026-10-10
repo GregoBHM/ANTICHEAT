@@ -14,6 +14,7 @@ import ac.grim.grimac.utils.data.packetentity.DashableEntity;
 import ac.grim.grimac.utils.data.packetentity.PacketEntity;
 import ac.grim.grimac.utils.data.packetentity.PacketEntityHook;
 import ac.grim.grimac.utils.enums.Pose;
+import ac.grim.grimac.utils.item.LegacyItemUseResetPolicy;
 import ac.grim.grimac.utils.nmsutil.EntityMetadataPoseUtil;
 import ac.grim.grimac.utils.viaversion.ViaMovementTranslator;
 import ac.grim.grimac.utils.viaversion.ViaVersionUtil;
@@ -327,12 +328,26 @@ public class PacketEntityReplication extends GrimProcessor implements PacketRece
                             !player.inventory.getHeldItem().is(slot.getItem().getType()) || player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)
                     ) || slot.getSlot() == 45 && !player.inventory.getOffHand().is(slot.getItem().getType())) {
                         InteractionHand hand = slot.getSlot() == 45 ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-                        if (hand == player.packetStateData.itemInUseHand) {
-                            player.packetStateData.setSlowedByUsingItem(false);
-                        }
+                        InteractionHand serverUsageHand = GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer);
+                        boolean sameHand = hand == player.packetStateData.itemInUseHand && hand == serverUsageHand;
+                        boolean sameItemType = hand == InteractionHand.OFF_HAND
+                                ? player.inventory.getOffHand().is(slot.getItem().getType())
+                                : player.inventory.getHeldItem().is(slot.getItem().getType());
+                        boolean preserveLegacyUse = LegacyItemUseResetPolicy.preserveInventoryRefresh(
+                                player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8),
+                                player.packetStateData.isSlowedByUsingItem(),
+                                sameHand,
+                                sameItemType
+                        );
 
-                        if (player.isResetItemUsageOnItemUpdate() && hand == GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer)) {
-                            GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+                        if (!preserveLegacyUse) {
+                            if (hand == player.packetStateData.itemInUseHand) {
+                                player.packetStateData.setSlowedByUsingItem(false);
+                            }
+
+                            if (player.isResetItemUsageOnItemUpdate() && hand == serverUsageHand) {
+                                GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+                            }
                         }
                     }
                 };
@@ -346,9 +361,25 @@ public class PacketEntityReplication extends GrimProcessor implements PacketRece
             if (items.getWindowId() == 0) { // Player inventory
                 Runnable task = () -> {
                     if (player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)) {
-                        player.packetStateData.setSlowedByUsingItem(false);
-                        if (player.isResetItemUsageOnItemUpdate()) {
-                            GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+                        int heldSlot = player.packetStateData.lastSlotSelected + 36;
+                        boolean sameItemType = heldSlot >= 0
+                                && heldSlot < items.getItems().size()
+                                && player.inventory.getHeldItem().is(items.getItems().get(heldSlot).getType());
+                        InteractionHand serverUsageHand = GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer);
+                        boolean sameHand = player.packetStateData.itemInUseHand == InteractionHand.MAIN_HAND
+                                && serverUsageHand == InteractionHand.MAIN_HAND;
+                        boolean preserveLegacyUse = LegacyItemUseResetPolicy.preserveInventoryRefresh(
+                                true,
+                                player.packetStateData.isSlowedByUsingItem(),
+                                sameHand,
+                                sameItemType
+                        );
+
+                        if (!preserveLegacyUse) {
+                            player.packetStateData.setSlowedByUsingItem(false);
+                            if (player.isResetItemUsageOnItemUpdate() && serverUsageHand == InteractionHand.MAIN_HAND) {
+                                GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+                            }
                         }
                     } else {
                         if (items.getItems().size() > 45 && !player.inventory.getOffHand().is(items.getItems().get(45).getType())) {

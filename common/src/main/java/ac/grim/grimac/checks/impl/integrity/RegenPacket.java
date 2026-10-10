@@ -134,7 +134,7 @@ public final class RegenPacket extends Check implements PrePredictionPacketRecei
         }
 
         double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
-                .record(player.uuid, IntegritySignal.REGEN_PACKET);
+                .record(player, IntegritySignal.REGEN_PACKET);
 
         flag("ahead=" + lastAheadMs + "ms"
                 + " packets250=" + lastPackets250

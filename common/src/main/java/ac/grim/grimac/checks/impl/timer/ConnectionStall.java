@@ -634,7 +634,10 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             protectionState = ConnectionProtectionState.PROTECTED;
         }
 
+        double sanctionConfidence = GrimAPI.INSTANCE.getLagProtectionManager()
+                .heuristicConfidence(player);
         boolean shouldFlag = selectiveConfirmed
+                && sanctionConfidence >= hardReleaseSanctionMinConfidence
                 && !flaggedThisStall
                 && now - lastFlagNanos >= flagCooldownNanos
                 && (combatTagged || stallStartedAirborne || repeatedStalls >= outsideCombatRepeatThreshold);
@@ -711,11 +714,6 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         }
 
         if (action.flag) {
-            synchronized (lock) {
-                lastFlagNanos = now;
-                flaggedThisStall = true;
-                setbackApplied = true;
-            }
             double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
                     .record(player, ac.grim.grimac.manager.integrity.IntegritySignal.SELECTIVE_STALL);
             if (action.airborneFallDistance > 0.0D) {
@@ -728,22 +726,31 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                     + " fall=" + formatOffset(action.airborneFallDistance)
                     + " corr=" + String.format("%.2f", correlation);
 
-            boolean accepted;
-            if (shouldSuppressMovementSetbacks()) {
-                accepted = flag(verbose);
-            } else {
-                accepted = flagWithSetback(verbose);
+            boolean suppressMovementSetback = shouldSuppressMovementSetbacks();
+            boolean accepted = flag(verbose);
+            boolean correctionApplied = false;
+
+            if (accepted && !suppressMovementSetback && shouldSetback()) {
+                correctionApplied = executeViolationSetback();
             }
 
             if (accepted) {
+                synchronized (lock) {
+                    lastFlagNanos = now;
+                    flaggedThisStall = true;
+                    if (correctionApplied) {
+                        setbackApplied = true;
+                    }
+                }
                 combat.markSanctionableEvidence(player.uuid);
             }
         } else if (action.setback
                 && !shouldSuppressMovementSetbacks()
                 && !isNoSetbackPermission()) {
-            player.getSetbackTeleportUtil().executeNonSimulatingSetback(this);
-            synchronized (lock) {
-                setbackApplied = true;
+            if (player.getSetbackTeleportUtil().tryExecuteNonSimulatingSetback(this)) {
+                synchronized (lock) {
+                    setbackApplied = true;
+                }
             }
         }
 
