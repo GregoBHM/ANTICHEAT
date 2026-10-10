@@ -3,7 +3,9 @@ package ac.grim.grimac.manager.integrity;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.utils.latency.CompensatedWorld;
 import ac.grim.grimac.utils.collisions.datatypes.SimpleCollisionBox;
+import com.github.retrooper.packetevents.util.Vector3d;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -15,6 +17,8 @@ import java.util.concurrent.TimeUnit;
 
 /** Tracks server-cancelled placements long enough to reject client-only ghost-block support. */
 public final class CancelledBlockIntegrityManager {
+    private static final long AUTHORITATIVE_CANCEL_NANOS = TimeUnit.MILLISECONDS.toNanos(750L);
+
     private final Map<UUID, Deque<Entry>> entries = new ConcurrentHashMap<>();
 
     private volatile boolean enabled = true;
@@ -31,55 +35,120 @@ public final class CancelledBlockIntegrityManager {
 
     public void recordCancelledPlacement(@NotNull UUID playerId, @NotNull String worldName, int x, int y, int z) {
         if (!enabled) return;
-        long expires = System.nanoTime() + retentionNanos;
+        long now = System.nanoTime();
+        long expires = now + retentionNanos;
         Deque<Entry> deque = entries.computeIfAbsent(playerId, ignored -> new ArrayDeque<>());
         synchronized (deque) {
-            cleanupLocked(deque, System.nanoTime());
-            deque.addLast(new Entry(normalizeWorldKey(worldName), x, y, z, expires));
+            cleanupLocked(deque, now);
+            String worldKey = normalizeWorldKey(worldName);
+            deque.removeIf(entry -> entry.matches(worldKey, x, y, z));
+            deque.addLast(new Entry(worldKey, x, y, z, now, expires));
             while (deque.size() > maxEntriesPerPlayer) deque.pollFirst();
         }
     }
 
-    public boolean isUsingCancelledSupport(@NotNull UUID playerId,
-                                           @NotNull String worldName,
-                                           @NotNull CompensatedWorld world,
-                                           @NotNull SimpleCollisionBox playerBox) {
-        if (!enabled) return false;
+    public @Nullable SupportUse findCancelledSupport(
+            @NotNull UUID playerId,
+            @NotNull String worldName,
+            @NotNull CompensatedWorld world,
+            @NotNull SimpleCollisionBox currentPlayerBox,
+            @NotNull Vector3d from,
+            @NotNull Vector3d to
+    ) {
+        if (!enabled) return null;
+
         Deque<Entry> deque = entries.get(playerId);
-        if (deque == null) return false;
+        if (deque == null) return null;
+
         String worldKey = normalizeWorldKey(worldName);
         long now = System.nanoTime();
 
+        double deltaX = to.getX() - from.getX();
+        double deltaY = to.getY() - from.getY();
+        double deltaZ = to.getZ() - from.getZ();
+
+        SimpleCollisionBox previousPlayerBox = currentPlayerBox.copy()
+                .offset(-deltaX, -deltaY, -deltaZ);
+
         synchronized (deque) {
             cleanupLocked(deque, now);
-            for (Entry entry : deque) {
-                if (!entry.worldKey.equals(worldKey)) continue;
 
-                // The authoritative server block must still be non-supporting; otherwise another plugin/player
-                // legitimately placed something there after the cancellation.
-                var current = world.getBlock(entry.x, entry.y, entry.z);
-                if (!current.getType().isAir()
-                        && !current.getType().isReplaceable()) {
+            for (Entry entry : deque) {
+                if (!entry.worldKey.equals(worldKey)) {
                     continue;
                 }
 
-                double blockMinX = entry.x;
-                double blockMaxX = entry.x + 1.0D;
-                double blockTopY = entry.y + 1.0D;
-                double blockMinZ = entry.z;
-                double blockMaxZ = entry.z + 1.0D;
+                if (now - entry.createdAtNanos > AUTHORITATIVE_CANCEL_NANOS) {
+                    var current = world.getBlock(entry.x, entry.y, entry.z);
+                    if (!current.getType().isAir()
+                            && !current.getType().isReplaceable()) {
+                        continue;
+                    }
+                }
 
-                boolean horizontalOverlap = playerBox.maxX > blockMinX + 1.0E-4
-                        && playerBox.minX < blockMaxX - 1.0E-4
-                        && playerBox.maxZ > blockMinZ + 1.0E-4
-                        && playerBox.minZ < blockMaxZ - 1.0E-4;
-                boolean feetAtGhostTop = playerBox.minY >= blockTopY - 0.08D
-                        && playerBox.minY <= blockTopY + 0.35D;
+                boolean previousOverlap = horizontalOverlap(
+                        previousPlayerBox,
+                        entry.x,
+                        entry.z
+                );
+                boolean currentOverlap = horizontalOverlap(
+                        currentPlayerBox,
+                        entry.x,
+                        entry.z
+                );
 
-                if (horizontalOverlap && feetAtGhostTop) return true;
+                double blockTop = entry.y + 1.0D;
+
+                if (CancelledBlockSupportPolicy.isSupportUse(
+                        from.getY(),
+                        to.getY(),
+                        blockTop,
+                        previousOverlap,
+                        currentOverlap
+                )) {
+                    return new SupportUse(
+                            entry.x,
+                            entry.y,
+                            entry.z,
+                            to.getY() - from.getY()
+                    );
+                }
             }
         }
-        return false;
+
+        return null;
+    }
+
+    public void confirmPlacement(
+            @NotNull String worldName,
+            int x,
+            int y,
+            int z
+    ) {
+        if (!enabled || entries.isEmpty()) return;
+
+        String worldKey = normalizeWorldKey(worldName);
+
+        entries.forEach((uuid, deque) -> {
+            synchronized (deque) {
+                deque.removeIf(entry -> entry.matches(worldKey, x, y, z));
+                if (deque.isEmpty()) {
+                    entries.remove(uuid, deque);
+                }
+            }
+        });
+    }
+
+    private static boolean horizontalOverlap(
+            SimpleCollisionBox box,
+            int blockX,
+            int blockZ
+    ) {
+        double epsilon = 1.0E-4D;
+        return box.maxX > blockX + epsilon
+                && box.minX < blockX + 1.0D - epsilon
+                && box.maxZ > blockZ + epsilon
+                && box.minZ < blockZ + 1.0D - epsilon;
     }
 
     public void clear(@NotNull UUID playerId) {
@@ -109,19 +178,38 @@ public final class CancelledBlockIntegrityManager {
         return Math.max(min, Math.min(max, value));
     }
 
+    public record SupportUse(int x, int y, int z, double deltaY) {
+    }
+
     private static final class Entry {
         final String worldKey;
         final int x;
         final int y;
         final int z;
+        final long createdAtNanos;
         final long expiresAtNanos;
 
-        Entry(String worldKey, int x, int y, int z, long expiresAtNanos) {
+        Entry(
+                String worldKey,
+                int x,
+                int y,
+                int z,
+                long createdAtNanos,
+                long expiresAtNanos
+        ) {
             this.worldKey = worldKey;
             this.x = x;
             this.y = y;
             this.z = z;
+            this.createdAtNanos = createdAtNanos;
             this.expiresAtNanos = expiresAtNanos;
+        }
+
+        boolean matches(String worldKey, int x, int y, int z) {
+            return this.x == x
+                    && this.y == y
+                    && this.z == z
+                    && this.worldKey.equals(worldKey);
         }
     }
 }

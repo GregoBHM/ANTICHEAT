@@ -45,7 +45,7 @@ public final class FallIntegrityManager {
         }
     }
 
-    public void beginProtection(@NotNull UUID uuid, double predictedFallDistance, boolean selectiveEvidence) {
+    public void beginProtection(@NotNull UUID uuid, double predictedFallDistance) {
         if (!enabled) return;
         if (GrimAPI.INSTANCE.getMovementContextManager().resetsFallLedger(uuid)) {
             states.remove(uuid);
@@ -55,7 +55,6 @@ public final class FallIntegrityManager {
         FallState state = states.computeIfAbsent(uuid, ignored -> new FallState());
         synchronized (state) {
             state.protectedStall = true;
-            state.selectiveEvidence |= selectiveEvidence;
             state.pendingDistance = Math.max(state.pendingDistance, sanitizeDistance(predictedFallDistance));
             state.enforceUntilNanos = Long.MAX_VALUE;
             state.lastTouchedNanos = System.nanoTime();
@@ -218,7 +217,6 @@ public final class FallIntegrityManager {
     private static final class FallState {
         double pendingDistance;
         boolean protectedStall;
-        boolean selectiveEvidence;
         long enforceUntilNanos;
         long lastTouchedNanos;
     }

@@ -85,21 +85,6 @@ public final class MovementCorrectionCoordinator {
         holdUntilNanos = Math.max(holdUntilNanos, nowNanos + POST_ACK_HOLD_NANOS);
     }
 
-    public synchronized boolean isCorrectionInFlight() {
-        return correctionInFlight;
-    }
-
-    public synchronized long getObservedConnectionEpisodeId() {
-        return observedConnectionEpisodeId;
-    }
-
-    public synchronized void clear() {
-        observedConnectionEpisodeId = 0L;
-        connectionCorrectionApplied = false;
-        correctionInFlight = false;
-        holdUntilNanos = 0L;
-    }
-
     private void observeConnectionEpisode(long connectionEpisodeId) {
         if (observedConnectionEpisodeId == connectionEpisodeId) {
             return;

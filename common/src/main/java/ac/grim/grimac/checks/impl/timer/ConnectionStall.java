@@ -528,7 +528,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             action = evaluateGapLocked(now, false);
         }
         if (microHoldStart != 0L) {
-            GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player, microHoldStart, false);
+            GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player, microHoldStart);
         }
         execute(action, now);
     }
@@ -692,12 +692,11 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
         if (action == Action.NONE) return;
         CombatIntegrityManager combat = GrimAPI.INSTANCE.getCombatIntegrityManager();
 
-        combat.beginStall(player, action.stallStartNanos, action.selective);
-        if (action.selective) combat.markSelectiveEvidence(player.uuid);
+        combat.beginStall(player, action.stallStartNanos);
 
         FallIntegrityManager fall = GrimAPI.INSTANCE.getFallIntegrityManager();
         if (action.airborneFallDistance > 0.0D) {
-            fall.beginProtection(player.uuid, action.airborneFallDistance, action.selective);
+            fall.beginProtection(player.uuid, action.airborneFallDistance);
         }
 
         if (action.releaseGuard
@@ -787,7 +786,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             if (gap < requiredGap) return;
             start = lastMovementNanos;
         }
-        GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player, start, false);
+        GrimAPI.INSTANCE.getCombatIntegrityManager().beginStall(player, start);
     }
 
     public boolean isStalling() {

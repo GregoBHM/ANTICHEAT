@@ -179,10 +179,13 @@ public class SetbackTeleportUtil extends GrimProcessor implements PostPrediction
             return MovementCorrectionCoordinator.Priority.AUTHORITATIVE;
         }
 
-        if (source != null
-                && source.getStableKey() != null
-                && source.getStableKey().startsWith("grim.crash.")) {
-            return MovementCorrectionCoordinator.Priority.AUTHORITATIVE;
+        if (source != null && source.getStableKey() != null) {
+            String stableKey = source.getStableKey();
+
+            if (stableKey.startsWith("grim.crash.")
+                    || stableKey.equals("grim.exploit.cancelled_block_climb")) {
+                return MovementCorrectionCoordinator.Priority.AUTHORITATIVE;
+            }
         }
 
         return source == null

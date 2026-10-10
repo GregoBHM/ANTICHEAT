@@ -137,8 +137,7 @@ public final class CombatIntegrityManager {
 
     public void beginStall(
             @NotNull GrimPlayer player,
-            long stallStartNanos,
-            boolean selectiveEvidence
+            long stallStartNanos
     ) {
         if (!enabled) return;
         UUID uuid = player.uuid;
@@ -162,7 +161,6 @@ public final class CombatIntegrityManager {
                 );
             }
             state.protectedSession = true;
-            state.selectiveEvidence |= selectiveEvidence;
         }
         if (refreshExternal) refreshExternalTag(player);
     }
@@ -216,17 +214,6 @@ public final class CombatIntegrityManager {
                 null,
                 0
         );
-    }
-
-    public void markSelectiveEvidence(@NotNull UUID uuid) {
-        CombatState state = states.get(uuid);
-        if (state == null) return;
-        synchronized (state) {
-            if (state.stallHold || isTaggedLocked(state, System.nanoTime())) {
-                state.selectiveEvidence = true;
-                state.protectedSession = true;
-            }
-        }
     }
 
     /**
@@ -438,7 +425,6 @@ public final class CombatIntegrityManager {
         long holdStartedNanos;
         long lastProviderRefreshNanos;
         boolean protectedSession;
-        boolean selectiveEvidence;
         boolean sanctionableEvidence;
         boolean disconnected;
         long disconnectCleanupAtMillis;
