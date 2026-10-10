@@ -4,6 +4,7 @@ import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.item.ItemBehaviour;
 import ac.grim.grimac.utils.item.ItemBehaviourRegistry;
+import ac.grim.grimac.utils.item.LegacyItemUseResetPolicy;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
@@ -14,6 +15,7 @@ import com.github.retrooper.packetevents.protocol.item.enchantment.type.Enchantm
 import com.github.retrooper.packetevents.protocol.item.type.ItemType;
 import com.github.retrooper.packetevents.protocol.item.type.ItemTypes;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.player.DiggingAction;
 import com.github.retrooper.packetevents.protocol.player.GameMode;
 import com.github.retrooper.packetevents.protocol.player.InteractionHand;
@@ -43,8 +45,8 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
 
         if (player.checkManager.getCompensatedCooldown().hasItem(item)) {
             boolean valid = !player.packetStateData.isSlowedByUsingItem() || player.packetStateData.itemInUseHand == hand;
-            if (valid) player.packetStateData.setSlowedByUsingItem(false); // resync, not required
-            return; // The player has a cooldown, and therefore cannot use this item!
+            if (valid) player.packetStateData.setSlowedByUsingItem(false);
+            return;
         }
 
         final ItemType material = item.getType();
@@ -98,14 +100,11 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
         if (event.getPacketType() == PacketType.Play.Client.HELD_ITEM_CHANGE) {
             final int slot = new WrapperPlayClientHeldItemChange(event).getSlot();
 
-            // Stop people from spamming the server with out of bounds exceptions
             if (slot > 8 || slot < 0) return;
 
             final GrimPlayer player = GrimAPI.INSTANCE.getPlayerDataManager().getPlayer(event.getUser());
             if (player == null) return;
 
-            // do we need to do this with block breaks too?
-            // Prevent issues if the player switches slots, while lagging, standing still, and is placing blocks
             CheckManagerListener.handleQueuedPlaces(player, false, 0, 0, System.currentTimeMillis());
 
             if (player.packetStateData.lastSlotSelected != slot) {
@@ -134,7 +133,14 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
                     ? new WrapperPlayClientUseItem(event).getHand()
                     : InteractionHand.MAIN_HAND;
 
-            if (player.isResetItemUsageOnItemUse()) {
+            InteractionHand activeHand = GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer);
+            boolean preserveLegacyUse = LegacyItemUseResetPolicy.preserveRepeatedUse(
+                    player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8),
+                    player.packetStateData.isSlowedByUsingItem(),
+                    activeHand == hand
+            );
+
+            if (player.isResetItemUsageOnItemUse() && !preserveLegacyUse) {
                 GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
             }
 
