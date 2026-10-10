@@ -65,8 +65,6 @@ public final class InventoryFrequency extends Check implements PacketReceiveList
             double confidence = GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence(player);
             buffer += excess * confidence;
             if (buffer >= flagBuffer && now - lastFlagNanos >= flagCooldownNanos) {
-                lastFlagNanos = now;
-                double corr = GrimAPI.INSTANCE.getIntegrityCorrelationManager().record(player, IntegritySignal.INVENTORY_FREQUENCY);
                 double peakRatio = excess + 1.0D;
                 boolean protocolEvidence = GrimAPI.INSTANCE.getIntegrityCorrelationManager().hasRecentWithin(
                         player.uuid, IntegritySignal.PACKET_ORDER, protocolCausalWindowMillis)
@@ -74,6 +72,9 @@ public final class InventoryFrequency extends Check implements PacketReceiveList
                         player.uuid, IntegritySignal.MULTI_ACTION, protocolCausalWindowMillis);
                 boolean strongStandalone = peakRatio >= standaloneExtremeRatio;
                 if (!requireProtocolCorrelation || protocolEvidence || strongStandalone) {
+                    lastFlagNanos = now;
+                    double corr = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                            .record(player, IntegritySignal.INVENTORY_FREQUENCY);
                     flag("type=" + click.getWindowClickType().name().toLowerCase(Locale.ROOT)
                             + " w250=" + format(shortScore) + " w1s=" + format(oneSecondScore)
                             + " w4s=" + format(longScore) + " ratio=" + format(peakRatio)
