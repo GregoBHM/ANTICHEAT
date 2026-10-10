@@ -91,7 +91,10 @@ public final class MovementReleaseGuard {
                 return false;
             }
 
-            player.getSetbackTeleportUtil().executeNonSimulatingSetback(source);
+            if (!player.getSetbackTeleportUtil().tryExecuteNonSimulatingSetback(source)) {
+                return false;
+            }
+
             lastApplied.put(player.uuid, now);
             return true;
         }
@@ -138,7 +141,7 @@ public final class MovementReleaseGuard {
         return new IllegalStateException(
                 "Invalid SparkGrim config key '" + key + "': expected "
                         + expected + ", got " + actualType
-                        + ". Update the bundled config to config-version 23."
+                        + ". Update the bundled config to config-version 28."
         );
     }
 }
