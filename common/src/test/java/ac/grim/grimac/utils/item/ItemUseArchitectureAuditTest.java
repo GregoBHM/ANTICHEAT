@@ -56,4 +56,51 @@ class ItemUseArchitectureAuditTest {
         assertFalse(consume.contains("PacketReceiveListener"));
         assertFalse(consume.contains("PacketType.Play.Client.USE_ITEM"));
     }
+
+
+    @Test
+    void inventoryRefreshesUsePhysicalCompatibilityInsteadOfBareMaterialType() throws IOException {
+        String replication = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/events/packets/PacketEntityReplication.java"
+        ));
+
+        assertTrue(replication.contains("ItemUseSessionTracker.isCompatibleRefresh"));
+        assertTrue(replication.contains("Reason.INVENTORY_REFRESH"));
+    }
+
+    @Test
+    void incomingVelocityAndMovementContextsNeverOwnPhysicalUseReset() throws IOException {
+        String movementContexts = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
+        ));
+        String knockback = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        ));
+
+        assertFalse(movementContexts.contains("requestServerReset("));
+        assertFalse(movementContexts.contains(".resetItemUsage("));
+        assertFalse(knockback.contains("requestServerReset("));
+        assertFalse(knockback.contains(".resetItemUsage("));
+    }
+
+    @Test
+    void outgoingAttackKeepsCentralVanillaResetPath() throws IOException {
+        String attack = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/events/packets/PacketPlayerAttack.java"
+        ));
+
+        assertTrue(attack.contains("ItemUseResetPolicy.Reason.ATTACK"));
+        assertTrue(attack.contains("itemUseSessionTracker.requestServerReset"));
+        assertFalse(attack.contains(".resetItemUsage("));
+    }
+
+    @Test
+    void fastConsumeStillHonorsConfiguredStaleSessionWindow() throws IOException {
+        String consume = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
+        ));
+
+        assertTrue(consume.contains("interaction-integrity.consume.stale-extra-ms"));
+        assertTrue(consume.contains("configureConsumableStaleExtraMillis"));
+    }
 }
