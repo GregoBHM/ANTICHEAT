@@ -53,6 +53,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private double environmentRecoveryMultiplier;
     private boolean disableShortBlinkInSpecialEnvironment;
     private int specialEnvironmentCorrectionStrongTicks;
+    private double observedVelocityMinRawOffset;
     private int specialEnvironmentFlagStrongTicks;
     private long specialEnvironmentFlagEpisodeWindowMillis;
     private long specialEnvironmentFlagIntervalMillis;
@@ -163,10 +164,20 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 GrimAPI.INSTANCE.getEnvironmentContextManager();
         Set<EnvironmentContext> environmentContexts =
                 environment.classify(player);
+        boolean observedVelocityContext = GrimAPI.INSTANCE
+                .getMovementContextManager()
+                .hasObservedVelocityContext(player.uuid);
         boolean specialEnvironment =
-                environment.isSpecialMovementEnvironment(environmentContexts);
+                environment.isSpecialMovementEnvironment(environmentContexts)
+                        || observedVelocityContext;
         double specialEnvironmentCorrectionMinRawOffset =
                 environment.minimumCorrectionRawOffset(environmentContexts);
+        if (observedVelocityContext) {
+            specialEnvironmentCorrectionMinRawOffset = Math.max(
+                    specialEnvironmentCorrectionMinRawOffset,
+                    observedVelocityMinRawOffset
+            );
+        }
 
         if (specialEnvironment) {
             environmentRecoveryTicksRemaining = environmentRecoveryTicks;
@@ -274,6 +285,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
             String simulationComponent = simulationComponent(
                     environmentContexts,
+                    observedVelocityContext,
                     !specialEnvironment
                             && environmentRecoveryTicksRemaining > 0
             );
@@ -539,9 +551,11 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
     private static @NotNull String simulationComponent(
             @NotNull Set<EnvironmentContext> contexts,
+            boolean observedVelocity,
             boolean recovery
     ) {
         if (recovery) return "simulation.transition";
+        if (observedVelocity) return "simulation.plugin-velocity";
         if (contexts.contains(EnvironmentContext.COBWEB)) {
             return "simulation.cobweb";
         }
@@ -649,6 +663,12 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     requirePositiveInt(
                             config,
                             "movement-enforcement.environment.correction-strong-ticks"
+                    );
+
+            observedVelocityMinRawOffset =
+                    requirePositiveDouble(
+                            config,
+                            "movement-enforcement.environment.observed-velocity-min-raw-offset"
                     );
 
             specialEnvironmentFlagStrongTicks =
