@@ -79,4 +79,22 @@ class ItemUseLifecycleAuditTest {
         assertTrue(method.contains("detectionEpisodeManager.clearAll()"));
         assertFalse(method.contains("itemUseSessionTracker.end("));
     }
+
+
+    @Test
+    void pluginDisableClearsSourceScopedIntegrationContexts() throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/CombatIntegrityListener.java"
+        ));
+
+        assertTrue(source.contains(
+                "getMovementContextManager()"
+        ));
+        assertTrue(source.contains(
+                ".clearSourcePrefix(pluginName)"
+        ));
+        assertTrue(source.contains(
+                "getInteractionContextManager()"
+        ));
+    }
 }
