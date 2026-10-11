@@ -42,9 +42,9 @@ class IntegrationTrustPolicyAuditTest {
         assertTrue(facade.contains(
                 "getMovementContextManager().beginTrusted("
         ));
-        assertTrue(facade.contains("\\\"MagicSpells:\\\" + spellName"));
-        assertTrue(facade.contains("\\\"RPGItems:\\\" + powerName"));
-        assertTrue(facade.contains("\\\"CombatPlus:\\\" + mechanicName"));
+        assertTrue(facade.contains("\"MagicSpells:\" + spellName"));
+        assertTrue(facade.contains("\"RPGItems:\" + powerName"));
+        assertTrue(facade.contains("\"CombatPlus:\" + mechanicName"));
     }
 
     @Test
