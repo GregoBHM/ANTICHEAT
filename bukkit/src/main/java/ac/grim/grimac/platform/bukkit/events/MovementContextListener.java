@@ -20,8 +20,9 @@ import java.util.Locale;
  *
  * <p>This intentionally has no hard dependency on MagicSpells, RPGItems or CombatPlus. Most movement powers
  * eventually become a server velocity, teleport, flight grant or cancelled move event; recording those events
- * gives Grim a narrow trusted context without globally exempting the player. Plugins that need exact spell/power
- * attribution can still call GrimIntegrationAPI directly.</p>
+ * gives Grim a narrow observed context without globally exempting the player. Observed contexts may reduce
+ * confidence in ambiguous movement but never create a trusted velocity bypass. Plugins that need exact
+ * spell/power attribution can still call GrimIntegrationAPI directly.</p>
  */
 public final class MovementContextListener implements Listener {
 
