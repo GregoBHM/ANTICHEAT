@@ -516,7 +516,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             advantageGained *= setbackDecayMultiplier;
             specialEnvironmentFlagStreak = 0;
             specialEnvironmentCorrectionStreak = 0;
-            specialEnvironmentFlagKey = "";
 
             if (enforcementEligible && !enforcementQuarantineActive) {
                 enforcementStrongStreak = 0;
