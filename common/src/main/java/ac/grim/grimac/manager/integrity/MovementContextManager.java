@@ -175,7 +175,6 @@ public final class MovementContextManager {
         if (list.isEmpty()) contexts.remove(uuid, list);
     }
 
-    public void clearSourcePrefix(@NotNull String sourcePrefix) {
     public void clearSourcePrefix(
             @NotNull UUID uuid,
             @NotNull String sourcePrefix
@@ -188,6 +187,7 @@ public final class MovementContextManager {
         if (list.isEmpty()) contexts.remove(uuid, list);
     }
 
+    public void clearSourcePrefix(@NotNull String sourcePrefix) {
         String prefix = sanitizeSource(sourcePrefix);
         contexts.forEach((uuid, list) -> {
             list.removeIf(context ->

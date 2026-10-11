@@ -87,7 +87,6 @@ public final class InteractionContextManager {
         if (list.isEmpty()) contexts.remove(uuid, list);
     }
 
-    public void clearSourcePrefix(@NotNull String sourcePrefix) {
     public void clearSourcePrefix(
             @NotNull UUID uuid,
             @NotNull String sourcePrefix
@@ -100,6 +99,7 @@ public final class InteractionContextManager {
         if (list.isEmpty()) contexts.remove(uuid, list);
     }
 
+    public void clearSourcePrefix(@NotNull String sourcePrefix) {
         String prefix = sanitize(sourcePrefix);
         contexts.forEach((uuid, list) -> {
             list.removeIf(context ->
