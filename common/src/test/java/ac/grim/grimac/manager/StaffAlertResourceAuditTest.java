@@ -21,6 +21,7 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("config-version: 4"), path.toString());
                 assertTrue(text.contains("verbose-format: \"[alert] &7%verbose%\""), path.toString());
                 assertTrue(text.contains("alerts-format-proxy: \"&8[proxy] [alert]\""), path.toString());
+                assertTrue(text.contains("%component%"), path.toString());
             }
         }
     }
@@ -31,10 +32,11 @@ class StaffAlertResourceAuditTest {
         try (Stream<Path> files = Files.list(dir)) {
             for (Path path : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
                 String text = Files.readString(path);
-                assertTrue(text.contains("config-version: 29"), path.toString());
+                assertTrue(text.contains("config-version: 30"), path.toString());
                 assertTrue(text.contains("correction-diagnostics:"), path.toString());
                 assertTrue(text.contains("mode: verbose"), path.toString());
-                assertTrue(text.contains("format: \"&8[correction] &7%check_name% &f%verbose%\""), path.toString());
+                assertTrue(text.contains("format: \"&8[correction] &7%check_name% &8[%component%] &f%verbose%\""), path.toString());
+                assertTrue(text.contains("component-buckets: false"), path.toString());
                 assertTrue(text.contains("session-end-grace-ms: 500"), path.toString());
                 assertTrue(text.contains("context-policy:"), path.toString());
                 assertTrue(text.contains("special-environment:"), path.toString());
@@ -52,8 +54,13 @@ class StaffAlertResourceAuditTest {
         try (Stream<Path> files = Files.list(dir)) {
             for (Path path : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
                 String text = Files.readString(path);
+                assertGroupUsesCheckScope(text, "Simulation", path);
                 assertGroupUsesCheckScope(text, "Knockback", path);
                 assertGroupUsesCheckScope(text, "Misc", path);
+                assertTrue(text.contains("stable:grim.prediction.simulation"), path.toString());
+                assertTrue(text.contains("stable:grim.velocity.anti_knockback"), path.toString());
+                assertTrue(text.contains("stable:grim.movement.noslow"), path.toString());
+                assertTrue(text.contains("stable:grim.interaction.fast_consume"), path.toString());
             }
         }
     }
