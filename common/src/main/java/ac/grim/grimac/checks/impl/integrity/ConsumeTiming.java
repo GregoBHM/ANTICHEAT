@@ -173,12 +173,14 @@ public final class ConsumeTiming extends Check {
     }
 
     public synchronized void reset() {
+        pendingDecision = null;
         player.itemUseSessionTracker.clear();
     }
 
     @Override
     public void onReload(@NotNull ConfigManager config) {
         super.onReload(config);
+        clearPendingDecision();
 
         long staleExtraMillis = clamp(
                 config.getLongElse(
