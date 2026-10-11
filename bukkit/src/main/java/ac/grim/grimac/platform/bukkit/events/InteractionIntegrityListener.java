@@ -156,6 +156,7 @@ public final class InteractionIntegrityListener implements Listener {
             grim.checkManager.get(ConsumeTiming.class).reset();
             grim.checkManager.get(PacketBurst.class).reset();
             grim.checkManager.get(AttackFrequency.class).reset();
+            grim.detectionEpisodeManager.clearAll();
         });
     }
 
