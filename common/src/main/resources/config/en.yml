@@ -307,8 +307,8 @@ movement-release-guard:
     cooldown-ms: 500
     retention-seconds: 120
 
-# Automatically records server-authored movement as narrow trusted contexts.
-# This covers many MagicSpells/RPGItems mechanics without globally bypassing Grim.
+# Automatically records server-authored movement as narrow OBSERVED contexts.
+# These never create a trusted velocity bypass; explicit plugin API contexts are required for trust.
 movement-context-auto:
     enabled: true
     velocity-duration-ms: 900
@@ -455,8 +455,8 @@ config-version: 29
 
 # Staff-only diagnostic alert emitted only when Grim actually sends a movement
 # correction/resync. It does not add VL and does not execute punishments.
-# The normal Grim alert style is preserved; the verbose part tells you what the
-# correction was related to, e.g. related=cobweb or related=normal,blink,packet_burst.
+# By default correction diagnostics are visible only to /grim verbose listeners.
+# They never add VL or execute punishments; normal mode is available only for explicit debugging.
 correction-diagnostics:
     enabled: true
     # off = hidden, verbose = only /grim verbose listeners, normal = normal staff alerts.
