@@ -224,7 +224,7 @@ public class PacketSelfMetadataListener extends PacketListenerAbstract {
                                 player.packetStateData.itemInUseHand = hand;
                                 var item = player.inventory.getItemInHand(hand);
                                 if (item != null) {
-                                    player.itemUseSessionTracker.begin(
+                                    player.itemUseSessionTracker.confirmServerActive(
                                             hand,
                                             item,
                                             System.currentTimeMillis(),
