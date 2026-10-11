@@ -2,6 +2,7 @@ package ac.grim.grimac.events.packets;
 
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.player.GrimPlayer;
+import ac.grim.grimac.utils.item.ItemUseResetPolicy;
 import ac.grim.grimac.utils.data.SprintingState;
 import ac.grim.grimac.utils.nmsutil.WatchableIndexUtil;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
@@ -217,7 +218,23 @@ public class PacketSelfMetadataListener extends PacketListenerAbstract {
                             player.packetStateData.setSlowedByUsingItem(isActive);
 
                             if (isActive) {
-                                player.packetStateData.itemInUseHand = isOffhand ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+                                InteractionHand hand = isOffhand
+                                        ? InteractionHand.OFF_HAND
+                                        : InteractionHand.MAIN_HAND;
+                                player.packetStateData.itemInUseHand = hand;
+                                var item = player.inventory.getItemInHand(hand);
+                                if (item != null) {
+                                    player.itemUseSessionTracker.begin(
+                                            hand,
+                                            item,
+                                            System.currentTimeMillis(),
+                                            markedTransaction
+                                    );
+                                }
+                            } else {
+                                player.itemUseSessionTracker.end(
+                                        ItemUseResetPolicy.Reason.SERVER_METADATA
+                                );
                             }
                         }
                     });
