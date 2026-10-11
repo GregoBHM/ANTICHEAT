@@ -52,7 +52,11 @@ public final class ItemUseResetPolicy {
 
         return switch (reason) {
             case INVENTORY_REFRESH ->
-                    !preserveInventoryRefresh(true, sameHand, sameItemType);
+                    !preserveInventoryRefresh(
+                            predictedUsingItem,
+                            sameHand,
+                            sameItemType
+                    );
             case REPEATED_USE ->
                     !preserveRepeatedUse(legacyClient, true, sameHand);
             case ATTACK, REAL_SLOT_CHANGE, REAL_ITEM_CHANGE, OPEN_WINDOW ->
