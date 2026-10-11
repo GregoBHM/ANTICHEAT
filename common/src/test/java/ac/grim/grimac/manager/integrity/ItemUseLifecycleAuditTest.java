@@ -112,8 +112,8 @@ class ItemUseLifecycleAuditTest {
         String teleport = source.substring(teleportStart, worldStart);
         String worldChange = source.substring(worldStart, gameModeStart);
 
-        assertTrue(teleport.contains("clear(event.getPlayer().getUniqueId(), false)"));
-        assertTrue(worldChange.contains("clear(event.getPlayer().getUniqueId(), false)"));
+        assertTrue(teleport.contains("clearLifecycle(event.getPlayer().getUniqueId())"));
+        assertTrue(worldChange.contains("clearLifecycle(event.getPlayer().getUniqueId())"));
         assertFalse(teleport.contains("ConsumeTiming.class).reset()"));
         assertFalse(worldChange.contains("ConsumeTiming.class).reset()"));
     }
@@ -131,6 +131,61 @@ class ItemUseLifecycleAuditTest {
         assertTrue(source.contains("public void onQuit(PlayerQuitEvent event)"));
         assertTrue(source.contains("PENDING_CONSUME.remove(uuid)"));
         assertTrue(source.contains("suppressesConsumeTiming(uuid)"));
+    }
+
+    @Test
+    void lifecycleCleanupNeverResetsPhysicalSessionThroughConsumeTiming()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
+        ));
+
+        int start = source.indexOf("private static void clearLifecycle(");
+        int end = source.indexOf("private static GrimPlayer grim(", start);
+        String method = source.substring(start, end);
+
+        assertFalse(method.contains("ConsumeTiming.class"));
+        assertFalse(method.contains("itemUseSessionTracker"));
+    }
+
+    @Test
+    void movementLifecycleCleanupDoesNotDependOnAutoObservationSetting()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
+        ));
+
+        int teleportStart = source.indexOf("public void onTeleport(");
+        int worldStart = source.indexOf("public void onWorldChange(", teleportStart);
+        int gameModeStart = source.indexOf("public void onGameModeChange(", worldStart);
+        int cancelledMoveStart = source.indexOf("public void onCancelledMove(", gameModeStart);
+
+        String teleport = source.substring(teleportStart, worldStart);
+        String world = source.substring(worldStart, gameModeStart);
+        String gameMode = source.substring(gameModeStart, cancelledMoveStart);
+
+        assertTrue(teleport.indexOf("contexts.clear(") < teleport.indexOf("if (!enabled()) return"));
+        assertTrue(world.indexOf("contexts.clear(") < world.indexOf("if (!enabled()) return"));
+        assertTrue(gameMode.contains(".clear(event.getPlayer().getUniqueId())"));
+        assertFalse(gameMode.contains("if (!enabled()) return"));
+    }
+
+    @Test
+    void lateTrustedConsumeContextIsCheckedBeforeDecisionApplication()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
+        ));
+
+        int monitor = source.indexOf("public void onConsumeMonitor(");
+        int nextHandler = source.indexOf("@EventHandler", monitor + 1);
+        String method = source.substring(monitor, nextHandler);
+
+        int trustedCheck = method.indexOf("suppressesConsumeTiming(uuid)");
+        int applyDecision = method.indexOf("applyServerConsumeDecision(decision)");
+
+        assertTrue(trustedCheck >= 0);
+        assertTrue(applyDecision > trustedCheck);
     }
 
     @Test
