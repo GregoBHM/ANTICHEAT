@@ -146,7 +146,10 @@ class ItemUseLifecycleAuditTest {
         int end = source.indexOf("private static GrimPlayer grim(", start);
         String method = source.substring(start, end);
 
-        assertFalse(method.contains("ConsumeTiming.class"));
+        assertTrue(method.contains(
+                "ConsumeTiming.class).clearPendingDecision()"
+        ));
+        assertFalse(method.contains("ConsumeTiming.class).reset()"));
         assertFalse(method.contains("itemUseSessionTracker"));
     }
 
@@ -260,6 +263,42 @@ class ItemUseLifecycleAuditTest {
         assertTrue(source.contains(
                 ".clearSourcePrefix(playerId, sourcePlugin)"
         ));
+    }
+
+
+    @Test
+    void cancelledConsumeUsesExplicitLifecycleReasonInsteadOfGenericClear()
+            throws Exception {
+        String listener = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
+        ));
+        String consume = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
+        ));
+        String tracker = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/utils/item/ItemUseSessionTracker.java"
+        ));
+
+        assertTrue(listener.contains("consume.cancelServerConsume("));
+        assertFalse(listener.contains("consume::reset"));
+        assertTrue(consume.contains("itemUseSessionTracker.cancelConsume("));
+        assertTrue(tracker.contains("ItemUseResetPolicy.Reason.PLUGIN_CANCELLED"));
+    }
+
+    @Test
+    void cancelledCompletionCannotRemainReusableAsSuccessfulConsume()
+            throws Exception {
+        String tracker = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/utils/item/ItemUseSessionTracker.java"
+        ));
+
+        int start = tracker.indexOf("public synchronized void cancelConsume(");
+        int end = tracker.indexOf("public synchronized void clear()", start);
+        String method = tracker.substring(start, end);
+
+        assertTrue(method.contains("isConsumeCompletionReason(lastEnded.endReason)"));
+        assertTrue(method.contains("withEndReason("));
+        assertTrue(method.contains("Reason.PLUGIN_CANCELLED"));
     }
 
 }

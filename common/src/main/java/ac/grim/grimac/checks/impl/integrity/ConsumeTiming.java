@@ -128,6 +128,14 @@ public final class ConsumeTiming extends Check {
         pendingDecision = null;
     }
 
+    public synchronized void cancelServerConsume(long nowMillis) {
+        pendingDecision = null;
+        player.itemUseSessionTracker.cancelConsume(
+                nowMillis,
+                consumeSessionGraceMillis
+        );
+    }
+
     public void applyServerConsumeDecision(@NotNull ConsumeDecision decision) {
         if (decision.reward) {
             reward();

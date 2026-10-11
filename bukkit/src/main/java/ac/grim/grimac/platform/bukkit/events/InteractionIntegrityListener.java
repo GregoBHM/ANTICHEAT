@@ -35,7 +35,7 @@ public final class InteractionIntegrityListener implements Listener {
         if (consume == null) return;
 
         if (event.isCancelled()) {
-            consume.clearPendingDecision();
+            consume.cancelServerConsume(System.currentTimeMillis());
             return;
         }
 
@@ -75,12 +75,14 @@ public final class InteractionIntegrityListener implements Listener {
         // a Grim prevention decision.
         if (GrimAPI.INSTANCE.getInteractionContextManager()
                 .suppressesConsumeTiming(uuid)) {
-            grim.runSafely(consume::reset);
+            if (event.isCancelled()) {
+                consume.cancelServerConsume(System.currentTimeMillis());
+            }
             return;
         }
 
         if (event.isCancelled() && (decision == null || !decision.shouldPrevent())) {
-            grim.runSafely(consume::reset);
+            consume.cancelServerConsume(System.currentTimeMillis());
             return;
         }
 

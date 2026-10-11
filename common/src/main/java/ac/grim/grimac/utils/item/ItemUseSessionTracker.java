@@ -211,6 +211,28 @@ public final class ItemUseSessionTracker {
         endInternal(reason, nowMillis);
     }
 
+    public synchronized void cancelConsume(
+            long nowMillis,
+            long recentEndGraceMillis
+    ) {
+        if (active != null) {
+            endInternal(ItemUseResetPolicy.Reason.PLUGIN_CANCELLED, nowMillis);
+            return;
+        }
+
+        long grace = Math.max(0L, recentEndGraceMillis);
+        long age = nowMillis - lastEndedAtMillis;
+        if (lastEnded != null
+                && age >= 0L
+                && age <= grace
+                && isConsumeCompletionReason(lastEnded.endReason)) {
+            lastEnded = lastEnded.withEndReason(
+                    ItemUseResetPolicy.Reason.PLUGIN_CANCELLED
+            );
+            lastEndedAtMillis = nowMillis;
+        }
+    }
+
     public synchronized void clear() {
         if (active != null) {
             endInternal(ItemUseResetPolicy.Reason.CLEAR, System.currentTimeMillis());
