@@ -79,8 +79,7 @@ public final class InteractionIntegrityListener implements Listener {
         // instead of applying a FastConsume decision created earlier in the
         // same Bukkit event. Generic cancellation alone is not enough to bypass
         // a Grim prevention decision.
-        if (event.isCancelled()
-                && GrimAPI.INSTANCE.getInteractionContextManager()
+        if (GrimAPI.INSTANCE.getInteractionContextManager()
                 .suppressesConsumeTiming(uuid)) {
             grim.runSafely(consume::reset);
             return;
