@@ -135,6 +135,18 @@ NoSlow:
     setbackvl: 5
     # Scade atunci când jucătorul folosește un item ȘI este încetinit de acesta
     decay: 0.05
+    context-policy:
+        # Keep NoSlow strict in normal physics while requiring persistent,
+        # impossible evidence in cobweb/stuck/liquid/velocity transitions.
+        enabled: true
+        special-minimum-offset: 0.12
+        velocity-minimum-offset: 0.035
+        recovery-minimum-offset: 0.15
+        strong-consecutive-ticks: 3
+        recovery-ticks: 4
+        episode-window-ms: 1200
+        flag-interval-ms: 600
+        max-flags-per-episode: 1
 
 Knockback:
     # Cu cât ar trebui să înmulțim avantajul total atunci când jucătorul este legitim
@@ -152,6 +164,16 @@ Knockback:
     max-ceiling: 4
 
     # v22: AntiKB owns velocity mitigation instead of teleporting the player.
+    # Special physics may legitimately distort the server velocity.
+    # Keep measuring, but require strong persistent evidence and cap VL per episode.
+    special-environment:
+        enabled: true
+        minimum-offset: 0.08
+        strong-consecutive-ticks: 3
+        episode-window-ms: 1500
+        flag-interval-ms: 900
+        max-flags-per-episode: 1
+
     enforcement:
         enabled: false
         cooldown-ms: 120
@@ -428,7 +450,7 @@ max-ping-firework-boost: 1000
 update-permission-ticks: -1
 
 config-flavor: V2
-config-version: 28
+config-version: 29
 
 # Staff-only diagnostic alert emitted only when Grim actually sends a movement
 # correction/resync. It does not add VL and does not execute punishments.
@@ -436,8 +458,11 @@ config-version: 28
 # correction was related to, e.g. related=cobweb or related=normal,blink,packet_burst.
 correction-diagnostics:
     enabled: true
+    # off = hidden, verbose = only /grim verbose listeners, normal = normal staff alerts.
+    # v10 defaults to verbose so corrections never look like a second violation.
+    mode: verbose
     cooldown-ms: 125
-    format: "[alert] &7%verbose%"
+    format: "&8[correction] &7%check_name% &f%verbose%"
 
 # Preserves predicted fall debt across freeze/Blink stalls so packet silence cannot erase fall damage bookkeeping.
 fall-integrity:
@@ -521,6 +546,9 @@ interaction-integrity:
         minimum-ratio: 0.72
         absolute-lenience-ms: 120
         stale-extra-ms: 3000
+        # Accept a just-finished physical session when Bukkit fires the consume event.
+        # Repeated USE_ITEM packets never restart the session clock.
+        session-end-grace-ms: 500
         flag-cooldown-ms: 1200
         require-item-match: true
         prevent:
@@ -651,6 +679,11 @@ movement-enforcement:
         disable-short-blink: true
         # v22: special physics needs persistent, clearly impossible raw movement before correction.
         correction-strong-ticks: 3
+        # Special-physics Simulation flags are evidence episodes, not one VL per tick.
+        flag-strong-ticks: 3
+        flag-episode-window-ms: 1500
+        flag-interval-ms: 900
+        max-flags-per-episode: 1
 
     # Prediction evidence that is strong enough to stop the current position
     # from replacing Grim's last known safe position.
