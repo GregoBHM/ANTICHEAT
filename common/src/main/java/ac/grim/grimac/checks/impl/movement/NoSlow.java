@@ -38,7 +38,7 @@ public class NoSlow extends Check implements PostPredictionListener {
     private int contextualStrongStreak;
     private int recoveryTicksRemaining;
     private boolean wasSpecialOrVelocity;
-    private String lastContextComponent = "";
+    private String lastContextEvidenceKey = "";
 
     public NoSlow(GrimPlayer player) {
         super(player);
@@ -59,7 +59,12 @@ public class NoSlow extends Check implements PostPredictionListener {
         // consulted because PredictionEngine temporarily flips it while testing
         // alternate vectors and NoSlow only has usable evidence when the final
         // predicted state agrees that the item is being used.
-        if (session == null || !player.packetStateData.isSlowedByUsingItem()) {
+        if (session == null) {
+            resetTickState();
+            resetContextState();
+            return;
+        }
+        if (!player.packetStateData.isSlowedByUsingItem()) {
             resetTickState();
             return;
         }
@@ -76,16 +81,31 @@ public class NoSlow extends Check implements PostPredictionListener {
         Set<EnvironmentContext> contexts = environment.classify(player);
         boolean specialEnvironment =
                 environment.isSpecialMovementEnvironment(contexts);
-        boolean velocityContext = GrimAPI.INSTANCE
-                .getMovementContextManager()
-                .hasAnyVelocityContext(player.uuid);
+        var movementContexts = GrimAPI.INSTANCE.getMovementContextManager();
+        boolean trustedVelocityContext =
+                movementContexts.hasTrustedVelocityContext(player.uuid);
+        boolean observedVelocityContext =
+                movementContexts.hasObservedVelocityContext(player.uuid);
 
         if (!contextPolicyEnabled) {
             handleNormal(session);
             return;
         }
 
-        if (specialEnvironment || velocityContext) {
+        if (trustedVelocityContext) {
+            // A trusted plugin-authorized dash/launch/pull can invalidate
+            // vanilla NoSlow movement evidence for a very short bounded window.
+            // This suppresses only NoSlow evidence; it does not affect Phase,
+            // Reach, Timer, PacketOrder or FastConsume.
+            recoveryTicksRemaining = recoveryTicks;
+            wasSpecialOrVelocity = true;
+            contextualStrongStreak = 0;
+            lastContextEvidenceKey = "";
+            resetTickState();
+            return;
+        }
+
+        if (specialEnvironment || observedVelocityContext) {
             recoveryTicksRemaining = recoveryTicks;
             wasSpecialOrVelocity = true;
             double contextualMinimum = specialEnvironment
@@ -95,22 +115,47 @@ public class NoSlow extends Check implements PostPredictionListener {
             )
                     : velocityMinimumOffset;
 
+            DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                    environment.resolveMovementEvidenceEpisode(
+                            player,
+                            contexts,
+                            observedVelocityContext,
+                            false,
+                            false
+                    );
+
             handleContextual(
                     session,
-                    componentFor(contexts, velocityContext, false),
+                    componentFor(
+                            contexts,
+                            observedVelocityContext,
+                            false
+                    ),
                     contextualMinimum,
-                    environment.summary(contexts)
+                    environment.summary(contexts),
+                    sharedEpisode,
+                    environment.evidenceEpisodeMaxTotalFlags()
             );
             return;
         }
 
         if (wasSpecialOrVelocity && recoveryTicksRemaining > 0) {
             recoveryTicksRemaining--;
+            DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                    environment.resolveMovementEvidenceEpisode(
+                            player,
+                            contexts,
+                            false,
+                            false,
+                            true
+                    );
             handleContextual(
                     session,
                     "noslow.transition",
                     recoveryMinimumOffset,
-                    "recovery"
+                    "recovery",
+                    sharedEpisode,
+                    environment.evidenceEpisodeMaxTotalFlags()
             );
             if (recoveryTicksRemaining == 0) {
                 wasSpecialOrVelocity = false;
@@ -145,17 +190,26 @@ public class NoSlow extends Check implements PostPredictionListener {
             @NotNull ItemUseSessionTracker.Session session,
             @NotNull String component,
             double minimumOffset,
-            @NotNull String contextKey
+            @NotNull String contextKey,
+            @NotNull DetectionEpisodeManager.SharedEpisode sharedEpisode,
+            int maxSharedFlags
     ) {
         flaggedLastTick = false;
 
-        if (!component.equals(lastContextComponent)) {
+        String evidenceKey = session.sessionId()
+                + "|" + component
+                + "|" + contextKey
+                + "|" + sharedEpisode.token();
+
+        if (!evidenceKey.equals(lastContextEvidenceKey)) {
             contextualStrongStreak = 0;
-            lastContextComponent = component;
+            lastContextEvidenceKey = evidenceKey;
         }
 
         if (bestOffset <= minimumOffset) {
-            reward();
+            // Ambiguous special-physics evidence is neutral. Do not award
+            // decay here or players could intentionally enter a web/liquid
+            // to wash previously accumulated NoSlow VL.
             contextualStrongStreak = 0;
             bestOffset = 1.0D;
             return;
@@ -167,9 +221,7 @@ public class NoSlow extends Check implements PostPredictionListener {
             return;
         }
 
-        String episodeKey = session.sessionId()
-                + "|" + component
-                + "|" + contextKey;
+        String episodeKey = evidenceKey;
 
         DetectionEpisodeManager.Decision decision =
                 player.detectionEpisodeManager.evaluate(
@@ -177,7 +229,9 @@ public class NoSlow extends Check implements PostPredictionListener {
                         episodeKey,
                         episodeWindowMillis,
                         episodeFlagIntervalMillis,
-                        maxFlagsPerEpisode
+                        maxFlagsPerEpisode,
+                        sharedEpisode,
+                        maxSharedFlags
                 );
 
         if (decision.allowFlag()) {
@@ -187,7 +241,9 @@ public class NoSlow extends Check implements PostPredictionListener {
                             + " session=" + session.sessionId()
                             + " context=" + contextKey
                             + " strong=" + contextualStrongStreak
+                            + " episode=" + sharedEpisode.token()
                             + " episodeFlags=" + decision.flags()
+                            + " sharedFlags=" + decision.sharedFlags()
             );
         }
 
@@ -228,7 +284,7 @@ public class NoSlow extends Check implements PostPredictionListener {
         contextualStrongStreak = 0;
         recoveryTicksRemaining = 0;
         wasSpecialOrVelocity = false;
-        lastContextComponent = "";
+        lastContextEvidenceKey = "";
     }
 
     public void handlePredictionAnalysis(double offset) {

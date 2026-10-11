@@ -59,6 +59,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private long specialEnvironmentFlagIntervalMillis;
     private int specialEnvironmentMaxFlagsPerEpisode;
     private int specialEnvironmentFlagStreak;
+    private String specialEnvironmentFlagKey = "";
     private int environmentRecoveryTicksRemaining;
     private double environmentRecoveryMinRawOffset;
     private boolean wasSpecialEnvironment;
@@ -179,7 +180,13 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             );
         }
 
-        if (specialEnvironment) {
+        if (trustedVelocityContext) {
+            environmentRecoveryTicksRemaining = environmentRecoveryTicks;
+            environmentRecoveryMinRawOffset = Math.max(
+                    specialEnvironmentCorrectionMinRawOffset,
+                    observedVelocityMinRawOffset
+            );
+        } else if (specialEnvironment) {
             environmentRecoveryTicksRemaining = environmentRecoveryTicks;
             environmentRecoveryMinRawOffset =
                     specialEnvironmentCorrectionMinRawOffset;
@@ -265,6 +272,20 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             return;
         }
 
+        if (trustedVelocityContext) {
+            // Trusted plugin-authored velocity is explicitly incompatible with
+            // vanilla Simulation for a short bounded window. Keep the predictor
+            // running, but do not turn the authorized dash/launch/pull into
+            // Simulation VL or movement debt. Other checks remain untouched.
+            advantageGained = 0.0D;
+            specialEnvironmentFlagStreak = 0;
+            specialEnvironmentFlagKey = "";
+            resetEnforcementState();
+            resetShortBlinkState();
+            removeOffsetLenience();
+            return;
+        }
+
         // Buffered movement that v20 already cancelled must not also become
         // Simulation VL. The one-shot Blink owner has already removed that
         // advantage and records the release as ConnectionStall evidence.
@@ -293,9 +314,29 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             if (environmentProtectedWindow) {
                 advantageGained = 0.0D;
 
-                if (offset < specialEnvironmentCorrectionMinRawOffset) {
+                boolean recoveryContext = !specialEnvironment
+                        && environmentRecoveryTicksRemaining > 0;
+                DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                        environment.resolveMovementEvidenceEpisode(
+                                player,
+                                environmentContexts,
+                                observedVelocityContext,
+                                false,
+                                recoveryContext
+                        );
+                String evidenceKey = simulationComponent
+                        + "|" + sharedEpisode.token();
+
+                if (!evidenceKey.equals(specialEnvironmentFlagKey)) {
                     specialEnvironmentFlagStreak = 0;
-                    reward();
+                    specialEnvironmentFlagKey = evidenceKey;
+                }
+
+                if (offset < specialEnvironmentCorrectionMinRawOffset) {
+                    // Ambiguous special-physics movement is neutral. Do not
+                    // decay existing Simulation VL just because the player is
+                    // currently in a cobweb/liquid/recovery window.
+                    specialEnvironmentFlagStreak = 0;
                     removeOffsetLenience();
                     return;
                 }
@@ -307,8 +348,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     return;
                 }
 
-                String episodeKey = simulationComponent
-                        + "|" + environment.summary(environmentContexts);
+                String episodeKey = evidenceKey;
 
                 DetectionEpisodeManager.Decision decision =
                         player.detectionEpisodeManager.evaluate(
@@ -316,7 +356,9 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                                 episodeKey,
                                 specialEnvironmentFlagEpisodeWindowMillis,
                                 specialEnvironmentFlagIntervalMillis,
-                                specialEnvironmentMaxFlagsPerEpisode
+                                specialEnvironmentMaxFlagsPerEpisode,
+                                sharedEpisode,
+                                environment.evidenceEpisodeMaxTotalFlags()
                         );
 
                 if (!decision.allowFlag()) {
@@ -325,6 +367,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 }
             } else {
                 specialEnvironmentFlagStreak = 0;
+                specialEnvironmentFlagKey = "";
             }
 
             synchronized (flags) {
@@ -336,6 +379,8 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         () -> humanFormattedOffset(offset)
                                 + " context="
                                 + environment.summary(environmentContexts)
+                                + " episode=" + sharedEpisode.token()
+                                + " sharedFlags=" + decision.sharedFlags()
                                 + " /gl " + flagId
                 );
 
@@ -408,6 +453,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         } else {
             advantageGained *= setbackDecayMultiplier;
             specialEnvironmentFlagStreak = 0;
+            specialEnvironmentFlagKey = "";
 
             if (enforcementEligible && !enforcementQuarantineActive) {
                 enforcementStrongStreak = 0;
@@ -547,6 +593,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         wasSpecialEnvironment = false;
         specialEnvironmentCorrectionStreak = 0;
         specialEnvironmentFlagStreak = 0;
+        specialEnvironmentFlagKey = "";
     }
 
     private static @NotNull String simulationComponent(
@@ -555,7 +602,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             boolean recovery
     ) {
         if (recovery) return "simulation.transition";
-        if (observedVelocity) return "simulation.plugin-velocity";
         if (contexts.contains(EnvironmentContext.COBWEB)) {
             return "simulation.cobweb";
         }
@@ -578,6 +624,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         if (contexts.contains(EnvironmentContext.COMPLEX_COLLISION)) {
             return "simulation.complex-collision";
         }
+        if (observedVelocity) return "simulation.plugin-velocity";
         return "simulation.normal";
     }
 
