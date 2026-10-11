@@ -121,8 +121,7 @@ public class PunishmentManager implements ConfigReloadable {
                                 300
                         );
 
-                ThresholdScope thresholdScope =
-                        ThresholdScope.parse(map.get("threshold-scope"));
+                Object thresholdScopeRaw = map.get("threshold-scope");
 
                 List<ParsedCommand> parsed =
                         new ArrayList<>();
@@ -208,6 +207,12 @@ public class PunishmentManager implements ConfigReloadable {
                         checksList.remove(check);
                     }
                 }
+
+                ThresholdScope thresholdScope =
+                        thresholdScopeRaw == null
+                                && defaultsToPerCheckScope(checksList)
+                                ? ThresholdScope.CHECK
+                                : ThresholdScope.parse(thresholdScopeRaw);
 
                 for (AbstractCheck check : checksList) {
                     check.setEnabled(true);
@@ -930,6 +935,20 @@ public class PunishmentManager implements ConfigReloadable {
         }
 
         return Double.NaN;
+    }
+
+    private static boolean defaultsToPerCheckScope(
+            List<AbstractCheck> checks
+    ) {
+        for (AbstractCheck check : checks) {
+            String key = check.getStableKey();
+            if ("grim.movement.noslow".equals(key)
+                    || "grim.interaction.fast_consume".equals(key)
+                    || "grim.velocity.anti_knockback".equals(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String aggregationKey(Check check) {
