@@ -9,7 +9,11 @@ public final class LegacyItemUseResetPolicy {
             boolean predictedUsingItem,
             boolean sameHand
     ) {
-        return legacyClient && predictedUsingItem && sameHand;
+        return ItemUseResetPolicy.preserveRepeatedUse(
+                legacyClient,
+                predictedUsingItem,
+                sameHand
+        );
     }
 
     public static boolean preserveInventoryRefresh(
@@ -18,6 +22,10 @@ public final class LegacyItemUseResetPolicy {
             boolean sameHand,
             boolean sameItemType
     ) {
-        return legacyClient && predictedUsingItem && sameHand && sameItemType;
+        return legacyClient && ItemUseResetPolicy.preserveInventoryRefresh(
+                predictedUsingItem,
+                sameHand,
+                sameItemType
+        );
     }
 }
