@@ -136,24 +136,24 @@ public final class InteractionIntegrityListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onDeath(PlayerDeathEvent event) {
-        clear(event.getEntity().getUniqueId(), true);
+        clearLifecycle(event.getEntity().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onRespawn(PlayerRespawnEvent event) {
-        clear(event.getPlayer().getUniqueId(), true);
+        clearLifecycle(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         // Teleport invalidates pending interaction evidence but does not prove
         // that the client stopped physically using the held item.
-        clear(event.getPlayer().getUniqueId(), false);
+        clearLifecycle(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldChange(PlayerChangedWorldEvent event) {
-        clear(event.getPlayer().getUniqueId(), false);
+        clearLifecycle(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -161,7 +161,7 @@ public final class InteractionIntegrityListener implements Listener {
         // Any gamemode transition invalidates the previous interaction state.
         // CombatIntegrityListener ends the physical use with the explicit
         // GAMEMODE_CHANGE reason.
-        clear(event.getPlayer().getUniqueId(), true);
+        clearLifecycle(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -171,16 +171,18 @@ public final class InteractionIntegrityListener implements Listener {
         GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
     }
 
-    private static void clear(UUID uuid, boolean resetConsume) {
+    private static void clearLifecycle(UUID uuid) {
         PENDING_CONSUME.remove(uuid);
         GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
         GrimPlayer grim = grim(uuid);
         if (grim == null) return;
         grim.runSafely(() -> {
             grim.checkManager.get(InventoryFrequency.class).reset();
-            if (resetConsume) {
-                grim.checkManager.get(ConsumeTiming.class).reset();
-            }
+            // Physical item-use lifecycle is owned by the explicit DEATH,
+            // RESPAWN and GAMEMODE_CHANGE reset paths. Teleport/world change
+            // intentionally preserve it. Do not erase the session here with
+            // ConsumeTiming.reset(), which would collapse the explicit reason
+            // into a generic CLEAR depending on Bukkit listener order.
             grim.checkManager.get(PacketBurst.class).reset();
             grim.checkManager.get(AttackFrequency.class).reset();
             grim.detectionEpisodeManager.clearAll();
