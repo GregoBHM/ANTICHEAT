@@ -69,7 +69,7 @@ class MovementDetectionPolicyAuditTest {
 
         assertTrue(simulation.contains("hasTrustedVelocityContext"));
         assertTrue(simulation.contains("resolveMovementEvidenceEpisode"));
-        assertTrue(simulation.contains("specialEnvironmentCorrectionKey"));
+        assertTrue(simulation.contains("specialEnvironmentEpisodeFlagAccepted"));
         assertFalse(phase.contains("hasTrustedVelocityContext"));
         assertFalse(fastConsume.contains("hasTrustedVelocityContext"));
         assertFalse(timer.contains("hasTrustedVelocityContext"));
@@ -171,6 +171,37 @@ class MovementDetectionPolicyAuditTest {
 
         assertTrue(setback >= 0);
         assertTrue(episode > setback);
+    }
+
+
+    @Test
+    void skippedPredictionBreaksSpecialEvidenceConsecutiveness()
+            throws IOException {
+        String antiKb = read(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        );
+        String simulation = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        int kbSkip = antiKb.indexOf(
+                "if (!predictionComplete.isChecked() || predictionComplete.getData().isTeleport())"
+        );
+        int kbReturn = antiKb.indexOf("return;", kbSkip);
+        String kbBlock = antiKb.substring(kbSkip, kbReturn);
+
+        assertTrue(kbBlock.contains("specialEvidenceStreak = 0"));
+        assertTrue(kbBlock.contains("specialEvidenceKey = \"\""));
+
+        int eventCancel = simulation.indexOf(
+                "if (COMPLETE_CHANNEL.fire(player, this, offset))"
+        );
+        int eventReturn = simulation.indexOf("return;", eventCancel);
+        String eventBlock = simulation.substring(eventCancel, eventReturn);
+
+        assertTrue(eventBlock.contains("specialEnvironmentFlagStreak = 0"));
+        assertTrue(eventBlock.contains("specialEnvironmentCorrectionStreak = 0"));
+        assertTrue(eventBlock.contains("specialEnvironmentEpisodeFlagAccepted = false"));
     }
 
     private static String read(String path) throws IOException {

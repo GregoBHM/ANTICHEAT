@@ -194,6 +194,8 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         double offset = predictionComplete.getOffset();
         if (!predictionComplete.isChecked() || predictionComplete.getData().isTeleport()) {
             forceExempt();
+            specialEvidenceStreak = 0;
+            specialEvidenceKey = "";
             return;
         }
 
@@ -419,7 +421,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         environment.evidenceEpisodeMaxTotalFlags()
                 );
 
-        if (!decision.allowFlag() || data.isSetback) {
+        if (!decision.allowFlag()) {
             return;
         }
 

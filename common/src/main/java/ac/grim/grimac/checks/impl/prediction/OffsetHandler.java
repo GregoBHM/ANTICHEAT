@@ -272,6 +272,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         if (COMPLETE_CHANNEL.fire(player, this, offset)) {
             resetEnforcementState();
             resetShortBlinkState();
+            specialEnvironmentFlagStreak = 0;
+            specialEnvironmentCorrectionStreak = 0;
+            specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentFlagKey = "";
             return;
         }
 
@@ -295,6 +299,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         // Simulation VL. The one-shot Blink owner has already removed that
         // advantage and records the release as ConnectionStall evidence.
         if (blinkFreezeSafe) {
+            specialEnvironmentFlagStreak = 0;
+            specialEnvironmentCorrectionStreak = 0;
+            specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentFlagKey = "";
             removeOffsetLenience();
             return;
         }
