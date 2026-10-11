@@ -2,7 +2,11 @@ package ac.grim.grimac.manager.integrity;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AlertAggregationPolicyTest {
 
@@ -36,5 +40,23 @@ class AlertAggregationPolicyTest {
                         true
                 )
         );
+    }
+
+    @Test
+    void reloadClearsPresentationStateWhenBucketSemanticsChange()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/manager/integrity/AlertAggregationManager.java"
+        ));
+
+        int start = source.indexOf("public void reload(");
+        int end = source.indexOf("public @NotNull Decision evaluate(", start);
+        assertTrue(start >= 0 && end > start);
+
+        String reload = source.substring(start, end);
+        assertTrue(reload.contains(
+                "componentBuckets = config.getBooleanElse"
+        ));
+        assertTrue(reload.contains("states.clear()"));
     }
 }

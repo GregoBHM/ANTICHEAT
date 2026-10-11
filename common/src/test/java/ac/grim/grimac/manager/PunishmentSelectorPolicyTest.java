@@ -34,9 +34,9 @@ class PunishmentSelectorPolicyTest {
     }
 
     @Test
-    void stableSelectorsAreExactAndCrossVersionSafe() {
+    void stableSelectorsAreExactCaseInsensitiveAndCrossVersionSafe() {
         assertTrue(PunishmentSelectorPolicy.matchPriority(
-                "stable:grim.interaction.fast_consume",
+                "STABLE:GRIM.INTERACTION.FAST_CONSUME",
                 "FastConsume",
                 "FastEat",
                 "grim.interaction.fast_consume",
@@ -45,6 +45,14 @@ class PunishmentSelectorPolicyTest {
 
         assertEquals(0, PunishmentSelectorPolicy.matchPriority(
                 "stable:grim.movement.noslow",
+                "FastConsume",
+                "FastEat",
+                "grim.interaction.fast_consume",
+                CANONICAL
+        ));
+
+        assertEquals(0, PunishmentSelectorPolicy.matchPriority(
+                "stable:grim.interaction.fast",
                 "FastConsume",
                 "FastEat",
                 "grim.interaction.fast_consume",
@@ -59,6 +67,46 @@ class PunishmentSelectorPolicyTest {
                 "FastConsume",
                 "FastEat",
                 "grim.interaction.fast_consume",
+                CANONICAL
+        ) > 0);
+    }
+
+    @Test
+    void canonicalNameWinsOverAConflictingAlias() {
+        int canonical = PunishmentSelectorPolicy.matchPriority(
+                "Simulation",
+                "Simulation",
+                "UNKNOWN",
+                "grim.prediction.simulation",
+                CANONICAL
+        );
+        int alias = PunishmentSelectorPolicy.matchPriority(
+                "Simulation",
+                "OtherCheck",
+                "Simulation",
+                "grim.other",
+                CANONICAL
+        );
+
+        assertTrue(canonical > 0);
+        assertEquals(0, alias);
+    }
+
+    @Test
+    void exactConditionSelectorsNeverUseContainsMatching() {
+        assertEquals(0, PunishmentSelectorPolicy.exactMatchPriority(
+                "Slow",
+                "NoSlow",
+                "UNKNOWN",
+                "grim.movement.noslow",
+                CANONICAL
+        ));
+
+        assertTrue(PunishmentSelectorPolicy.exactMatchPriority(
+                "NoSlow",
+                "NoSlow",
+                "UNKNOWN",
+                "grim.movement.noslow",
                 CANONICAL
         ) > 0);
     }

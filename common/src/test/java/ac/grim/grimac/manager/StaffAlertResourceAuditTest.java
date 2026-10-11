@@ -35,6 +35,16 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("config-version: 30"), path.toString());
                 assertTrue(text.contains("correction-diagnostics:"), path.toString());
                 assertTrue(text.contains("mode: verbose"), path.toString());
+                int correctionStart = text.indexOf("correction-diagnostics:");
+                int correctionEnd = text.indexOf("\nfall-integrity:", correctionStart);
+                String correctionBlock = text.substring(
+                        correctionStart,
+                        correctionEnd < 0 ? text.length() : correctionEnd
+                );
+                assertFalse(
+                        correctionBlock.contains("\n    enabled:"),
+                        path + " should not publish deprecated correction-diagnostics.enabled"
+                );
                 assertTrue(text.contains("format: \"&8[correction] &7%check_name% &8[%component%] &f%verbose%\""), path.toString());
                 assertTrue(text.contains("component-buckets: false"), path.toString());
                 assertTrue(text.contains("session-end-grace-ms: 500"), path.toString());

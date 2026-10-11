@@ -23,6 +23,22 @@ class CorrectionDiagnosticModeTest {
     }
 
     @Test
+    void explicitModernModeWinsLegacyFallback() {
+        assertEquals(
+                CorrectionDiagnosticMode.NORMAL,
+                CorrectionDiagnosticMode.parse("normal", false)
+        );
+        assertEquals(
+                CorrectionDiagnosticMode.VERBOSE,
+                CorrectionDiagnosticMode.parse("verbose", false)
+        );
+        assertEquals(
+                CorrectionDiagnosticMode.OFF,
+                CorrectionDiagnosticMode.parse("off", true)
+        );
+    }
+
+    @Test
     void verboseIsSafeDefaultAndLegacyDisabledMapsToOff() {
         assertEquals(
                 CorrectionDiagnosticMode.VERBOSE,
@@ -31,6 +47,10 @@ class CorrectionDiagnosticModeTest {
         assertEquals(
                 CorrectionDiagnosticMode.OFF,
                 CorrectionDiagnosticMode.parse(null, false)
+        );
+        assertEquals(
+                CorrectionDiagnosticMode.OFF,
+                CorrectionDiagnosticMode.parse("   ", false)
         );
         assertEquals(
                 CorrectionDiagnosticMode.VERBOSE,
