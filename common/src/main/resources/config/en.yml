@@ -8,6 +8,9 @@ alerts:
     # SparkGrim Phase 3 only aggregates normal staff alerts; internal flags, logs, history and /grim verbose stay complete.
     enabled: true
     aggregation: true
+    # false (recommended) = aggregate by stable check while still rendering
+    # %component%; true = give each component its own normal-alert bucket.
+    component-buckets: false
     burst-summary: true
     cooldown-ms: 1500
     minimum-vl-gap: 5
@@ -451,7 +454,7 @@ update-permission-ticks: -1
 #   config-version: bumped on every breaking shape change. Old configs
 #                   auto-migrate up via the bundled updater on next start.
 config-flavor: V2
-config-version: 29
+config-version: 30
 
 # Staff-only diagnostic alert emitted only when Grim actually sends a movement
 # correction/resync. It does not add VL and does not execute punishments.
@@ -463,7 +466,7 @@ correction-diagnostics:
     # v10 defaults to verbose so corrections never look like a second violation.
     mode: verbose
     cooldown-ms: 125
-    format: "&8[correction] &7%check_name% &f%verbose%"
+    format: "&8[correction] &7%check_name% &8[%component%] &f%verbose%"
 
 # Preserves predicted fall debt across freeze/Blink stalls so packet silence cannot erase fall damage bookkeeping.
 fall-integrity:
