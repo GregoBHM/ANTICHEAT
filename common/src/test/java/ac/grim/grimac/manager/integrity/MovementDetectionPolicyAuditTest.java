@@ -69,6 +69,7 @@ class MovementDetectionPolicyAuditTest {
 
         assertTrue(simulation.contains("hasTrustedVelocityContext"));
         assertTrue(simulation.contains("resolveMovementEvidenceEpisode"));
+        assertTrue(simulation.contains("specialEnvironmentCorrectionKey"));
         assertFalse(phase.contains("hasTrustedVelocityContext"));
         assertFalse(fastConsume.contains("hasTrustedVelocityContext"));
         assertFalse(timer.contains("hasTrustedVelocityContext"));

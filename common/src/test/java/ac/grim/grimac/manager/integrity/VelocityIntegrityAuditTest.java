@@ -32,6 +32,7 @@ class VelocityIntegrityAuditTest {
         assertTrue(source.contains("\"velocity.normal\""));
         assertTrue(source.contains("\"velocity.cobweb\""));
         assertTrue(source.contains("resolveMovementEvidenceEpisode"));
+        assertTrue(source.contains("minimumCorrectionRawOffset(contexts)"));
     }
 
     @Test
