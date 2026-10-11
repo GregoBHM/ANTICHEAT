@@ -1,7 +1,6 @@
 package ac.grim.grimac.utils.item;
 
 import ac.grim.grimac.GrimAPI;
-import ac.grim.grimac.manager.integrity.InteractionContextManager;
 import ac.grim.grimac.player.GrimPlayer;
 import com.github.retrooper.packetevents.protocol.component.ComponentTypes;
 import com.github.retrooper.packetevents.protocol.component.builtin.item.ItemConsumable;
@@ -62,6 +61,48 @@ public final class ItemUseSessionTracker {
                 nowMillis,
                 startTransaction,
                 expectedMillis,
+                0,
+                0,
+                null,
+                interactionContextSummary()
+        );
+        return active;
+    }
+
+    public synchronized @NotNull Session confirmServerActive(
+            @NotNull InteractionHand hand,
+            @NotNull ItemStack item,
+            long nowMillis,
+            int transaction
+    ) {
+        String itemKey = normalizeItemKey(item.getType().getName().getKey());
+        int slot = hand == InteractionHand.MAIN_HAND
+                ? player.packetStateData.lastSlotSelected
+                : -1;
+
+        if (active != null
+                && active.hand == hand
+                && active.slot == slot
+                && active.itemKey.equals(itemKey)) {
+            return active;
+        }
+
+        if (active != null) {
+            endInternal(ItemUseResetPolicy.Reason.REAL_ITEM_CHANGE, nowMillis);
+        }
+
+        // A server metadata update can prove that an item is physically active,
+        // but it cannot prove when the client started consuming it. Mark the
+        // timing as unknown (0 ms expected) so FastConsume never derives a
+        // violation from a session whose start packet was not observed.
+        active = new Session(
+                sequence.incrementAndGet(),
+                hand,
+                slot,
+                itemKey,
+                nowMillis,
+                transaction,
+                0L,
                 0,
                 0,
                 null,
