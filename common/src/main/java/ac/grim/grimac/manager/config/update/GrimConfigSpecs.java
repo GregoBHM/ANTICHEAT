@@ -198,6 +198,11 @@ public final class GrimConfigSpecs {
                     putIfMissing(ctx, "Knockback.special-environment.flag-interval-ms", 900);
                     putIfMissing(ctx, "Knockback.special-environment.max-flags-per-episode", 1);
 
+                    putIfMissing(
+                            ctx,
+                            "movement-enforcement.environment.observed-velocity-min-raw-offset",
+                            0.12D
+                    );
                     putIfMissing(ctx, "movement-enforcement.environment.flag-strong-ticks", 3);
                     putIfMissing(ctx, "movement-enforcement.environment.flag-episode-window-ms", 1500);
                     putIfMissing(ctx, "movement-enforcement.environment.flag-interval-ms", 900);
