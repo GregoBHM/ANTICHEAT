@@ -78,6 +78,12 @@ class IntegrationTrustPolicyAuditTest {
             assertFalse(source.contains("getInteractionContextManager()"), path);
         }
 
+        String fastConsume = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
+        ));
+        assertFalse(fastConsume.contains("getMovementContextManager()"));
+        assertFalse(fastConsume.contains("hasTrustedVelocityContext"));
+
         Path packetOrder = Path.of(
                 "src/main/java/ac/grim/grimac/checks/impl/packetorder"
         );

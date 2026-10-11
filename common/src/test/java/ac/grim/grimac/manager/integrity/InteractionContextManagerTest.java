@@ -75,4 +75,36 @@ class InteractionContextManagerTest {
 
         assertTrue(manager.getActive(uuid).size() <= 64);
     }
+
+    @Test
+    void globalPluginCleanupKeepsOtherInteractionSourcesForEveryPlayer() {
+        InteractionContextManager manager = new InteractionContextManager();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+
+        manager.begin(first, InteractionContextType.CUSTOM_CONSUME,
+                "RPGItems:Food", 1000L);
+        manager.begin(first, InteractionContextType.CUSTOM_ITEM_ACTION,
+                "MagicSpells:Wand", 1000L);
+        manager.begin(second, InteractionContextType.CUSTOM_CONSUME,
+                "RPGItems:OtherFood", 1000L);
+        manager.begin(second, InteractionContextType.COMBATPLUS_COOLDOWN,
+                "CombatPlus:Gapple", 1000L);
+
+        manager.clearSourcePrefix("RPGItems");
+
+        assertFalse(manager.getActive(first).stream().anyMatch(
+                context -> context.getSource().startsWith("RPGItems:")
+        ));
+        assertFalse(manager.getActive(second).stream().anyMatch(
+                context -> context.getSource().startsWith("RPGItems:")
+        ));
+        assertTrue(manager.getActive(first).stream().anyMatch(
+                context -> context.getSource().startsWith("MagicSpells:")
+        ));
+        assertTrue(manager.getActive(second).stream().anyMatch(
+                context -> context.getSource().startsWith("CombatPlus:")
+        ));
+    }
+
 }

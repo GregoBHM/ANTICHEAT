@@ -13,10 +13,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Stores short-lived trusted movement contexts created by server plugins.
+ * Stores short-lived observed and explicitly trusted movement contexts.
  *
  * <p>This is deliberately not a permission-based bypass system. Contexts expire automatically,
- * are attached to a source name, and only affect integrity behavior declared by the context type.</p>
+ * are attached to a source name, and only affect integrity behavior declared by the context type.
+ * Generic begin(...) calls are observed by default; trusted velocity requires an explicit
+ * beginTrusted(...) call and is additionally limited by the context type.</p>
  */
 public final class MovementContextManager {
     private static final long MAX_CONTEXT_MILLIS = 15_000L;

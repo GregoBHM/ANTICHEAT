@@ -146,4 +146,36 @@ class MovementContextManagerTest {
 
         assertTrue(manager.getActive(uuid).size() <= 64);
     }
+
+    @Test
+    void globalPluginCleanupKeepsOtherMovementSourcesForEveryPlayer() {
+        MovementContextManager manager = new MovementContextManager();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+
+        manager.beginTrusted(first, MovementContextType.DASH,
+                "RPGItems:Leap", 1000L);
+        manager.beginTrusted(first, MovementContextType.LAUNCH,
+                "MagicSpells:Jump", 1000L);
+        manager.beginTrusted(second, MovementContextType.PULL,
+                "RPGItems:Hook", 1000L);
+        manager.beginTrusted(second, MovementContextType.DASH,
+                "CombatPlus:Burst", 1000L);
+
+        manager.clearSourcePrefix("RPGItems");
+
+        assertFalse(manager.getActive(first).stream().anyMatch(
+                context -> context.getSource().startsWith("RPGItems:")
+        ));
+        assertFalse(manager.getActive(second).stream().anyMatch(
+                context -> context.getSource().startsWith("RPGItems:")
+        ));
+        assertTrue(manager.getActive(first).stream().anyMatch(
+                context -> context.getSource().startsWith("MagicSpells:")
+        ));
+        assertTrue(manager.getActive(second).stream().anyMatch(
+                context -> context.getSource().startsWith("CombatPlus:")
+        ));
+    }
+
 }
