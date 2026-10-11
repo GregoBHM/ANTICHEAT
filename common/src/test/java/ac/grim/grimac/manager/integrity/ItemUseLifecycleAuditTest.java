@@ -222,6 +222,24 @@ class ItemUseLifecycleAuditTest {
 
 
     @Test
+    void inventoryCloseAndCancelledInteractPreservePhysicalItemUse()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
+        ));
+        int interactStart = source.indexOf("public void onCancelledInteract(");
+        int inventoryStart = source.indexOf("public void onInventoryClose(", interactStart);
+        int deathStart = source.indexOf("public void onDeath(", inventoryStart);
+        String cancelledInteract = source.substring(interactStart, inventoryStart);
+        String inventoryClose = source.substring(inventoryStart, deathStart);
+
+        assertFalse(cancelledInteract.contains("ConsumeTiming.class).reset()"));
+        assertFalse(inventoryClose.contains("ConsumeTiming.class).reset()"));
+        assertTrue(cancelledInteract.contains("clearPendingDecision()"));
+        assertTrue(inventoryClose.contains("clearPendingDecision()"));
+    }
+
+    @Test
     void publicIntegrationCleanupUsesPlayerScopedSourcePrefixes()
             throws Exception {
         String source = Files.readString(Path.of(

@@ -115,7 +115,7 @@ public final class InteractionIntegrityListener implements Listener {
                 "item=" + event.getItem().getType().name()
         );
         GrimPlayer grim = grim(uuid);
-        if (grim != null) grim.runSafely(() -> grim.checkManager.get(ConsumeTiming.class).reset());
+        if (grim != null) grim.runSafely(() -> grim.checkManager.get(ConsumeTiming.class).clearPendingDecision());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -125,7 +125,10 @@ public final class InteractionIntegrityListener implements Listener {
         if (grim == null) return;
         grim.runSafely(() -> {
             grim.checkManager.get(InventoryFrequency.class).reset();
-            grim.checkManager.get(ConsumeTiming.class).reset();
+            // Closing an inventory does not establish that the player stopped
+            // using the held item. Preserve the physical session and discard
+            // only a pending Bukkit consume decision.
+            grim.checkManager.get(ConsumeTiming.class).clearPendingDecision();
         });
     }
 
