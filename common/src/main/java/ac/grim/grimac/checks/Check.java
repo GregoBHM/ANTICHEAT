@@ -28,6 +28,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
     public double violations;
     private long lastViolationTime;
     private boolean lastFlagStoredBinaryVerbose;
+    private String lastComponent = "";
     private final VerboseBuf verbose = VERBOSE.get();
 
     // check data
@@ -111,6 +112,17 @@ public class Check extends GrimProcessor implements AbstractCheck {
     }
 
     public final boolean flag(String verbose) {
+        lastComponent = "";
+        Supplier<String> alertText = constant(verbose);
+        if (recordFlag(alertText)) {
+            alert(alertText);
+            return true;
+        }
+        return false;
+    }
+
+    public final boolean flagComponent(@NotNull String component, String verbose) {
+        lastComponent = normalizeComponent(component);
         Supplier<String> alertText = constant(verbose);
         if (recordFlag(alertText)) {
             alert(alertText);
@@ -120,6 +132,17 @@ public class Check extends GrimProcessor implements AbstractCheck {
     }
 
     public final boolean flag(@NotNull Verbose.Writer verbose) {
+        lastComponent = "";
+        BinaryVerbose binary = lazyVerbose(verbose);
+        if (recordFlag(binary)) {
+            alert(binary.rendered());
+            return true;
+        }
+        return false;
+    }
+
+    public final boolean flagComponent(@NotNull String component, @NotNull Verbose.Writer verbose) {
+        lastComponent = normalizeComponent(component);
         BinaryVerbose binary = lazyVerbose(verbose);
         if (recordFlag(binary)) {
             alert(binary.rendered());
@@ -129,6 +152,18 @@ public class Check extends GrimProcessor implements AbstractCheck {
     }
 
     public final boolean flag(@NotNull Verbose.Writer verbose, @NotNull Supplier<String> alertText) {
+        lastComponent = "";
+        BinaryVerbose binary = lazyVerbose(verbose);
+        if (recordFlag(binary)) {
+            alert(memoize(Objects.requireNonNull(alertText, "alertText")));
+            return true;
+        }
+        return false;
+    }
+
+    public final boolean flagComponent(@NotNull String component, @NotNull Verbose.Writer verbose,
+                                       @NotNull Supplier<String> alertText) {
+        lastComponent = normalizeComponent(component);
         BinaryVerbose binary = lazyVerbose(verbose);
         if (recordFlag(binary)) {
             alert(memoize(Objects.requireNonNull(alertText, "alertText")));
@@ -214,6 +249,22 @@ public class Check extends GrimProcessor implements AbstractCheck {
 
     public final boolean flagWithSetback(@NotNull Verbose.Writer verbose, @NotNull Supplier<String> alertText) {
         if (flag(verbose, alertText)) {
+            setbackIfAboveSetbackVL();
+            return true;
+        }
+        return false;
+    }
+
+    public final boolean flagComponentWithSetback(@NotNull String component, String verbose) {
+        if (flagComponent(component, verbose)) {
+            setbackIfAboveSetbackVL();
+            return true;
+        }
+        return false;
+    }
+
+    public final boolean flagComponentWithSetback(@NotNull String component, @NotNull Verbose.Writer verbose) {
+        if (flagComponent(component, verbose)) {
             setbackIfAboveSetbackVL();
             return true;
         }
