@@ -4,29 +4,18 @@ import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
-import ac.grim.grimac.checks.type.PacketReceiveListener;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.player.GrimPlayer;
-import ac.grim.grimac.utils.item.ItemBehaviourRegistry;
+import ac.grim.grimac.utils.item.ConsumeTimingPolicy;
 import ac.grim.grimac.utils.item.ItemUseResetPolicy;
 import ac.grim.grimac.utils.item.ItemUseSessionTracker;
-import com.github.retrooper.packetevents.event.PacketReceiveEvent;
-import com.github.retrooper.packetevents.protocol.item.ItemStack;
-import com.github.retrooper.packetevents.protocol.packettype.PacketType;
-import com.github.retrooper.packetevents.protocol.player.DiggingAction;
-import com.github.retrooper.packetevents.protocol.player.InteractionHand;
-import com.github.retrooper.packetevents.protocol.world.BlockFace;
-import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientHeldItemChange;
-import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerBlockPlacement;
-import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging;
-import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientUseItem;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Locale;
 
 @CheckData(name = "FastConsume", alternativeName = "NoSlow", stableKey = "grim.interaction.fast_consume",
         description = "Finished consuming an item faster than the client protocol allows", setback = -1, decay = 0.20)
-public final class ConsumeTiming extends Check implements PacketReceiveListener {
+public final class ConsumeTiming extends Check {
     private boolean enabled;
     private double minimumRatio;
     private long absoluteLenienceMillis;
@@ -39,65 +28,6 @@ public final class ConsumeTiming extends Check implements PacketReceiveListener 
 
     public ConsumeTiming(GrimPlayer player) {
         super(player);
-    }
-
-    @Override
-    public void onPacketReceive(PacketReceiveEvent event) {
-        if (event.getPacketType() == PacketType.Play.Client.PLAYER_DIGGING) {
-            WrapperPlayClientPlayerDigging digging = new WrapperPlayClientPlayerDigging(event);
-            if (digging.getAction() == DiggingAction.RELEASE_USE_ITEM) {
-                player.itemUseSessionTracker.end(ItemUseResetPolicy.Reason.CLIENT_RELEASE);
-            }
-            return;
-        }
-
-        if (event.getPacketType() == PacketType.Play.Client.HELD_ITEM_CHANGE) {
-            int slot = new WrapperPlayClientHeldItemChange(event).getSlot();
-            if (slot >= 0 && slot <= 8
-                    && slot != player.packetStateData.lastSlotSelected) {
-                player.itemUseSessionTracker.end(ItemUseResetPolicy.Reason.REAL_SLOT_CHANGE);
-            }
-            return;
-        }
-
-        if (event.getPacketType() == PacketType.Play.Client.CLOSE_WINDOW) {
-            player.itemUseSessionTracker.end(ItemUseResetPolicy.Reason.OPEN_WINDOW);
-            return;
-        }
-
-        InteractionHand hand = null;
-        if (event.getPacketType() == PacketType.Play.Client.USE_ITEM) {
-            hand = new WrapperPlayClientUseItem(event).getHand();
-        } else if (event.getPacketType() == PacketType.Play.Client.PLAYER_BLOCK_PLACEMENT) {
-            WrapperPlayClientPlayerBlockPlacement placement = new WrapperPlayClientPlayerBlockPlacement(event);
-            if (placement.getFace() == BlockFace.OTHER) {
-                hand = InteractionHand.MAIN_HAND;
-            }
-        }
-
-        if (hand != null) {
-            beginUse(hand, System.currentTimeMillis());
-        }
-    }
-
-    private synchronized void beginUse(
-            @NotNull InteractionHand hand,
-            long nowMillis
-    ) {
-        ItemStack item = player.inventory.getItemInHand(hand);
-        if (item == null) return;
-
-        if (!ItemBehaviourRegistry.getItemBehaviour(player, item.getType())
-                .canUse(item, player.compensatedWorld, player, hand)) {
-            return;
-        }
-
-        player.itemUseSessionTracker.begin(
-                hand,
-                item,
-                nowMillis,
-                player.lastTransactionReceived.get()
-        );
     }
 
     public synchronized ConsumeDecision evaluateServerConsume(
@@ -133,25 +63,28 @@ public final class ConsumeTiming extends Check implements PacketReceiveListener 
         }
 
         long actual = Math.max(0L, nowMillis - state.startedAtMillis());
-        long pingLenience =
-                Math.min(180L, Math.max(0L, player.getTransactionPing()) / 4L);
-        long lenience = absoluteLenienceMillis + pingLenience;
-        long minimumAllowed = Math.max(
-                0L,
-                Math.round(state.expectedMillis() * minimumRatio) - lenience
-        );
-
-        if (actual >= minimumAllowed) {
-            return ConsumeDecision.rewardOnly();
-        }
-
         double confidence = GrimAPI.INSTANCE
                 .getLagProtectionManager()
                 .heuristicConfidence(player);
 
-        if (confidence < 0.45D) {
-            return ConsumeDecision.allowOnly();
+        ConsumeTimingPolicy.Result timing =
+                ConsumeTimingPolicy.evaluate(
+                        state.expectedMillis(),
+                        actual,
+                        minimumRatio,
+                        absoluteLenienceMillis,
+                        player.getTransactionPing(),
+                        confidence,
+                        0.45D
+                );
+
+        if (!timing.violation()) {
+            return actual >= timing.minimumAllowedMillis()
+                    ? ConsumeDecision.rewardOnly()
+                    : ConsumeDecision.allowOnly();
         }
+
+        long minimumAllowed = timing.minimumAllowedMillis();
 
         boolean prevent = preventEnabled
                 && confidence >= preventionMinimumConfidence
