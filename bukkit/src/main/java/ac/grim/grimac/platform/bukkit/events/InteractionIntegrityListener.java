@@ -23,11 +23,8 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class InteractionIntegrityListener implements Listener {
-    private static final ConcurrentHashMap<UUID, ConsumeTiming.ConsumeDecision> PENDING_CONSUME = new ConcurrentHashMap<>();
-
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onConsumePrevent(PlayerItemConsumeEvent event) {
         Player player = event.getPlayer();
@@ -39,13 +36,13 @@ public final class InteractionIntegrityListener implements Listener {
         if (consume == null) return;
 
         if (event.isCancelled()) {
-            PENDING_CONSUME.remove(uuid);
+            consume.clearPendingDecision();
             return;
         }
 
         String material = event.getItem().getType().name();
         ConsumeTiming.ConsumeDecision decision = consume.evaluateServerConsume(System.currentTimeMillis(), material);
-        PENDING_CONSUME.put(uuid, decision);
+        consume.setPendingDecision(decision);
 
         if (decision.shouldPrevent()) {
             event.setCancelled(true);
@@ -62,17 +59,15 @@ public final class InteractionIntegrityListener implements Listener {
         UUID uuid = player.getUniqueId();
         GrimPlayer grim = grim(uuid);
         if (grim == null) {
-            PENDING_CONSUME.remove(uuid);
             return;
         }
 
         ConsumeTiming consume = grim.checkManager.get(ConsumeTiming.class);
         if (consume == null) {
-            PENDING_CONSUME.remove(uuid);
             return;
         }
 
-        ConsumeTiming.ConsumeDecision decision = PENDING_CONSUME.remove(uuid);
+        ConsumeTiming.ConsumeDecision decision = consume.takePendingDecision();
 
         // An explicit integration context may be registered by a trusted plugin
         // after HIGHEST but before MONITOR. Honor that narrow late context
@@ -167,17 +162,16 @@ public final class InteractionIntegrityListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
-        PENDING_CONSUME.remove(uuid);
         GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
     }
 
     private static void clearLifecycle(UUID uuid) {
-        PENDING_CONSUME.remove(uuid);
         GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
         GrimPlayer grim = grim(uuid);
         if (grim == null) return;
         grim.runSafely(() -> {
             grim.checkManager.get(InventoryFrequency.class).reset();
+            grim.checkManager.get(ConsumeTiming.class).clearPendingDecision();
             // Physical item-use lifecycle is owned by the explicit DEATH,
             // RESPAWN and GAMEMODE_CHANGE reset paths. Teleport/world change
             // intentionally preserve it. Do not erase the session here with

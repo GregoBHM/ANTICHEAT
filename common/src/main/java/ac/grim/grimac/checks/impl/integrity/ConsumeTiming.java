@@ -10,6 +10,7 @@ import ac.grim.grimac.utils.item.ConsumeTimingPolicy;
 import ac.grim.grimac.utils.item.ItemUseResetPolicy;
 import ac.grim.grimac.utils.item.ItemUseSessionTracker;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
 
@@ -25,6 +26,7 @@ public final class ConsumeTiming extends Check {
     private boolean requireItemMatch;
     private boolean preventEnabled;
     private double preventionMinimumConfidence;
+    private ConsumeDecision pendingDecision;
 
     public ConsumeTiming(GrimPlayer player) {
         super(player);
@@ -108,6 +110,22 @@ public final class ConsumeTiming extends Check {
                 player.getTransactionPing(),
                 confidence
         );
+    }
+
+    public synchronized void setPendingDecision(
+            @NotNull ConsumeDecision decision
+    ) {
+        pendingDecision = decision;
+    }
+
+    public synchronized @Nullable ConsumeDecision takePendingDecision() {
+        ConsumeDecision decision = pendingDecision;
+        pendingDecision = null;
+        return decision;
+    }
+
+    public synchronized void clearPendingDecision() {
+        pendingDecision = null;
     }
 
     public void applyServerConsumeDecision(@NotNull ConsumeDecision decision) {
