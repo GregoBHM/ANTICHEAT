@@ -14,7 +14,7 @@ import ac.grim.grimac.utils.data.packetentity.DashableEntity;
 import ac.grim.grimac.utils.data.packetentity.PacketEntity;
 import ac.grim.grimac.utils.data.packetentity.PacketEntityHook;
 import ac.grim.grimac.utils.enums.Pose;
-import ac.grim.grimac.utils.item.LegacyItemUseResetPolicy;
+import ac.grim.grimac.utils.item.ItemUseResetPolicy;
 import ac.grim.grimac.utils.nmsutil.EntityMetadataPoseUtil;
 import ac.grim.grimac.utils.viaversion.ViaMovementTranslator;
 import ac.grim.grimac.utils.viaversion.ViaVersionUtil;
@@ -301,8 +301,20 @@ public class PacketEntityReplication extends GrimProcessor implements PacketRece
             if (status.getStatus() == 9) {
                 if (status.getEntityId() != player.entityID) return;
 
-                player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> player.packetStateData.setSlowedByUsingItem(false));
-                player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get() + 1, () -> player.packetStateData.setSlowedByUsingItem(false));
+                Runnable finishUse = () -> {
+                    player.packetStateData.setSlowedByUsingItem(false);
+                    player.itemUseSessionTracker.end(
+                            ItemUseResetPolicy.Reason.SERVER_METADATA
+                    );
+                };
+                player.latencyUtils.addRealTimeTask(
+                        player.lastTransactionSent.get(),
+                        finishUse
+                );
+                player.latencyUtils.addRealTimeTask(
+                        player.lastTransactionSent.get() + 1,
+                        finishUse
+                );
             }
 
             if (status.getStatus() == 31) {
@@ -324,98 +336,161 @@ public class PacketEntityReplication extends GrimProcessor implements PacketRece
 
             if (slot.getWindowId() == 0) {
                 Runnable task = () -> {
-                    if (slot.getSlot() - 36 == player.packetStateData.lastSlotSelected && (
-                            !player.inventory.getHeldItem().is(slot.getItem().getType()) || player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)
-                    ) || slot.getSlot() == 45 && !player.inventory.getOffHand().is(slot.getItem().getType())) {
-                        InteractionHand hand = slot.getSlot() == 45 ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-                        InteractionHand serverUsageHand = GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer);
-                        boolean sameHand = hand == player.packetStateData.itemInUseHand && hand == serverUsageHand;
-                        boolean sameItemType = hand == InteractionHand.OFF_HAND
-                                ? player.inventory.getOffHand().is(slot.getItem().getType())
-                                : player.inventory.getHeldItem().is(slot.getItem().getType());
-                        boolean preserveLegacyUse = LegacyItemUseResetPolicy.preserveInventoryRefresh(
-                                player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8),
-                                player.packetStateData.isSlowedByUsingItem(),
-                                sameHand,
-                                sameItemType
+                    boolean mainHandSlot =
+                            slot.getSlot() - 36
+                                    == player.packetStateData.lastSlotSelected;
+                    boolean offHandSlot = slot.getSlot() == 45;
+
+                    if (!mainHandSlot && !offHandSlot) {
+                        return;
+                    }
+
+                    InteractionHand hand = offHandSlot
+                            ? InteractionHand.OFF_HAND
+                            : InteractionHand.MAIN_HAND;
+
+                    boolean sameItemType = hand == InteractionHand.OFF_HAND
+                            ? player.inventory.getOffHand().is(
+                            slot.getItem().getType())
+                            : player.inventory.getHeldItem().is(
+                            slot.getItem().getType());
+
+                    if (sameItemType) {
+                        player.itemUseSessionTracker.markRefresh(
+                                hand,
+                                slot.getItem()
                         );
+                        return;
+                    }
 
-                        if (!preserveLegacyUse) {
-                            if (hand == player.packetStateData.itemInUseHand) {
-                                player.packetStateData.setSlowedByUsingItem(false);
-                            }
-
-                            if (player.isResetItemUsageOnItemUpdate() && hand == serverUsageHand) {
-                                GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
-                            }
-                        }
+                    if (player.isResetItemUsageOnItemUpdate()) {
+                        player.itemUseSessionTracker.requestServerReset(
+                                ItemUseResetPolicy.Reason.INVENTORY_REFRESH,
+                                hand,
+                                slot.getItem()
+                        );
+                    } else if (hand == player.packetStateData.itemInUseHand) {
+                        player.packetStateData.setSlowedByUsingItem(false);
+                        player.itemUseSessionTracker.end(
+                                ItemUseResetPolicy.Reason.REAL_ITEM_CHANGE
+                        );
                     }
                 };
 
-                player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), task);
-                player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get() + 1, task);
+                player.latencyUtils.addRealTimeTask(
+                        player.lastTransactionSent.get(),
+                        task
+                );
+                player.latencyUtils.addRealTimeTask(
+                        player.lastTransactionSent.get() + 1,
+                        task
+                );
             }
         } else if (event.getPacketType() == PacketType.Play.Server.WINDOW_ITEMS) {
-            WrapperPlayServerWindowItems items = new WrapperPlayServerWindowItems(event);
+            WrapperPlayServerWindowItems items =
+                    new WrapperPlayServerWindowItems(event);
 
-            if (items.getWindowId() == 0) { // Player inventory
+            if (items.getWindowId() == 0) {
                 Runnable task = () -> {
-                    if (player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)) {
-                        int heldSlot = player.packetStateData.lastSlotSelected + 36;
-                        boolean sameItemType = heldSlot >= 0
-                                && heldSlot < items.getItems().size()
-                                && player.inventory.getHeldItem().is(items.getItems().get(heldSlot).getType());
-                        InteractionHand serverUsageHand = GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer);
-                        boolean sameHand = player.packetStateData.itemInUseHand == InteractionHand.MAIN_HAND
-                                && serverUsageHand == InteractionHand.MAIN_HAND;
-                        boolean preserveLegacyUse = LegacyItemUseResetPolicy.preserveInventoryRefresh(
-                                true,
-                                player.packetStateData.isSlowedByUsingItem(),
-                                sameHand,
-                                sameItemType
-                        );
+                    int heldSlot =
+                            player.packetStateData.lastSlotSelected + 36;
 
-                        if (!preserveLegacyUse) {
+                    if (heldSlot >= 0
+                            && heldSlot < items.getItems().size()) {
+                        var heldUpdate = items.getItems().get(heldSlot);
+                        boolean sameHeldType =
+                                player.inventory.getHeldItem().is(
+                                        heldUpdate.getType());
+
+                        if (sameHeldType) {
+                            player.itemUseSessionTracker.markRefresh(
+                                    InteractionHand.MAIN_HAND,
+                                    heldUpdate
+                            );
+                        } else if (player.isResetItemUsageOnItemUpdate()) {
+                            player.itemUseSessionTracker.requestServerReset(
+                                    ItemUseResetPolicy.Reason.INVENTORY_REFRESH,
+                                    InteractionHand.MAIN_HAND,
+                                    heldUpdate
+                            );
+                        } else if (player.packetStateData.itemInUseHand
+                                == InteractionHand.MAIN_HAND) {
                             player.packetStateData.setSlowedByUsingItem(false);
-                            if (player.isResetItemUsageOnItemUpdate() && serverUsageHand == InteractionHand.MAIN_HAND) {
-                                GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
-                            }
+                            player.itemUseSessionTracker.end(
+                                    ItemUseResetPolicy.Reason.REAL_ITEM_CHANGE
+                            );
                         }
-                    } else {
-                        if (items.getItems().size() > 45 && !player.inventory.getOffHand().is(items.getItems().get(45).getType())) {
-                            if (player.packetStateData.itemInUseHand == InteractionHand.OFF_HAND) {
-                                player.packetStateData.setSlowedByUsingItem(false);
-                            }
+                    }
 
-                            if (player.isResetItemUsageOnItemUpdate() && GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer) == InteractionHand.OFF_HAND) {
-                                GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
-                            }
-                        }
+                    if (items.getItems().size() > 45) {
+                        var offHandUpdate = items.getItems().get(45);
+                        boolean sameOffHandType =
+                                player.inventory.getOffHand().is(
+                                        offHandUpdate.getType());
 
-                        if (!player.inventory.getHeldItem().is(items.getItems().get(player.packetStateData.lastSlotSelected + 36).getType())) {
-                            if (player.packetStateData.itemInUseHand == InteractionHand.MAIN_HAND) {
-                                player.packetStateData.setSlowedByUsingItem(false);
-                            }
-
-                            if (player.isResetItemUsageOnItemUpdate() && GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer) == InteractionHand.MAIN_HAND) {
-                                GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
-                            }
+                        if (sameOffHandType) {
+                            player.itemUseSessionTracker.markRefresh(
+                                    InteractionHand.OFF_HAND,
+                                    offHandUpdate
+                            );
+                        } else if (player.isResetItemUsageOnItemUpdate()) {
+                            player.itemUseSessionTracker.requestServerReset(
+                                    ItemUseResetPolicy.Reason.INVENTORY_REFRESH,
+                                    InteractionHand.OFF_HAND,
+                                    offHandUpdate
+                            );
+                        } else if (player.packetStateData.itemInUseHand
+                                == InteractionHand.OFF_HAND) {
+                            player.packetStateData.setSlowedByUsingItem(false);
+                            player.itemUseSessionTracker.end(
+                                    ItemUseResetPolicy.Reason.REAL_ITEM_CHANGE
+                            );
                         }
                     }
                 };
 
-                player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), task);
-                player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get() + 1, task);
+                player.latencyUtils.addRealTimeTask(
+                        player.lastTransactionSent.get(),
+                        task
+                );
+                player.latencyUtils.addRealTimeTask(
+                        player.lastTransactionSent.get() + 1,
+                        task
+                );
             }
         }
 
         // 1.8 clients fail to send the RELEASE_USE_ITEM packet when a window is opened client sided while using an item
         else if (event.getPacketType() == PacketType.Play.Server.OPEN_WINDOW) {
-            player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> player.packetStateData.setSlowedByUsingItem(false));
-            player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get() + 1, () -> player.packetStateData.setSlowedByUsingItem(false));
+            Runnable stopUse = () -> {
+                player.packetStateData.setSlowedByUsingItem(false);
+                player.itemUseSessionTracker.end(
+                        ItemUseResetPolicy.Reason.OPEN_WINDOW
+                );
+            };
+            player.latencyUtils.addRealTimeTask(
+                    player.lastTransactionSent.get(),
+                    stopUse
+            );
+            player.latencyUtils.addRealTimeTask(
+                    player.lastTransactionSent.get() + 1,
+                    stopUse
+            );
         } else if (event.getPacketType() == PacketType.Play.Server.OPEN_HORSE_WINDOW) {
-            player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> player.packetStateData.setSlowedByUsingItem(false));
-            player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get() + 1, () -> player.packetStateData.setSlowedByUsingItem(false));
+            Runnable stopUse = () -> {
+                player.packetStateData.setSlowedByUsingItem(false);
+                player.itemUseSessionTracker.end(
+                        ItemUseResetPolicy.Reason.OPEN_WINDOW
+                );
+            };
+            player.latencyUtils.addRealTimeTask(
+                    player.lastTransactionSent.get(),
+                    stopUse
+            );
+            player.latencyUtils.addRealTimeTask(
+                    player.lastTransactionSent.get() + 1,
+                    stopUse
+            );
         } else if (event.getPacketType() == PacketType.Play.Server.SET_PASSENGERS) {
             WrapperPlayServerSetPassengers mount = new WrapperPlayServerSetPassengers(event);
 
