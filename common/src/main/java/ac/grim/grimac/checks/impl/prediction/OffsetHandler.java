@@ -64,7 +64,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private double environmentRecoveryMinRawOffset;
     private boolean wasSpecialEnvironment;
     private int specialEnvironmentCorrectionStreak;
-    private String specialEnvironmentCorrectionKey = "";
     private boolean specialEnvironmentEpisodeFlagAccepted;
 
     private boolean shortBlinkEnabled;
@@ -285,7 +284,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             specialEnvironmentFlagStreak = 0;
             specialEnvironmentFlagKey = "";
             specialEnvironmentCorrectionStreak = 0;
-            specialEnvironmentCorrectionKey = "";
             specialEnvironmentEpisodeFlagAccepted = false;
             resetEnforcementState();
             resetShortBlinkState();
@@ -339,7 +337,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     specialEnvironmentCorrectionStreak = 0;
                     specialEnvironmentEpisodeFlagAccepted = false;
                     specialEnvironmentFlagKey = evidenceKey;
-                    specialEnvironmentCorrectionKey = evidenceKey;
                 }
 
                 if (offset < specialEnvironmentCorrectionMinRawOffset) {
@@ -388,7 +385,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 specialEnvironmentFlagStreak = 0;
                 specialEnvironmentFlagKey = "";
                 specialEnvironmentCorrectionStreak = 0;
-                specialEnvironmentCorrectionKey = "";
                 specialEnvironmentEpisodeFlagAccepted = false;
                 specialEpisodeToken = "";
                 specialEpisodeDebug = "";
@@ -462,7 +458,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                                     >= specialEnvironmentCorrectionStrongTicks);
                         } else {
                             specialEnvironmentCorrectionStreak = 0;
-                            specialEnvironmentCorrectionKey = "";
                             specialEnvironmentEpisodeFlagAccepted = false;
                             severeMovement = enforcementOffset >= enforcementSevereOffset
                                     || enforcementStrongStreak >= enforcementStrongConsecutiveTicks;
@@ -637,7 +632,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         environmentRecoveryMinRawOffset = 0.0D;
         wasSpecialEnvironment = false;
         specialEnvironmentCorrectionStreak = 0;
-        specialEnvironmentCorrectionKey = "";
         specialEnvironmentEpisodeFlagAccepted = false;
         specialEnvironmentFlagStreak = 0;
         specialEnvironmentFlagKey = "";

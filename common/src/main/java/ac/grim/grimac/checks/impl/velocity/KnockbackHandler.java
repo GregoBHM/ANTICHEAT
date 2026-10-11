@@ -355,6 +355,15 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             @NotNull Set<EnvironmentContext> contexts,
             boolean observedVelocityContext
     ) {
+        // Velocity created by Grim's own setback is authoritative correction,
+        // not fresh AntiKB evidence. It must not consume either the component
+        // budget or the shared NoSlow/AntiKB/Simulation episode budget.
+        if (data.isSetback) {
+            specialEvidenceStreak = 0;
+            specialEvidenceKey = "";
+            return;
+        }
+
         threshold *= multiplier;
 
         EnvironmentContextManager environment =

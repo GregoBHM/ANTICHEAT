@@ -184,4 +184,32 @@ class DetectionEpisodeManagerTest {
         assertEquals(0, states.size());
     }
 
+
+    @Test
+    void itemUseSessionAndRecoveryTransitionsStartFreshSharedEpisodes() {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        DetectionEpisodeManager.SharedEpisode itemSeven =
+                manager.resolveSharedEpisode(
+                        "movement-special",
+                        "cobweb|velocity=none|item=7",
+                        1500L
+                );
+        DetectionEpisodeManager.SharedEpisode itemEight =
+                manager.resolveSharedEpisode(
+                        "movement-special",
+                        "cobweb|velocity=none|item=8",
+                        1500L
+                );
+        DetectionEpisodeManager.SharedEpisode recovery =
+                manager.resolveSharedEpisode(
+                        "movement-special",
+                        "transition|velocity=none|item=8",
+                        1500L
+                );
+
+        assertTrue(itemSeven.id() != itemEight.id());
+        assertTrue(itemEight.id() != recovery.id());
+    }
+
 }

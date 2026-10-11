@@ -103,6 +103,76 @@ class MovementDetectionPolicyAuditTest {
         }
     }
 
+
+    @Test
+    void simulationKeepsTheLastConfiguredRecoveryTickProtected() throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        assertTrue(source.contains("boolean environmentRecoveryActive = false"));
+        assertTrue(source.contains("environmentRecoveryActive = true"));
+        assertTrue(source.contains(
+                "final boolean environmentProtectedWindow = specialEnvironment\n                || environmentRecoveryActive"
+        ));
+        assertTrue(source.contains(
+                "simulationComponent(\n                    environmentContexts,\n                    observedVelocityContext,\n                    environmentRecoveryActive"
+        ));
+        assertTrue(source.contains(
+                "|| (!specialEnvironment && !environmentRecoveryActive)"
+        ));
+    }
+
+    @Test
+    void simulationPersistentCorrectionIsIndependentFromExtraVlSlots()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        int correctionIncrement = source.indexOf(
+                "specialEnvironmentCorrectionStreak++"
+        );
+        int episodeBudget = source.indexOf(
+                "player.detectionEpisodeManager.evaluate(",
+                correctionIncrement
+        );
+        int deniedSlot = source.indexOf(
+                "if (!specialFlagAllowed)",
+                episodeBudget
+        );
+        int correction = source.indexOf(
+                "executeViolationSetback(this)",
+                deniedSlot
+        );
+
+        assertTrue(correctionIncrement >= 0);
+        assertTrue(episodeBudget > correctionIncrement);
+        assertTrue(deniedSlot > episodeBudget);
+        assertTrue(correction > deniedSlot);
+        assertTrue(source.contains("specialEnvironmentEpisodeFlagAccepted"));
+    }
+
+    @Test
+    void antiKbSetbackVelocityCannotSpendSpecialEpisodeBudget()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        );
+
+        String uncertain = between(
+                source,
+                "private void handleUncertainVelocityEvidence(",
+                "private static @NotNull String velocityComponent("
+        );
+
+        int setback = uncertain.indexOf("if (data.isSetback)");
+        int episode = uncertain.indexOf("detectionEpisodeManager.evaluate(");
+
+        assertTrue(setback >= 0);
+        assertTrue(episode > setback);
+    }
+
     private static String read(String path) throws IOException {
         return Files.readString(Path.of(path));
     }
