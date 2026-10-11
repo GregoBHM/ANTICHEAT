@@ -58,9 +58,11 @@ public final class GrimConfigSpecs {
      * v28 -> v29: Item Use / Detection Policy v10. Adds physical-use session
      * timing, context-aware NoSlow/AntiKB/Simulation episode limits, and
      * verbose-only correction diagnostics without weakening deterministic checks.
+     * v29 -> v30: finalizes v10 alert presentation, shared movement episode
+     * defaults, component-safe aggregation and correction diagnostic formatting.
      */
     public static @NotNull ConfigUpdater.Spec mainConfig() {
-        return ConfigUpdater.Spec.builder("/config/", 29, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/config/", 30, ConfigUpdater.ConfigFlavor.V2)
                 .migration(10, ctx -> {
                     String typeRaw = ctx.input().getString("history.database.type");
                     String type = typeRaw == null ? null : typeRaw.trim().toUpperCase(Locale.ROOT);
@@ -207,6 +209,58 @@ public final class GrimConfigSpecs {
                     putIfMissing(ctx, "movement-enforcement.environment.flag-episode-window-ms", 1500);
                     putIfMissing(ctx, "movement-enforcement.environment.flag-interval-ms", 900);
                     putIfMissing(ctx, "movement-enforcement.environment.max-flags-per-episode", 1);
+                })
+                .migration(30, ctx -> {
+                    Object correctionEnabled =
+                            ctx.input().get("correction-diagnostics.enabled");
+                    boolean correctionOff =
+                            correctionEnabled instanceof Boolean enabled
+                                    && !enabled;
+
+                    putIfMissing(
+                            ctx,
+                            "correction-diagnostics.mode",
+                            correctionOff ? "off" : "verbose"
+                    );
+                    putIfMissing(
+                            ctx,
+                            "correction-diagnostics.cooldown-ms",
+                            125
+                    );
+
+                    String previousCorrectionFormat =
+                            ctx.input().getString(
+                                    "correction-diagnostics.format"
+                            );
+                    if (previousCorrectionFormat == null
+                            || previousCorrectionFormat.equals(
+                            "[alert] &7%verbose%"
+                    )
+                            || previousCorrectionFormat.equals(
+                            "&8[correction] &7%check_name% &f%verbose%"
+                    )) {
+                        ctx.output().put(
+                                "correction-diagnostics.format",
+                                "&8[correction] &7%check_name% "
+                                        + "&8[%component%] &f%verbose%"
+                        );
+                    }
+
+                    putIfMissing(
+                            ctx,
+                            "alerts.component-buckets",
+                            false
+                    );
+                    putIfMissing(
+                            ctx,
+                            "environment-context.evidence-episodes.window-ms",
+                            1500
+                    );
+                    putIfMissing(
+                            ctx,
+                            "environment-context.evidence-episodes.max-total-flags",
+                            2
+                    );
                 })
                 .build();
     }
