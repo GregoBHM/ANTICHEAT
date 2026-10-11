@@ -84,7 +84,7 @@ public class PunishmentManager implements ConfigReloadable {
 
         correctionDiagnosticsFormat = config.getStringElse(
                 "correction-diagnostics.format",
-                "[alert] &7%verbose%"
+                "&8[correction] &7%check_name% &f%verbose%"
         );
 
         correctionDiagnosticsCooldowns.clear();
