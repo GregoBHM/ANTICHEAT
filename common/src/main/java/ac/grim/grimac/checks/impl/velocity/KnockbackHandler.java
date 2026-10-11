@@ -360,6 +360,10 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         EnvironmentContextManager environment =
                 GrimAPI.INSTANCE.getEnvironmentContextManager();
         String contextSummary = environment.summary(contexts);
+        double contextualMinimumOffset = Math.max(
+                specialMinimumOffset,
+                environment.minimumCorrectionRawOffset(contexts)
+        );
         String component = velocityComponent(
                 contexts,
                 observedVelocityContext
@@ -383,7 +387,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             specialEvidenceKey = evidenceKey;
         }
 
-        if (data.offset < specialMinimumOffset) {
+        if (data.offset < contextualMinimumOffset) {
             // Uncertain velocity is neutral evidence. Never use cobweb/plugin
             // uncertainty as a way to decay existing AntiKB VL.
             specialEvidenceStreak = 0;
@@ -419,6 +423,8 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         "%.4f",
                         Math.sqrt(data.vector.lengthSquared())
                 )
+                        + " minimum="
+                        + formatOffset(contextualMinimumOffset)
                         + " environment="
                         + contextSummary
                         + " observedVelocity="
