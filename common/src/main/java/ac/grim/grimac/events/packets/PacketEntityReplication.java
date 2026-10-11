@@ -15,6 +15,7 @@ import ac.grim.grimac.utils.data.packetentity.PacketEntity;
 import ac.grim.grimac.utils.data.packetentity.PacketEntityHook;
 import ac.grim.grimac.utils.enums.Pose;
 import ac.grim.grimac.utils.item.ItemUseResetPolicy;
+import ac.grim.grimac.utils.item.ItemUseSessionTracker;
 import ac.grim.grimac.utils.nmsutil.EntityMetadataPoseUtil;
 import ac.grim.grimac.utils.viaversion.ViaMovementTranslator;
 import ac.grim.grimac.utils.viaversion.ViaVersionUtil;
@@ -349,13 +350,15 @@ public class PacketEntityReplication extends GrimProcessor implements PacketRece
                             ? InteractionHand.OFF_HAND
                             : InteractionHand.MAIN_HAND;
 
-                    boolean sameItemType = hand == InteractionHand.OFF_HAND
-                            ? player.inventory.getOffHand().is(
-                            slot.getItem().getType())
-                            : player.inventory.getHeldItem().is(
-                            slot.getItem().getType());
+                    boolean compatibleRefresh = ItemUseSessionTracker
+                            .isCompatibleRefresh(
+                                    hand == InteractionHand.OFF_HAND
+                                            ? player.inventory.getOffHand()
+                                            : player.inventory.getHeldItem(),
+                                    slot.getItem()
+                            );
 
-                    if (sameItemType) {
+                    if (compatibleRefresh) {
                         player.itemUseSessionTracker.markRefresh(
                                 hand,
                                 slot.getItem()
@@ -398,11 +401,13 @@ public class PacketEntityReplication extends GrimProcessor implements PacketRece
                     if (heldSlot >= 0
                             && heldSlot < items.getItems().size()) {
                         var heldUpdate = items.getItems().get(heldSlot);
-                        boolean sameHeldType =
-                                player.inventory.getHeldItem().is(
-                                        heldUpdate.getType());
+                        boolean compatibleHeldRefresh =
+                                ItemUseSessionTracker.isCompatibleRefresh(
+                                        player.inventory.getHeldItem(),
+                                        heldUpdate
+                                );
 
-                        if (sameHeldType) {
+                        if (compatibleHeldRefresh) {
                             player.itemUseSessionTracker.markRefresh(
                                     InteractionHand.MAIN_HAND,
                                     heldUpdate
@@ -424,11 +429,13 @@ public class PacketEntityReplication extends GrimProcessor implements PacketRece
 
                     if (items.getItems().size() > 45) {
                         var offHandUpdate = items.getItems().get(45);
-                        boolean sameOffHandType =
-                                player.inventory.getOffHand().is(
-                                        offHandUpdate.getType());
+                        boolean compatibleOffHandRefresh =
+                                ItemUseSessionTracker.isCompatibleRefresh(
+                                        player.inventory.getOffHand(),
+                                        offHandUpdate
+                                );
 
-                        if (sameOffHandType) {
+                        if (compatibleOffHandRefresh) {
                             player.itemUseSessionTracker.markRefresh(
                                     InteractionHand.OFF_HAND,
                                     offHandUpdate

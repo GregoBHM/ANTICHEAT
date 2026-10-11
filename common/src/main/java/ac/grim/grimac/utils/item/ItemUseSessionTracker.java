@@ -24,6 +24,7 @@ public final class ItemUseSessionTracker {
     private Session active;
     private Session lastEnded;
     private long lastEndedAtMillis;
+    private volatile long consumableStaleExtraMillis = 3000L;
 
     public ItemUseSessionTracker(@NotNull GrimPlayer player) {
         this.player = player;
@@ -35,21 +36,35 @@ public final class ItemUseSessionTracker {
             long nowMillis,
             int startTransaction
     ) {
+        expireStaleConsumableLocked(nowMillis);
+
         String itemKey = normalizeItemKey(item.getType().getName().getKey());
         int slot = hand == InteractionHand.MAIN_HAND
                 ? player.packetStateData.lastSlotSelected
                 : -1;
         long expectedMillis = expectedDurationMillis(item);
+        int legacyData = item.getLegacyData();
 
         if (active != null
-                && active.hand == hand
-                && active.slot == slot
-                && active.itemKey.equals(itemKey)) {
-            active = active.withRepeatedUses(active.repeatedUses + 1);
-            return active;
-        }
+                && matchesIdentity(
+                active,
+                hand,
+                slot,
+                itemKey,
+                legacyData,
+                expectedMillis
+        )) {
+            if (active.expectedMillis > 0L) {
+                active = active.withRepeatedUses(active.repeatedUses + 1);
+                return active;
+            }
 
-        if (active != null) {
+            // A server metadata packet may have created an untimed physical
+            // session before the client USE packet became visible to Grim.
+            // Upgrade that observation into a real timed session instead of
+            // inheriting an unknown start time.
+            active = null;
+        } else if (active != null) {
             endInternal(ItemUseResetPolicy.Reason.REAL_ITEM_CHANGE, nowMillis);
         }
 
@@ -63,6 +78,8 @@ public final class ItemUseSessionTracker {
                 expectedMillis,
                 0,
                 0,
+                0L,
+                legacyData,
                 null,
                 interactionContextSummary()
         );
@@ -75,15 +92,24 @@ public final class ItemUseSessionTracker {
             long nowMillis,
             int transaction
     ) {
+        expireStaleConsumableLocked(nowMillis);
+
         String itemKey = normalizeItemKey(item.getType().getName().getKey());
         int slot = hand == InteractionHand.MAIN_HAND
                 ? player.packetStateData.lastSlotSelected
                 : -1;
+        int legacyData = item.getLegacyData();
+        long observedExpectedMillis = expectedDurationMillis(item);
 
         if (active != null
-                && active.hand == hand
-                && active.slot == slot
-                && active.itemKey.equals(itemKey)) {
+                && matchesIdentity(
+                active,
+                hand,
+                slot,
+                itemKey,
+                legacyData,
+                observedExpectedMillis
+        )) {
             return active;
         }
 
@@ -105,6 +131,8 @@ public final class ItemUseSessionTracker {
                 0L,
                 0,
                 0,
+                0L,
+                legacyData,
                 null,
                 interactionContextSummary()
         );
@@ -115,20 +143,28 @@ public final class ItemUseSessionTracker {
             @NotNull InteractionHand hand,
             @Nullable ItemStack item
     ) {
+        long nowMillis = System.currentTimeMillis();
+        expireStaleConsumableLocked(nowMillis);
         if (active == null || item == null) return;
         if (!matches(active, hand, item)) return;
-        active = active.withRefreshes(active.refreshes + 1);
+        active = active.withRefreshes(
+                active.refreshes + 1,
+                nowMillis
+        );
     }
 
     public synchronized boolean isActive() {
+        expireStaleConsumableLocked(System.currentTimeMillis());
         return active != null;
     }
 
     public synchronized boolean isActive(@NotNull InteractionHand hand) {
+        expireStaleConsumableLocked(System.currentTimeMillis());
         return active != null && active.hand == hand;
     }
 
     public synchronized @Nullable Session activeSession() {
+        expireStaleConsumableLocked(System.currentTimeMillis());
         return active;
     }
 
@@ -140,6 +176,8 @@ public final class ItemUseSessionTracker {
             long nowMillis,
             long recentEndGraceMillis
     ) {
+        expireStaleConsumableLocked(nowMillis);
+
         if (active != null && active.expectedMillis > 0L) {
             return active;
         }
@@ -187,6 +225,8 @@ public final class ItemUseSessionTracker {
             @Nullable InteractionHand expectedHand,
             @Nullable ItemStack replacementItem
     ) {
+        expireStaleConsumableLocked(System.currentTimeMillis());
+
         InteractionHand serverHand = GrimAPI.INSTANCE
                 .getItemResetHandler()
                 .getItemUsageHand(player.platformPlayer);
@@ -203,10 +243,28 @@ public final class ItemUseSessionTracker {
                 || (activeHand == expectedHand
                 && (serverHand == null || serverHand == expectedHand));
 
-        boolean sameItemType = replacementItem == null
-                || active == null
-                || active.itemKey.equals(normalizeItemKey(
-                replacementItem.getType().getName().getKey()));
+        boolean compatibleItem = replacementItem == null;
+        if (replacementItem != null) {
+            if (active != null) {
+                compatibleItem = matchesIdentity(
+                        active,
+                        expectedHand == null ? active.hand : expectedHand,
+                        expectedHand == InteractionHand.MAIN_HAND
+                                ? player.packetStateData.lastSlotSelected
+                                : active.slot,
+                        normalizeItemKey(
+                                replacementItem.getType().getName().getKey()
+                        ),
+                        replacementItem.getLegacyData(),
+                        expectedDurationMillis(replacementItem)
+                );
+            } else if (expectedHand != null) {
+                compatibleItem = isCompatibleRefresh(
+                        player.inventory.getItemInHand(expectedHand),
+                        replacementItem
+                );
+            }
+        }
 
         boolean legacyClient = player.getClientVersion()
                 .isOlderThanOrEquals(ClientVersion.V_1_8);
@@ -216,7 +274,7 @@ public final class ItemUseSessionTracker {
                 legacyClient,
                 predictedUsing,
                 sameHand,
-                sameItemType
+                compatibleItem
         )) {
             if (reason == ItemUseResetPolicy.Reason.INVENTORY_REFRESH
                     && expectedHand != null
@@ -243,6 +301,7 @@ public final class ItemUseSessionTracker {
             @NotNull InteractionHand hand,
             @NotNull ItemStack item
     ) {
+        expireStaleConsumableLocked(System.currentTimeMillis());
         return active != null && matches(active, hand, item);
     }
 
@@ -254,9 +313,73 @@ public final class ItemUseSessionTracker {
         int slot = hand == InteractionHand.MAIN_HAND
                 ? player.packetStateData.lastSlotSelected
                 : -1;
+        return matchesIdentity(
+                session,
+                hand,
+                slot,
+                normalizeItemKey(item.getType().getName().getKey()),
+                item.getLegacyData(),
+                expectedDurationMillis(item)
+        );
+    }
+
+    private static boolean matchesIdentity(
+            @NotNull Session session,
+            @NotNull InteractionHand hand,
+            int slot,
+            @NotNull String itemKey,
+            int legacyData,
+            long expectedMillis
+    ) {
         return session.hand == hand
                 && session.slot == slot
-                && session.itemKey.equals(normalizeItemKey(item.getType().getName().getKey()));
+                && samePhysicalIdentity(
+                session.itemKey,
+                session.legacyData,
+                session.expectedMillis,
+                itemKey,
+                legacyData,
+                expectedMillis
+        );
+    }
+
+    static boolean samePhysicalIdentity(
+            @NotNull String leftKey,
+            int leftLegacyData,
+            long leftExpectedMillis,
+            @NotNull String rightKey,
+            int rightLegacyData,
+            long rightExpectedMillis
+    ) {
+        boolean compatibleDuration = leftExpectedMillis <= 0L
+                || rightExpectedMillis <= 0L
+                || leftExpectedMillis == rightExpectedMillis;
+
+        return leftKey.equals(rightKey)
+                && leftLegacyData == rightLegacyData
+                && compatibleDuration;
+    }
+
+    public static boolean isCompatibleRefresh(
+            @Nullable ItemStack currentItem,
+            @Nullable ItemStack replacementItem
+    ) {
+        if (currentItem == null || replacementItem == null) {
+            return false;
+        }
+
+        return samePhysicalIdentity(
+                normalizeItemKey(
+                        currentItem.getType().getName().getKey()
+                ),
+                currentItem.getLegacyData(),
+                expectedDurationMillis(currentItem),
+                normalizeItemKey(
+                        replacementItem.getType().getName().getKey()
+                ),
+                replacementItem.getLegacyData(),
+                expectedDurationMillis(replacementItem)
+        );
     }
 
     private static boolean isConsumeCompletionReason(
@@ -265,6 +388,45 @@ public final class ItemUseSessionTracker {
         return reason == ItemUseResetPolicy.Reason.CLIENT_RELEASE
                 || reason == ItemUseResetPolicy.Reason.SERVER_METADATA
                 || reason == ItemUseResetPolicy.Reason.SERVER_CONSUME;
+    }
+
+    public synchronized void configureConsumableStaleExtraMillis(
+            long staleExtraMillis
+    ) {
+        consumableStaleExtraMillis = clamp(
+                staleExtraMillis,
+                500L,
+                10_000L
+        );
+        expireStaleConsumableLocked(System.currentTimeMillis());
+    }
+
+    private void expireStaleConsumableLocked(long nowMillis) {
+        if (active == null) return;
+        if (!isConsumableStale(
+                active.startedAtMillis,
+                active.expectedMillis,
+                nowMillis,
+                consumableStaleExtraMillis
+        )) {
+            return;
+        }
+
+        endInternal(
+                ItemUseResetPolicy.Reason.STALE_TIMEOUT,
+                nowMillis
+        );
+    }
+
+    static boolean isConsumableStale(
+            long startedAtMillis,
+            long expectedMillis,
+            long nowMillis,
+            long staleExtraMillis
+    ) {
+        if (expectedMillis <= 0L) return false;
+        long maximumAge = expectedMillis + Math.max(0L, staleExtraMillis);
+        return nowMillis - startedAtMillis > maximumAge;
     }
 
     private void endInternal(
@@ -306,6 +468,10 @@ public final class ItemUseSessionTracker {
         return 1600L;
     }
 
+    private static long clamp(long value, long min, long max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     public static @NotNull String normalizeItemKey(@Nullable String value) {
         if (value == null) return "";
         String normalized = value.trim().toLowerCase(Locale.ROOT);
@@ -326,25 +492,67 @@ public final class ItemUseSessionTracker {
             long expectedMillis,
             int refreshes,
             int repeatedUses,
+            long lastRefreshAtMillis,
+            int legacyData,
             @Nullable ItemUseResetPolicy.Reason endReason,
             @NotNull String interactionContext
     ) {
-        Session withRefreshes(int value) {
-            return new Session(sessionId, hand, slot, itemKey, startedAtMillis,
-                    startTransaction, expectedMillis, value, repeatedUses,
-                    endReason, interactionContext);
+        Session withRefreshes(int value, long nowMillis) {
+            return new Session(
+                    sessionId,
+                    hand,
+                    slot,
+                    itemKey,
+                    startedAtMillis,
+                    startTransaction,
+                    expectedMillis,
+                    value,
+                    repeatedUses,
+                    nowMillis,
+                    legacyData,
+                    endReason,
+                    interactionContext
+            );
         }
 
         Session withRepeatedUses(int value) {
-            return new Session(sessionId, hand, slot, itemKey, startedAtMillis,
-                    startTransaction, expectedMillis, refreshes, value,
-                    endReason, interactionContext);
+            return new Session(
+                    sessionId,
+                    hand,
+                    slot,
+                    itemKey,
+                    startedAtMillis,
+                    startTransaction,
+                    expectedMillis,
+                    refreshes,
+                    value,
+                    lastRefreshAtMillis,
+                    legacyData,
+                    endReason,
+                    interactionContext
+            );
         }
 
         Session withEndReason(@NotNull ItemUseResetPolicy.Reason reason) {
-            return new Session(sessionId, hand, slot, itemKey, startedAtMillis,
-                    startTransaction, expectedMillis, refreshes, repeatedUses,
-                    reason, interactionContext);
+            return new Session(
+                    sessionId,
+                    hand,
+                    slot,
+                    itemKey,
+                    startedAtMillis,
+                    startTransaction,
+                    expectedMillis,
+                    refreshes,
+                    repeatedUses,
+                    lastRefreshAtMillis,
+                    legacyData,
+                    reason,
+                    interactionContext
+            );
+        }
+
+        public boolean active() {
+            return endReason == null;
         }
     }
 }

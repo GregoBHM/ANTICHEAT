@@ -20,6 +20,7 @@ public final class ItemUseResetPolicy {
         RESPAWN,
         DEATH,
         GAMEMODE_CHANGE,
+        STALE_TIMEOUT,
         CLEAR
     }
 

@@ -161,6 +161,19 @@ public final class ConsumeTiming extends Check {
     @Override
     public void onReload(@NotNull ConfigManager config) {
         super.onReload(config);
+
+        long staleExtraMillis = clamp(
+                config.getLongElse(
+                        "interaction-integrity.consume.stale-extra-ms",
+                        3000L
+                ),
+                500L,
+                10_000L
+        );
+        player.itemUseSessionTracker.configureConsumableStaleExtraMillis(
+                staleExtraMillis
+        );
+
         enabled = config.getBooleanElse("interaction-integrity.enabled", true)
                 && config.getBooleanElse(
                 "interaction-integrity.consume.enabled",
