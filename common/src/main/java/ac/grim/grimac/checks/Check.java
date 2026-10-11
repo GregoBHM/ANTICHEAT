@@ -128,6 +128,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
             alert(alertText);
             return true;
         }
+        lastComponent = "";
         return false;
     }
 
@@ -148,6 +149,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
             alert(binary.rendered());
             return true;
         }
+        lastComponent = "";
         return false;
     }
 
@@ -169,6 +171,7 @@ public class Check extends GrimProcessor implements AbstractCheck {
             alert(memoize(Objects.requireNonNull(alertText, "alertText")));
             return true;
         }
+        lastComponent = "";
         return false;
     }
 
