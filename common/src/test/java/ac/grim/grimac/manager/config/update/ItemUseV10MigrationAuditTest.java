@@ -22,18 +22,18 @@ class ItemUseV10MigrationAuditTest {
         ));
 
         assertTrue(source.contains(
-                "ConfigUpdater.Spec.builder("/config/", 30"
+                "ConfigUpdater.Spec.builder(\"/config/\", 30"
         ));
         assertTrue(source.contains(".migration(29, ctx ->"));
         assertTrue(source.contains(".migration(30, ctx ->"));
         assertTrue(source.contains(
-                ""alerts.component-buckets""
+                "\"alerts.component-buckets\""
         ));
         assertTrue(source.contains(
-                ""environment-context.evidence-episodes.window-ms""
+                "\"environment-context.evidence-episodes.window-ms\""
         ));
         assertTrue(source.contains(
-                ""environment-context.evidence-episodes.max-total-flags""
+                "\"environment-context.evidence-episodes.max-total-flags\""
         ));
     }
 
@@ -171,14 +171,18 @@ class ItemUseV10MigrationAuditTest {
 
         assertTrue(source.contains("previousCorrectionFormat == null"));
         assertTrue(source.contains(
-                "previousCorrectionFormat.equals(\n                            "[alert] &7%verbose%""
+                "previousCorrectionFormat.equals(\n"
+                        + "                            \"[alert] &7%verbose%\""
         ));
         assertTrue(source.contains(
-                "previousCorrectionFormat.equals(\n                            "&8[correction] &7%check_name% &f%verbose%""
+                "previousCorrectionFormat.equals(\n"
+                        + "                            \"&8[correction] &7%check_name% &f%verbose%\""
         ));
 
         assertTrue(source.contains(
-                "putIfMissing(\n                            ctx,\n                            "alerts.component-buckets""
+                "putIfMissing(\n"
+                        + "                            ctx,\n"
+                        + "                            \"alerts.component-buckets\""
         ));
     }
 
@@ -196,7 +200,7 @@ class ItemUseV10MigrationAuditTest {
                 "punishments.yml is intentionally absent"
         ));
         assertFalse(manager.contains(
-                "batch.put(getConfigFile("punishments.yml")"
+                "batch.put(getConfigFile(\"punishments.yml\")"
         ));
         assertTrue(punishment.contains("PunishmentSelectorPolicy"));
         assertTrue(punishment.contains("defaultsToPerCheckScope"));

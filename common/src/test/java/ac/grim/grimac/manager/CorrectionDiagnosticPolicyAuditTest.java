@@ -39,7 +39,7 @@ class CorrectionDiagnosticPolicyAuditTest {
         ));
         assertTrue(method.contains("sendVerbose"));
         assertTrue(method.contains("sendAlert"));
-        assertTrue(method.contains("stableKey + ".correction""));
+        assertTrue(method.contains("stableKey + \".correction\""));
         assertTrue(method.contains("AlertAggregationManager.Decision"));
     }
 
@@ -50,9 +50,7 @@ class CorrectionDiagnosticPolicyAuditTest {
                 "src/main/java/ac/grim/grimac/manager/PunishmentManager.java"
         ));
 
-        assertTrue(source.contains(
-                "stableKey + ".correction""
-        ));
+        assertTrue(source.contains("stableKey + \".correction\""));
         assertTrue(source.contains(
                 ".evaluate(\n"
                         + "                                            player.uuid,\n"
@@ -67,12 +65,14 @@ class CorrectionDiagnosticPolicyAuditTest {
         ));
 
         assertTrue(source.contains(
-                ".replace("%component%", component == null ? "Other" : component)"
+                ".replace(\"%component%\", component == null ? \"Other\" : component)"
         ));
-        assertTrue(source.contains("private static String componentFor(Check check)"));
-        assertTrue(source.contains("return "Movement";"));
-        assertTrue(source.contains("return "Interaction";"));
-        assertTrue(source.contains("return "Velocity";"));
-        assertTrue(source.contains("return "Other";"));
+        assertTrue(source.contains(
+                "private static String componentFor(Check check)"
+        ));
+        assertTrue(source.contains("return \"Movement\";"));
+        assertTrue(source.contains("return \"Interaction\";"));
+        assertTrue(source.contains("return \"Velocity\";"));
+        assertTrue(source.contains("return \"Other\";"));
     }
 }
