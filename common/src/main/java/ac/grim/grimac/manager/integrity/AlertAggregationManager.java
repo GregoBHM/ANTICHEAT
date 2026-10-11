@@ -20,6 +20,7 @@ public final class AlertAggregationManager {
     private volatile boolean enabled = true;
     private volatile boolean aggregation = true;
     private volatile boolean burstSummary = true;
+    private volatile boolean componentBuckets = false;
     private volatile long cooldownNanos = TimeUnit.MILLISECONDS.toNanos(1500L);
     private volatile long retentionNanos = TimeUnit.MINUTES.toNanos(10L);
     private volatile int minimumViolationGap = 5;
@@ -32,6 +33,10 @@ public final class AlertAggregationManager {
         enabled = config.getBooleanElse("alerts.enabled", true);
         aggregation = config.getBooleanElse("alerts.aggregation", true);
         burstSummary = config.getBooleanElse("alerts.burst-summary", true);
+        componentBuckets = config.getBooleanElse(
+                "alerts.component-buckets",
+                false
+        );
         cooldownNanos = TimeUnit.MILLISECONDS.toNanos(clamp(config.getLongElse("alerts.cooldown-ms", 1500L), 0L, 60_000L));
         retentionNanos = TimeUnit.SECONDS.toNanos(clamp(config.getLongElse("alerts.state-retention-seconds", 600L), 30L, 3600L));
         minimumViolationGap = (int) clamp(config.getLongElse("alerts.minimum-vl-gap", 5L), 1L, 1000L);
@@ -48,14 +53,41 @@ public final class AlertAggregationManager {
             }
         }).filter(value -> value > 0).distinct().sorted().toArray();
         milestones = parsed.length == 0 ? new int[] {1, 5, 10, 15, 20} : parsed;
-        if (!enabled || !aggregation) states.clear();
+
+        // Reload changes milestone/cooldown/component-bucket semantics. Never
+        // retain old presentation episodes under a new policy.
+        states.clear();
     }
 
-    public @NotNull Decision evaluate(@NotNull UUID uuid, @NotNull String stableKey, int violationLevel) {
+    public @NotNull Decision evaluate(
+            @NotNull UUID uuid,
+            @NotNull String stableKey,
+            int violationLevel
+    ) {
+        return evaluate(uuid, stableKey, "", violationLevel);
+    }
+
+    public @NotNull Decision evaluate(
+            @NotNull UUID uuid,
+            @NotNull String stableKey,
+            String component,
+            int violationLevel
+    ) {
         if (!enabled) return new Decision(false, 0);
         if (!aggregation) return new Decision(true, 0);
+
+        String normalizedStable = stableKey == null || stableKey.isBlank()
+                ? "unknown"
+                : stableKey.trim().toLowerCase(java.util.Locale.ROOT);
+        String normalizedComponent = component == null
+                ? ""
+                : component.trim().toLowerCase(java.util.Locale.ROOT);
+        String bucket = componentBuckets && !normalizedComponent.isEmpty()
+                ? normalizedStable + "#" + normalizedComponent
+                : normalizedStable;
+
         final long now = System.nanoTime();
-        final Key key = new Key(uuid, stableKey == null || stableKey.isEmpty() ? "unknown" : stableKey);
+        final Key key = new Key(uuid, bucket);
         final State state = states.computeIfAbsent(key, ignored -> new State(now));
 
         synchronized (state) {
@@ -64,7 +96,8 @@ public final class AlertAggregationManager {
             // A server tick spike can make many players fail heuristic movement checks at once.
             // Keep every internal flag/log/history entry, but do not fan that one server event
             // out into a wall of normal staff alerts. Verbose listeners remain untouched.
-            if (isSpikeSensitive(stableKey) && GrimAPI.INSTANCE.getLagProtectionManager().isServerSpike()) {
+            if (isSpikeSensitive(normalizedStable)
+                    && GrimAPI.INSTANCE.getLagProtectionManager().isServerSpike()) {
                 state.suppressed++;
                 return new Decision(false, state.suppressed);
             }

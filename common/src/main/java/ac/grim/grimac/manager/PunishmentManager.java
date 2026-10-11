@@ -40,10 +40,12 @@ public class PunishmentManager implements ConfigReloadable {
 
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
-    private String correctionDiagnosticsMode = "verbose";
+    private CorrectionDiagnosticMode correctionDiagnosticsMode =
+            CorrectionDiagnosticMode.VERBOSE;
     private long correctionDiagnosticsCooldownMillis = 125L;
     private String correctionDiagnosticsFormat;
-    private final Map<String, Long> correctionDiagnosticsCooldowns = new java.util.HashMap<>();
+    private final Map<String, Long> correctionDiagnosticsCooldowns =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public PunishmentManager(GrimPlayer player) {
         this.player = player;
@@ -70,15 +72,12 @@ public class PunishmentManager implements ConfigReloadable {
 
         boolean legacyCorrectionDiagnosticsEnabled =
                 config.getBooleanElse("correction-diagnostics.enabled", true);
-        correctionDiagnosticsMode = config.getStringElse(
-                "correction-diagnostics.mode",
-                legacyCorrectionDiagnosticsEnabled ? "verbose" : "off"
-        ).trim().toLowerCase(Locale.ROOT);
-        if (!correctionDiagnosticsMode.equals("off")
-                && !correctionDiagnosticsMode.equals("verbose")
-                && !correctionDiagnosticsMode.equals("normal")) {
-            correctionDiagnosticsMode = "verbose";
-        }
+        correctionDiagnosticsMode = CorrectionDiagnosticMode.parse(
+                config.getString(
+                        "correction-diagnostics.mode"
+                ),
+                legacyCorrectionDiagnosticsEnabled
+        );
 
         correctionDiagnosticsCooldownMillis = Math.max(0L, Math.min(5000L,
                 config.getLongElse("correction-diagnostics.cooldown-ms", 125L)));
@@ -400,7 +399,7 @@ public class PunishmentManager implements ConfigReloadable {
             String fallbackName,
             String verbose
     ) {
-        if (correctionDiagnosticsMode.equals("off")) {
+        if (correctionDiagnosticsMode == CorrectionDiagnosticMode.OFF) {
             return;
         }
 
@@ -414,13 +413,10 @@ public class PunishmentManager implements ConfigReloadable {
 
         long now = System.currentTimeMillis();
         String cooldownKey = sourceName.toLowerCase(Locale.ROOT);
-        Long last = correctionDiagnosticsCooldowns.get(cooldownKey);
 
-        if (last != null && now - last < correctionDiagnosticsCooldownMillis) {
+        if (!claimCorrectionDiagnosticCooldown(cooldownKey, now)) {
             return;
         }
-
-        correctionDiagnosticsCooldowns.put(cooldownKey, now);
 
         int checkVl = 0;
         int groupVl = 0;
@@ -455,6 +451,27 @@ public class PunishmentManager implements ConfigReloadable {
         String correctionVerbose = "type=correction "
                 + (verbose == null ? "" : verbose);
 
+        int suppressed = 0;
+
+        if (correctionDiagnosticsMode == CorrectionDiagnosticMode.NORMAL) {
+            ac.grim.grimac.manager.integrity.AlertAggregationManager.Decision
+                    decision =
+                    GrimAPI.INSTANCE
+                            .getAlertAggregationManager()
+                            .evaluate(
+                                    player.uuid,
+                                    stableKey + ".correction",
+                                    component,
+                                    checkVl
+                            );
+
+            if (!decision.send()) {
+                return;
+            }
+
+            suppressed = decision.suppressedSinceLastAlert();
+        }
+
         String rendered = replaceAlertPlaceholders(
                 correctionDiagnosticsFormat,
                 checkVl,
@@ -465,12 +482,12 @@ public class PunishmentManager implements ConfigReloadable {
                 stableKey,
                 component,
                 correctionVerbose,
-                0
+                suppressed
         );
 
         Component message = MessageUtil.miniMessage(rendered);
 
-        if (correctionDiagnosticsMode.equals("verbose")) {
+        if (correctionDiagnosticsMode == CorrectionDiagnosticMode.VERBOSE) {
             GrimAPI.INSTANCE.getAlertManager().sendVerbose(message, null);
         } else if (testMode) {
             player.sendMessage(message);
@@ -596,7 +613,8 @@ public class PunishmentManager implements ConfigReloadable {
                                     .getAlertAggregationManager()
                                     .evaluate(
                                             player.uuid,
-                                            aggregationKey(check),
+                                            check.getStableKey(),
+                                            componentFor(check),
                                             checkVl
                                     );
 
@@ -947,14 +965,26 @@ public class PunishmentManager implements ConfigReloadable {
         return false;
     }
 
-    private static String aggregationKey(Check check) {
-        String stable = check.getStableKey() == null || check.getStableKey().isBlank()
-                ? "unknown"
-                : check.getStableKey();
-        String component = check.getLastComponent();
-        return component == null || component.isBlank()
-                ? stable
-                : stable + "#" + component;
+    private boolean claimCorrectionDiagnosticCooldown(
+            String key,
+            long now
+    ) {
+        final boolean[] claimed = {false};
+
+        correctionDiagnosticsCooldowns.compute(
+                key,
+                (ignored, last) -> {
+                    if (last == null
+                            || now - last
+                            >= correctionDiagnosticsCooldownMillis) {
+                        claimed[0] = true;
+                        return now;
+                    }
+                    return last;
+                }
+        );
+
+        return claimed[0];
     }
 
     private static String componentFor(Check check) {
