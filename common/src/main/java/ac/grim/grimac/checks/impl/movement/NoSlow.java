@@ -40,6 +40,7 @@ public class NoSlow extends Check implements PostPredictionListener {
     private int contextualStrongStreak;
     private int recoveryTicksRemaining;
     private boolean wasSpecialOrVelocity;
+    private String lastContextComponent = "";
 
     public NoSlow(GrimPlayer player) {
         super(player);
@@ -87,12 +88,17 @@ public class NoSlow extends Check implements PostPredictionListener {
         if (specialEnvironment || velocityContext) {
             recoveryTicksRemaining = recoveryTicks;
             wasSpecialOrVelocity = true;
+            double contextualMinimum = specialEnvironment
+                    ? Math.max(
+                    specialMinimumOffset,
+                    environment.minimumCorrectionRawOffset(contexts)
+            )
+                    : velocityMinimumOffset;
+
             handleContextual(
                     session,
                     componentFor(contexts, velocityContext, false),
-                    specialEnvironment
-                            ? specialMinimumOffset
-                            : velocityMinimumOffset,
+                    contextualMinimum,
                     environment.summary(contexts)
             );
             return;
@@ -142,6 +148,11 @@ public class NoSlow extends Check implements PostPredictionListener {
             @NotNull String contextKey
     ) {
         flaggedLastTick = false;
+
+        if (!component.equals(lastContextComponent)) {
+            contextualStrongStreak = 0;
+            lastContextComponent = component;
+        }
 
         if (bestOffset <= minimumOffset) {
             reward();
@@ -232,6 +243,7 @@ public class NoSlow extends Check implements PostPredictionListener {
         contextualStrongStreak = 0;
         recoveryTicksRemaining = 0;
         wasSpecialOrVelocity = false;
+        lastContextComponent = "";
     }
 
     public void handlePredictionAnalysis(double offset) {
@@ -253,7 +265,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                 offsetToFlag,
                 config.getDoubleElse(
                         "NoSlow.context-policy.special-minimum-offset",
-                        0.040D
+                        0.120D
                 )
         );
         velocityMinimumOffset = Math.max(
@@ -267,7 +279,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                 specialMinimumOffset,
                 config.getDoubleElse(
                         "NoSlow.context-policy.recovery-minimum-offset",
-                        0.050D
+                        0.150D
                 )
         );
         strongConsecutiveTicks = (int) clamp(
