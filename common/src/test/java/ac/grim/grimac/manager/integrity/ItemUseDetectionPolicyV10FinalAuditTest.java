@@ -75,4 +75,26 @@ class ItemUseDetectionPolicyV10FinalAuditTest {
         assertFalse(diagnostic.contains("handleViolation("));
         assertTrue(diagnostic.contains("sendVerbose"));
     }
+
+    @Test
+    void sprintAndMultiActionItemUseChecksRequirePhysicalSession()
+            throws Exception {
+        for (String path : new String[]{
+                "src/main/java/ac/grim/grimac/checks/impl/sprint/SprintC.java",
+                "src/main/java/ac/grim/grimac/checks/impl/multiactions/MultiActionsA.java",
+                "src/main/java/ac/grim/grimac/checks/impl/multiactions/MultiActionsB.java",
+                "src/main/java/ac/grim/grimac/checks/impl/multiactions/MultiActionsE.java"
+        }) {
+            String source = read(path);
+            assertTrue(
+                    source.contains("itemUseSessionTracker.isActive()"),
+                    path
+            );
+            assertTrue(
+                    source.contains("packetStateData.isSlowedByUsingItem()"),
+                    path
+            );
+        }
+    }
+
 }
