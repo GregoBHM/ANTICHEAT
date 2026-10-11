@@ -147,6 +147,7 @@ public final class ItemUseSessionTracker {
         long grace = Math.max(0L, recentEndGraceMillis);
         if (lastEnded != null
                 && lastEnded.expectedMillis > 0L
+                && isConsumeCompletionReason(lastEnded.endReason)
                 && nowMillis - lastEndedAtMillis <= grace) {
             return lastEnded;
         }
@@ -256,6 +257,14 @@ public final class ItemUseSessionTracker {
         return session.hand == hand
                 && session.slot == slot
                 && session.itemKey.equals(normalizeItemKey(item.getType().getName().getKey()));
+    }
+
+    private static boolean isConsumeCompletionReason(
+            @Nullable ItemUseResetPolicy.Reason reason
+    ) {
+        return reason == ItemUseResetPolicy.Reason.CLIENT_RELEASE
+                || reason == ItemUseResetPolicy.Reason.SERVER_METADATA
+                || reason == ItemUseResetPolicy.Reason.SERVER_CONSUME;
     }
 
     private void endInternal(
