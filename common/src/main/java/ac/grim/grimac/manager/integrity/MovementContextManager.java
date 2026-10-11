@@ -25,11 +25,16 @@ public final class MovementContextManager {
 
     private final Map<UUID, CopyOnWriteArrayList<Context>> contexts = new ConcurrentHashMap<>();
 
+    /**
+     * Safe default for generic/internal observations. Trusted velocity must
+     * always be opted into explicitly through beginTrusted(...) or the
+     * integration facade.
+     */
     public Context begin(@NotNull UUID uuid,
                          @NotNull MovementContextType type,
                          @NotNull String source,
                          long durationMillis) {
-        return beginTrusted(uuid, type, source, durationMillis, null);
+        return beginObserved(uuid, type, source, durationMillis, null);
     }
 
     public Context begin(@NotNull UUID uuid,
@@ -37,7 +42,7 @@ public final class MovementContextManager {
                          @NotNull String source,
                          long durationMillis,
                          @Nullable String detail) {
-        return beginTrusted(uuid, type, source, durationMillis, detail);
+        return beginObserved(uuid, type, source, durationMillis, detail);
     }
 
     public Context beginTrusted(@NotNull UUID uuid, @NotNull MovementContextType type, @NotNull String source, long durationMillis) {

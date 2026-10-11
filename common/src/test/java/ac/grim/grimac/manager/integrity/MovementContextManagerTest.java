@@ -10,6 +10,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MovementContextManagerTest {
 
+
+    @Test
+    void genericBeginIsObservedByDefault() {
+        MovementContextManager manager = new MovementContextManager();
+        UUID uuid = UUID.randomUUID();
+
+        MovementContextManager.Context context = manager.begin(
+                uuid,
+                MovementContextType.DASH,
+                "Internal:Generic",
+                1000L
+        );
+
+        assertFalse(context.isTrusted());
+        assertTrue(manager.hasObservedVelocityContext(uuid));
+        assertFalse(manager.hasTrustedVelocityContext(uuid));
+    }
+
     @Test
     void observedVelocityIsUncertaintyNotTrustedBypass() {
         MovementContextManager manager = new MovementContextManager();
