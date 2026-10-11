@@ -7,6 +7,11 @@ import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketSendListener;
 import ac.grim.grimac.checks.type.PostPredictionListener;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
+import ac.grim.grimac.manager.integrity.EnvironmentContext;
+import ac.grim.grimac.manager.integrity.EnvironmentContextManager;
+import ac.grim.grimac.manager.integrity.MovementContextManager;
+import ac.grim.grimac.manager.integrity.MovementContextType;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import ac.grim.grimac.utils.data.Pair;
@@ -22,6 +27,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Deque;
 import java.util.LinkedList;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 // We are making a velocity sandwich between two pieces of transaction packets (bread)
@@ -50,6 +56,14 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
     private long enforcementEpisodeResetNanos;
     private int enforcementMaxRetries;
     private double enforcementMinimumScale;
+
+    private boolean specialEvidenceEnabled;
+    private double specialMinimumOffset;
+    private int specialStrongConsecutiveTicks;
+    private long specialEpisodeWindowMillis;
+    private long specialFlagIntervalMillis;
+    private int specialMaxFlagsPerEpisode;
+    private int specialEvidenceStreak;
 
     private long lastEnforcementNanos;
     private long suppressCompetingUntilNanos;
@@ -214,9 +228,31 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
 
         if (player.likelyKB != null) {
             if (player.likelyKB.offset > offsetToFlag) {
-                threshold = Math.min(threshold + player.likelyKB.offset, ceiling);
+                EnvironmentContextManager environment =
+                        GrimAPI.INSTANCE.getEnvironmentContextManager();
+                Set<EnvironmentContext> contexts = environment.classify(player);
+                boolean observedVelocityContext = hasObservedVelocityContext();
+                boolean uncertainVelocity = specialEvidenceEnabled
+                        && (environment.isVelocityUncertainEnvironment(player)
+                        || observedVelocityContext);
 
-                boolean ignored = player.likelyKB.offset == Integer.MAX_VALUE;
+                if (uncertainVelocity) {
+                    handleUncertainVelocityEvidence(
+                            player.likelyKB,
+                            contexts,
+                            observedVelocityContext
+                    );
+                    return;
+                }
+
+                specialEvidenceStreak = 0;
+                threshold = Math.min(
+                        threshold + player.likelyKB.offset,
+                        ceiling
+                );
+
+                boolean ignored =
+                        player.likelyKB.offset == Integer.MAX_VALUE;
                 boolean shouldEnforce = player.likelyKB.isSetback
                         || player.likelyKB.offset >= immediate
                         || threshold >= maxAdv;
@@ -226,18 +262,34 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                     enforced = enforceVelocity(player.likelyKB, ignored);
                 }
 
-                String alertText = "offset=" + formatOffset(player.likelyKB.offset)
-                        + " expected=" + String.format(Locale.ROOT, "%.4f", Math.sqrt(player.likelyKB.vector.lengthSquared()))
-                        + " enforced=" + enforced;
+                String alertText =
+                        "offset=" + formatOffset(player.likelyKB.offset)
+                                + " expected="
+                                + String.format(
+                                Locale.ROOT,
+                                "%.4f",
+                                Math.sqrt(
+                                        player.likelyKB.vector.lengthSquared()
+                                )
+                        )
+                                + " enforced=" + enforced;
 
                 if (!player.likelyKB.isSetback) {
-                    if (!flag(V.write(verbose()).bool(ignored).f64(player.likelyKB.offset), () -> alertText)) {
+                    if (!flagComponent(
+                            "velocity.normal",
+                            V.write(verbose())
+                                    .bool(ignored)
+                                    .f64(player.likelyKB.offset),
+                            () -> alertText
+                    )) {
                         reward();
                     }
                 }
             } else if (threshold > 0.05) {
+                specialEvidenceStreak = 0;
                 threshold *= multiplier;
-                if (System.nanoTime() - lastEnforcementNanos > enforcementEpisodeResetNanos) {
+                if (System.nanoTime() - lastEnforcementNanos
+                        > enforcementEpisodeResetNanos) {
                     enforcementRetries = 0;
                     enforcementEpisodeStartedNanos = 0L;
                 }
@@ -251,7 +303,9 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         if (data == null || data.vector == null || data.vector.lengthSquared() <= 1.0E-8D) return false;
 
         if (suppressInSpecialEnvironments
-                && GrimAPI.INSTANCE.getEnvironmentContextManager().isVelocityUncertainEnvironment(player)) {
+                && (GrimAPI.INSTANCE.getEnvironmentContextManager()
+                .isVelocityUncertainEnvironment(player)
+                || hasObservedVelocityContext())) {
             return false;
         }
 
@@ -280,6 +334,117 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         suppressCompetingUntilNanos = now + enforcementRecoveryNanos;
         enforcementRetries++;
         return true;
+    }
+
+    private void handleUncertainVelocityEvidence(
+            @NotNull VelocityData data,
+            @NotNull Set<EnvironmentContext> contexts,
+            boolean observedVelocityContext
+    ) {
+        threshold *= multiplier;
+
+        if (data.offset < specialMinimumOffset) {
+            specialEvidenceStreak = 0;
+            reward();
+            return;
+        }
+
+        specialEvidenceStreak++;
+        if (specialEvidenceStreak < specialStrongConsecutiveTicks) {
+            return;
+        }
+
+        String component = velocityComponent(
+                contexts,
+                observedVelocityContext
+        );
+        String episodeKey = component
+                + "|" + data.transaction
+                + "|" + GrimAPI.INSTANCE
+                .getEnvironmentContextManager()
+                .summary(contexts);
+
+        DetectionEpisodeManager.Decision decision =
+                player.detectionEpisodeManager.evaluate(
+                        component,
+                        episodeKey,
+                        specialEpisodeWindowMillis,
+                        specialFlagIntervalMillis,
+                        specialMaxFlagsPerEpisode
+                );
+
+        if (!decision.allowFlag() || data.isSetback) {
+            return;
+        }
+
+        boolean ignored = data.offset == Integer.MAX_VALUE;
+        String alertText =
+                "offset=" + formatOffset(data.offset)
+                        + " expected="
+                        + String.format(
+                        Locale.ROOT,
+                        "%.4f",
+                        Math.sqrt(data.vector.lengthSquared())
+                )
+                        + " environment="
+                        + GrimAPI.INSTANCE
+                        .getEnvironmentContextManager()
+                        .summary(contexts)
+                        + " observedVelocity="
+                        + observedVelocityContext
+                        + " strong="
+                        + specialEvidenceStreak
+                        + " episodeFlags="
+                        + decision.flags()
+                        + " enforced=false";
+
+        if (!flagComponent(
+                component,
+                V.write(verbose())
+                        .bool(ignored)
+                        .f64(data.offset),
+                () -> alertText
+        )) {
+            reward();
+        }
+    }
+
+    private boolean hasObservedVelocityContext() {
+        for (MovementContextManager.Context context :
+                GrimAPI.INSTANCE.getMovementContextManager()
+                        .getActive(player.uuid)) {
+            MovementContextType type = context.getType();
+            if (type == MovementContextType.KNOCKBACK
+                    || type == MovementContextType.LAUNCH
+                    || type == MovementContextType.DASH
+                    || type == MovementContextType.PULL) {
+                return !context.isTrusted();
+            }
+        }
+        return false;
+    }
+
+    private static @NotNull String velocityComponent(
+            @NotNull Set<EnvironmentContext> contexts,
+            boolean observedVelocityContext
+    ) {
+        if (contexts.contains(EnvironmentContext.COBWEB)) {
+            return "velocity.cobweb";
+        }
+        if (contexts.contains(EnvironmentContext.STUCK_MOVEMENT)) {
+            return "velocity.stuck";
+        }
+        if (contexts.contains(EnvironmentContext.WATER)
+                || contexts.contains(EnvironmentContext.LAVA)) {
+            return "velocity.liquid";
+        }
+        if (contexts.contains(EnvironmentContext.PISTON)) {
+            return "velocity.piston";
+        }
+        if (observedVelocityContext) {
+            return "velocity.plugin";
+        }
+        return "velocity.special";
     }
 
     public boolean shouldSuppressCompetingMovementSetbacks() {
@@ -329,6 +494,51 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 config.getLongElse("Knockback.enforcement.max-retries", 2L), 1L, 8L);
         enforcementMinimumScale = clamp(
                 config.getDoubleElse("Knockback.enforcement.minimum-reapply-scale", 0.35D), 0.05D, 1.0D);
+        specialEvidenceEnabled = config.getBooleanElse(
+                "Knockback.special-environment.enabled",
+                true
+        );
+        specialMinimumOffset = Math.max(
+                offsetToFlag,
+                config.getDoubleElse(
+                        "Knockback.special-environment.minimum-offset",
+                        0.080D
+                )
+        );
+        specialStrongConsecutiveTicks = (int) clamp(
+                config.getLongElse(
+                        "Knockback.special-environment.strong-consecutive-ticks",
+                        3L
+                ),
+                2L,
+                20L
+        );
+        specialEpisodeWindowMillis = clamp(
+                config.getLongElse(
+                        "Knockback.special-environment.episode-window-ms",
+                        1500L
+                ),
+                100L,
+                10_000L
+        );
+        specialFlagIntervalMillis = clamp(
+                config.getLongElse(
+                        "Knockback.special-environment.flag-interval-ms",
+                        900L
+                ),
+                0L,
+                10_000L
+        );
+        specialMaxFlagsPerEpisode = (int) clamp(
+                config.getLongElse(
+                        "Knockback.special-environment.max-flags-per-episode",
+                        1L
+                ),
+                1L,
+                10L
+        );
+        specialEvidenceStreak = 0;
+
         if (!enforcementEnabled) {
             suppressCompetingUntilNanos = 0L;
             enforcementEpisodeStartedNanos = 0L;
