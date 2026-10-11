@@ -581,6 +581,12 @@ lag-protection:
 environment-context:
     enabled: true
     recent-block-change-ticks: 4
+    # One continuous special-physics context shares a small evidence budget
+    # across NoSlow, AntiKB and Simulation. This limits cascades without
+    # disabling any predictor or deterministic check.
+    evidence-episodes:
+        window-ms: 1500
+        max-total-flags: 2
     simulation-multipliers:
         cobweb: 0.35
         stuck-movement: 0.50
