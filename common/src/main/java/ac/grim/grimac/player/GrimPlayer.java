@@ -1017,6 +1017,12 @@ public class GrimPlayer implements GrimUser {
         resetItemUsageOnItemUpdate = config.getBooleanElse("reset-item-usage-on-item-update", true);
         resetItemUsageOnSlotChange = config.getBooleanElse("reset-item-usage-on-slot-change", true);
         resetItemUsageOnItemUse = config.getBooleanElse("reset-item-usage-on-item-use", true);
+
+        // Detection episode windows are configuration-dependent. Preserve the
+        // physical item-use session during /grim reload, but never carry old
+        // movement episode budgets/streak identity into a new policy.
+        detectionEpisodeManager.clearAll();
+
         // reload all checks
         checkManager.reload();
         // reload punishment manager

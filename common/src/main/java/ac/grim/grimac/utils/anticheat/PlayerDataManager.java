@@ -112,7 +112,11 @@ public class PlayerDataManager {
             if (connectionStall != null) connectionStall.prepareForDisconnect();
         }
         grimPlayer = remove(user);
-        if (grimPlayer != null) Channels.QUIT.fire(grimPlayer);
+        if (grimPlayer != null) {
+            Channels.QUIT.fire(grimPlayer);
+            grimPlayer.itemUseSessionTracker.clear();
+            grimPlayer.detectionEpisodeManager.clearAll();
+        }
         clearExemptions(user);
 
         UUID uuid = user.getProfile().getUUID();

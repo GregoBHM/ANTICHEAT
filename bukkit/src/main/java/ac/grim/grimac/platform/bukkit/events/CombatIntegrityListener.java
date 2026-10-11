@@ -2,7 +2,9 @@ package ac.grim.grimac.platform.bukkit.events;
 
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.manager.integrity.CombatIntegrityManager;
+import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.platform.bukkit.integration.CombatPlusProvider;
+import ac.grim.grimac.utils.item.ItemUseResetPolicy;
 import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Entity;
@@ -90,6 +92,7 @@ public final class CombatIntegrityListener implements Listener {
         GrimAPI.INSTANCE.getFallIntegrityManager().clear(uuid);
         GrimAPI.INSTANCE.getMovementContextManager().clear(uuid);
         GrimAPI.INSTANCE.getIntegrityCorrelationManager().clear(uuid);
+        clearTransientPlayerState(uuid, ItemUseResetPolicy.Reason.DEATH);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -102,8 +105,18 @@ public final class CombatIntegrityListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
-        // A server-authorized teleport is a legitimate fall reset. CombatIntegrity remains independent.
-        GrimAPI.INSTANCE.getFallIntegrityManager().clear(event.getPlayer().getUniqueId());
+        // A server-authorized teleport is a legitimate fall reset. Do not
+        // forcibly stop a physical item-use session here: plugin/vanilla
+        // teleports may preserve held use. Only movement evidence tied to the
+        // old position must not survive at the destination.
+        UUID uuid = event.getPlayer().getUniqueId();
+        GrimAPI.INSTANCE.getFallIntegrityManager().clear(uuid);
+
+        GrimPlayer grimPlayer =
+                GrimAPI.INSTANCE.getPlayerDataManager().getPlayer(uuid);
+        if (grimPlayer != null) {
+            grimPlayer.detectionEpisodeManager.clearAll();
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -112,14 +125,21 @@ public final class CombatIntegrityListener implements Listener {
         GrimAPI.INSTANCE.getFallIntegrityManager().clear(uuid);
         GrimAPI.INSTANCE.getMovementContextManager().clear(uuid);
         GrimAPI.INSTANCE.getIntegrityCorrelationManager().clear(uuid);
+        clearTransientPlayerState(uuid, ItemUseResetPolicy.Reason.RESPAWN);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onGameModeChange(PlayerGameModeChangeEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
         GameMode mode = event.getNewGameMode();
         if (mode == GameMode.CREATIVE || mode == GameMode.SPECTATOR) {
-            GrimAPI.INSTANCE.getFallIntegrityManager().clear(event.getPlayer().getUniqueId());
+            GrimAPI.INSTANCE.getFallIntegrityManager().clear(uuid);
         }
+
+        clearTransientPlayerState(
+                uuid,
+                ItemUseResetPolicy.Reason.GAMEMODE_CHANGE
+        );
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -169,6 +189,18 @@ public final class CombatIntegrityListener implements Listener {
         if (!"CombatPlus".equalsIgnoreCase(event.getPlugin().getName())) return;
         combatPlusProvider.clearCache();
         manager().setExternalProvider(null);
+    }
+
+    private static void clearTransientPlayerState(
+            UUID uuid,
+            ItemUseResetPolicy.Reason reason
+    ) {
+        GrimPlayer grimPlayer =
+                GrimAPI.INSTANCE.getPlayerDataManager().getPlayer(uuid);
+        if (grimPlayer == null) return;
+
+        grimPlayer.itemUseSessionTracker.end(reason);
+        grimPlayer.detectionEpisodeManager.clearAll();
     }
 
     private static Player resolveAttacker(Entity damager) {
