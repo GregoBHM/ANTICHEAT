@@ -89,6 +89,35 @@ public final class GrimIntegrationAPI {
         return GrimAPI.INSTANCE.getInteractionContextManager().begin(playerId, type, sourcePlugin, durationMillis, detail);
     }
 
+    public static InteractionContextManager.Context beginCustomConsumeContext(
+            @NotNull UUID playerId,
+            @NotNull String sourcePlugin,
+            long durationMillis,
+            String detail
+    ) {
+        return beginInteractionContext(
+                playerId,
+                InteractionContextType.CUSTOM_CONSUME,
+                sourcePlugin,
+                durationMillis,
+                detail
+        );
+    }
+
+    public static InteractionContextManager.Context beginCombatPlusCooldownContext(
+            @NotNull UUID playerId,
+            @NotNull String mechanicName,
+            long durationMillis
+    ) {
+        return beginInteractionContext(
+                playerId,
+                InteractionContextType.COMBATPLUS_COOLDOWN,
+                "CombatPlus:" + mechanicName,
+                durationMillis,
+                "mechanic=" + mechanicName
+        );
+    }
+
     public static @NotNull List<InteractionContextManager.Context> getInteractionContexts(@NotNull UUID playerId) {
         return GrimAPI.INSTANCE.getInteractionContextManager().getActive(playerId);
     }
