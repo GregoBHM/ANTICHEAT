@@ -79,12 +79,11 @@ public final class AlertAggregationManager {
         String normalizedStable = stableKey == null || stableKey.isBlank()
                 ? "unknown"
                 : stableKey.trim().toLowerCase(java.util.Locale.ROOT);
-        String normalizedComponent = component == null
-                ? ""
-                : component.trim().toLowerCase(java.util.Locale.ROOT);
-        String bucket = componentBuckets && !normalizedComponent.isEmpty()
-                ? normalizedStable + "#" + normalizedComponent
-                : normalizedStable;
+        String bucket = aggregationBucket(
+                normalizedStable,
+                component,
+                componentBuckets
+        );
 
         final long now = System.nanoTime();
         final Key key = new Key(uuid, bucket);
@@ -135,6 +134,23 @@ public final class AlertAggregationManager {
             state.suppressed++;
             return new Decision(false, state.suppressed);
         }
+    }
+
+    static @NotNull String aggregationBucket(
+            String stableKey,
+            String component,
+            boolean componentBuckets
+    ) {
+        String normalizedStable = stableKey == null || stableKey.isBlank()
+                ? "unknown"
+                : stableKey.trim().toLowerCase(java.util.Locale.ROOT);
+        String normalizedComponent = component == null
+                ? ""
+                : component.trim().toLowerCase(java.util.Locale.ROOT);
+
+        return componentBuckets && !normalizedComponent.isEmpty()
+                ? normalizedStable + "#" + normalizedComponent
+                : normalizedStable;
     }
 
     public @NotNull String suppressedSuffix(int suppressed) {
