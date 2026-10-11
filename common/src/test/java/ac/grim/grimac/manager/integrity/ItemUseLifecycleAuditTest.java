@@ -220,4 +220,17 @@ class ItemUseLifecycleAuditTest {
         assertFalse(method.contains("beginTrusted("));
     }
 
+
+    @Test
+    void publicIntegrationCleanupUsesPlayerScopedSourcePrefixes()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
+        ));
+
+        assertTrue(source.contains(
+                ".clearSourcePrefix(playerId, sourcePlugin)"
+        ));
+    }
+
 }

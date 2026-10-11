@@ -34,7 +34,15 @@ class InteractionContextManagerTest {
                 1000L
         );
 
-        manager.clearSourcePrefix("RPGItems");
+        UUID other = UUID.randomUUID();
+        manager.begin(
+                other,
+                InteractionContextType.CUSTOM_CONSUME,
+                "RPGItems:OtherPlayer",
+                1000L
+        );
+
+        manager.clearSourcePrefix(uuid, "RPGItems");
 
         List<InteractionContextManager.Context> active = manager.getActive(uuid);
         assertFalse(active.stream().anyMatch(
@@ -45,6 +53,9 @@ class InteractionContextManagerTest {
         ));
         assertTrue(active.stream().anyMatch(
                 context -> context.getSource().startsWith("CombatPlus:")
+        ));
+        assertTrue(manager.getActive(other).stream().anyMatch(
+                context -> context.getSource().startsWith("RPGItems:")
         ));
     }
 

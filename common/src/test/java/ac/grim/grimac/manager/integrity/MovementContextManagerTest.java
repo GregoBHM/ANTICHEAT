@@ -87,7 +87,15 @@ class MovementContextManagerTest {
                 1000L
         );
 
-        manager.clearSourcePrefix("RPGItems");
+        UUID other = UUID.randomUUID();
+        manager.beginTrusted(
+                other,
+                MovementContextType.DASH,
+                "RPGItems:OtherPlayer",
+                1000L
+        );
+
+        manager.clearSourcePrefix(uuid, "RPGItems");
 
         List<MovementContextManager.Context> active = manager.getActive(uuid);
         assertFalse(active.stream().anyMatch(
@@ -98,6 +106,9 @@ class MovementContextManagerTest {
         ));
         assertTrue(active.stream().anyMatch(
                 context -> context.getSource().startsWith("CombatPlus:")
+        ));
+        assertTrue(manager.getActive(other).stream().anyMatch(
+                context -> context.getSource().startsWith("RPGItems:")
         ));
     }
 
