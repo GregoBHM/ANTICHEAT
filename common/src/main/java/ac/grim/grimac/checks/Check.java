@@ -315,6 +315,11 @@ public class Check extends GrimProcessor implements AbstractCheck {
         return offset > 0.001 ? String.format("%.5f", offset) : String.format("%.2E", offset);
     }
 
+    private static @NotNull String normalizeComponent(@NotNull String component) {
+        String value = component.trim().toLowerCase(java.util.Locale.ROOT);
+        return value.isEmpty() ? "" : value;
+    }
+
     private static @NotNull Supplier<String> constant(String verbose) {
         String value = verbose == null ? "" : verbose;
         return () -> value;
