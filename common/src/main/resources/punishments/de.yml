@@ -6,15 +6,19 @@
 # [alert] - spezieller Befehl zur Alarmierung
 # [webhook] - spezieller Befehl für die Alarmierung an den Discord-Webhook
 # [proxy] - spezieller Befehl zur Alarmierung anderer Server, die mit Ihrem Proxy verbunden sind (BungeeCord/Velocity)
+# Check selectors are backward compatible by canonical name.
+# Use stable:<stable-key> for an exact cross-version selector.
+# Canonical names always win over aliases; aliases never shadow real check names.
 Punishments:
   Simulation:
     # Nach wie vielen Sekunden soll ein Verstoß entfernt werden?
     remove-violations-after: 300
+    threshold-scope: check
     # In diesem Abschnitt werden alle Prüfungen mit dem Namen gefunden,
     # Um eine Prüfung auszuschließen, die sonst übereinstimmen würde, setzen Sie ein Ausrufezeichen vor den Namen
     # Zum Beispiel, !BadPacketsN
     checks:
-      - "Simulation"
+      - "stable:grim.prediction.simulation"
       - "GroundSpoof"
       - "Timer"
       - "TimerLimit"
@@ -39,7 +43,7 @@ Punishments:
     remove-violations-after: 300
     threshold-scope: check
     checks:
-      - "Knockback"
+      - "stable:grim.velocity.anti_knockback"
       - "Explosion"
     commands:
       - "5:5 [alert]"
@@ -89,7 +93,7 @@ Punishments:
     threshold-scope: check
     checks:
       - "Vehicle"
-      - "NoSlow"
+      - "stable:grim.movement.noslow"
       - "Sprint"
       - "MultiActions"
       - "Place"
@@ -101,7 +105,7 @@ Punishments:
       - "Exploit"
       - "StallActions"
       - "InventoryFrequency"
-      - "FastConsume"
+      - "stable:grim.interaction.fast_consume"
     commands:
       - "10:5 [alert]"
       - "1:1 [log]"
