@@ -927,7 +927,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 "Invalid SparkGrim config key '" + key
                         + "': expected " + expected
                         + ", got " + actualType
-                        + ". Update to config-version 20."
+                        + ". Update to config-version 29."
         );
     }
 }
