@@ -91,11 +91,6 @@ public class NoSlow extends Check implements PostPredictionListener {
         boolean observedVelocityContext =
                 movementContexts.hasObservedVelocityContext(player.uuid);
 
-        if (!contextPolicyEnabled) {
-            handleNormal(session);
-            return;
-        }
-
         if (trustedVelocityContext) {
             // A trusted plugin-authorized dash/launch/pull can invalidate
             // vanilla NoSlow movement evidence for a very short bounded window.
@@ -106,6 +101,11 @@ public class NoSlow extends Check implements PostPredictionListener {
             contextualStrongStreak = 0;
             lastContextEvidenceKey = "";
             resetTickState();
+            return;
+        }
+
+        if (!contextPolicyEnabled) {
+            handleNormal(session);
             return;
         }
 

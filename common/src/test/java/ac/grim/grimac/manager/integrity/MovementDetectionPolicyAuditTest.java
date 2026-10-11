@@ -226,6 +226,21 @@ class MovementDetectionPolicyAuditTest {
         ));
     }
 
+
+    @Test
+    void explicitTrustedNoSlowContextDoesNotDependOnHeuristicPolicyToggle()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
+        );
+
+        int trusted = source.indexOf("if (trustedVelocityContext)");
+        int policy = source.indexOf("if (!contextPolicyEnabled)");
+
+        assertTrue(trusted >= 0);
+        assertTrue(policy > trusted);
+    }
+
     private static String read(String path) throws IOException {
         return Files.readString(Path.of(path));
     }
