@@ -222,6 +222,17 @@ class ItemUseLifecycleAuditTest {
 
 
     @Test
+    void genericBukkitCancellationDoesNotCreateReusableFastConsumeExemption()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
+        ));
+        assertFalse(source.contains("InteractionContextType.PLUGIN_CANCELLED_USE"));
+        assertTrue(source.contains("suppressesConsumeTiming(uuid)"));
+        assertTrue(source.contains("event.isCancelled()"));
+    }
+
+    @Test
     void inventoryCloseAndCancelledInteractPreservePhysicalItemUse()
             throws Exception {
         String source = Files.readString(Path.of(

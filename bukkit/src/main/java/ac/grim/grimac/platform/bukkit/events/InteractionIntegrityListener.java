@@ -5,7 +5,6 @@ import ac.grim.grimac.checks.impl.integrity.AttackFrequency;
 import ac.grim.grimac.checks.impl.integrity.ConsumeTiming;
 import ac.grim.grimac.checks.impl.integrity.InventoryFrequency;
 import ac.grim.grimac.checks.impl.integrity.PacketBurst;
-import ac.grim.grimac.manager.integrity.InteractionContextType;
 import ac.grim.grimac.player.GrimPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -81,13 +80,6 @@ public final class InteractionIntegrityListener implements Listener {
         }
 
         if (event.isCancelled() && (decision == null || !decision.shouldPrevent())) {
-            GrimAPI.INSTANCE.getInteractionContextManager().begin(
-                    uuid,
-                    InteractionContextType.PLUGIN_CANCELLED_USE,
-                    "Bukkit:CancelledConsume",
-                    700L,
-                    "item=" + event.getItem().getType().name()
-            );
             grim.runSafely(consume::reset);
             return;
         }
@@ -107,13 +99,8 @@ public final class InteractionIntegrityListener implements Listener {
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
 
         UUID uuid = event.getPlayer().getUniqueId();
-        GrimAPI.INSTANCE.getInteractionContextManager().begin(
-                uuid,
-                InteractionContextType.PLUGIN_CANCELLED_USE,
-                "Bukkit:CancelledInteract",
-                500L,
-                "item=" + event.getItem().getType().name()
-        );
+        // Generic Bukkit cancellation is not an explicit trusted plugin
+        // context. It must not suppress a later, unrelated FastConsume event.
         GrimPlayer grim = grim(uuid);
         if (grim != null) grim.runSafely(() -> grim.checkManager.get(ConsumeTiming.class).clearPendingDecision());
     }
