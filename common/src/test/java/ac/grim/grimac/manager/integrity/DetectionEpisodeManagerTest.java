@@ -72,4 +72,86 @@ class DetectionEpisodeManagerTest {
                 1
         ).allowFlag());
     }
+
+
+    @Test
+    void sharedPhysicalEpisodeCapsCrossCheckCascade() {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        DetectionEpisodeManager.SharedEpisode shared =
+                manager.resolveSharedEpisode(
+                        "movement-special",
+                        "cobweb|velocity=observed|item=7",
+                        1500L
+                );
+
+        assertTrue(manager.evaluate(
+                "noslow.cobweb",
+                "item-7|cobweb",
+                1500L,
+                0L,
+                1,
+                shared,
+                2
+        ).allowFlag());
+
+        DetectionEpisodeManager.SharedEpisode sameShared =
+                manager.resolveSharedEpisode(
+                        "movement-special",
+                        "cobweb|velocity=observed|item=7",
+                        1500L
+                );
+
+        assertTrue(manager.evaluate(
+                "velocity.cobweb",
+                "velocity-42|cobweb",
+                1500L,
+                0L,
+                1,
+                sameShared,
+                2
+        ).allowFlag());
+
+        DetectionEpisodeManager.Decision third = manager.evaluate(
+                "simulation.cobweb",
+                "simulation|cobweb",
+                1500L,
+                0L,
+                1,
+                sameShared,
+                2
+        );
+
+        assertFalse(third.allowFlag());
+        assertTrue(third.sharedFlags() >= 2);
+    }
+
+    @Test
+    void changedPhysicalContextStartsFreshSharedEpisode() {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        DetectionEpisodeManager.SharedEpisode cobweb =
+                manager.resolveSharedEpisode(
+                        "movement-special",
+                        "cobweb|velocity=observed|item=7",
+                        1500L
+                );
+        DetectionEpisodeManager.SharedEpisode liquid =
+                manager.resolveSharedEpisode(
+                        "movement-special",
+                        "water|velocity=none|item=7",
+                        1500L
+                );
+
+        assertTrue(cobweb.id() != liquid.id());
+        assertTrue(manager.evaluate(
+                "simulation.liquid",
+                "simulation|liquid",
+                1500L,
+                0L,
+                1,
+                liquid,
+                1
+        ).allowFlag());
+    }
 }

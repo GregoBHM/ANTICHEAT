@@ -39,6 +39,8 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("context-policy:"), path.toString());
                 assertTrue(text.contains("special-environment:"), path.toString());
                 assertTrue(text.contains("flag-episode-window-ms: 1500"), path.toString());
+                assertTrue(text.contains("evidence-episodes:"), path.toString());
+                assertTrue(text.contains("max-total-flags: 2"), path.toString());
                 assertFalse(text.contains("recent-check-window-ms:"), path.toString());
             }
         }
