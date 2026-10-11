@@ -452,8 +452,8 @@ config-version: 29
 
 # Staff-only diagnostic alert emitted only when Grim actually sends a movement
 # correction/resync. It does not add VL and does not execute punishments.
-# The normal Grim alert style is preserved; the verbose part tells you what the
-# correction was related to, e.g. related=cobweb or related=normal,blink,packet_burst.
+# By default correction diagnostics are visible only to /grim verbose listeners.
+# They never add VL or execute punishments; normal mode is available only for explicit debugging.
 correction-diagnostics:
     enabled: true
     # off = hidden, verbose = only /grim verbose listeners, normal = normal staff alerts.
