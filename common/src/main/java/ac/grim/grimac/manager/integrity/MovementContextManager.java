@@ -112,6 +112,35 @@ public final class MovementContextManager {
         return false;
     }
 
+    public boolean hasObservedVelocityContext(@NotNull UUID uuid) {
+        return hasVelocityContext(uuid, false, true);
+    }
+
+    public boolean hasAnyVelocityContext(@NotNull UUID uuid) {
+        return hasVelocityContext(uuid, true, true);
+    }
+
+    private boolean hasVelocityContext(
+            @NotNull UUID uuid,
+            boolean includeTrusted,
+            boolean includeObserved
+    ) {
+        long now = System.nanoTime();
+        CopyOnWriteArrayList<Context> list = contexts.get(uuid);
+        if (list == null) return false;
+        cleanup(uuid, list, now);
+        for (Context context : list) {
+            if (context.expiresAtNanos <= now
+                    || !context.type.allowsTrustedVelocityOverride()) {
+                continue;
+            }
+            if (context.trusted ? includeTrusted : includeObserved) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public @NotNull List<Context> getActive(@NotNull UUID uuid) {
         long now = System.nanoTime();
         CopyOnWriteArrayList<Context> list = contexts.get(uuid);
