@@ -24,7 +24,8 @@ public class SprintC extends Check implements PostPredictionListener {
 
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
-        if (player.packetStateData.isSlowedByUsingItem()) {
+        if (player.itemUseSessionTracker.isActive()
+                && player.packetStateData.isSlowedByUsingItem()) {
             if (!player.wasTouchingWater || player.getClientVersion().isOlderThan(ClientVersion.V_1_13)) {
                 flaggedLastTick = false;
                 return;
@@ -37,6 +38,8 @@ public class SprintC extends Check implements PostPredictionListener {
                 reward();
                 flaggedLastTick = false;
             }
+        } else {
+            flaggedLastTick = false;
         }
     }
 }
