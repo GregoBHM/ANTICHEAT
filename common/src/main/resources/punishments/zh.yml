@@ -37,6 +37,7 @@ Punishments:
       - "100:100 [proxy]"
   Knockback:
     remove-violations-after: 300
+    threshold-scope: check
     checks:
       - "Knockback"
       - "Explosion"
@@ -85,6 +86,7 @@ Punishments:
       - "5:3 [proxy]"
   Misc:
     remove-violations-after: 300
+    threshold-scope: check
     checks:
       - "Vehicle"
       - "NoSlow"
