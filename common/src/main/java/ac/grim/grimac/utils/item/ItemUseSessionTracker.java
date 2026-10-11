@@ -185,8 +185,15 @@ public final class ItemUseSessionTracker {
         }
 
         GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
-        player.packetStateData.setSlowedByUsingItem(false);
-        endInternal(reason, System.currentTimeMillis());
+
+        // Repeated USE packets may require a server-side active-item reset on
+        // some protocol versions, but they still belong to the same physical
+        // consume episode. Keeping the session start time prevents packet spam
+        // from restarting FastConsume's clock.
+        if (reason != ItemUseResetPolicy.Reason.REPEATED_USE) {
+            player.packetStateData.setSlowedByUsingItem(false);
+            endInternal(reason, System.currentTimeMillis());
+        }
         return true;
     }
 
