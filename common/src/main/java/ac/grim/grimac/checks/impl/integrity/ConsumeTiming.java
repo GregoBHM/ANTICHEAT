@@ -13,7 +13,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Locale;
 
-@CheckData(name = "FastConsume", alternativeName = "NoSlow", stableKey = "grim.interaction.fast_consume",
+@CheckData(name = "FastConsume", alternativeName = "FastEat", stableKey = "grim.interaction.fast_consume",
         description = "Finished consuming an item faster than the client protocol allows", setback = -1, decay = 0.20)
 public final class ConsumeTiming extends Check {
     private boolean enabled;

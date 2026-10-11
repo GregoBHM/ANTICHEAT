@@ -30,6 +30,7 @@ public class PunishmentManager implements ConfigReloadable {
 
     private final GrimPlayer player;
     private final List<PunishGroup> groups = new ArrayList<>();
+    private final Set<String> canonicalCheckNames = new java.util.HashSet<>();
 
     private String experimentalSymbol = "*";
     private String alertString;
@@ -99,9 +100,18 @@ public class PunishmentManager implements ConfigReloadable {
 
         try {
             groups.clear();
+            canonicalCheckNames.clear();
 
             for (AbstractCheck check : player.getChecks()) {
                 check.setEnabled(false);
+                if (check.getCheckName() != null
+                        && !check.getCheckName().isBlank()) {
+                    canonicalCheckNames.add(
+                            check.getCheckName()
+                                    .trim()
+                                    .toLowerCase(Locale.ROOT)
+                    );
+                }
             }
 
             for (Object rawGroup : punish) {
@@ -143,55 +153,8 @@ public class PunishmentManager implements ConfigReloadable {
                         command = command.substring(1).trim();
                     }
 
-                    boolean stableKeySelector = command.startsWith("key:")
-                            || command.startsWith("stable:");
-                    String stableKey = stableKeySelector
-                            ? command.substring(command.indexOf(':') + 1).trim()
-                            : "";
-
-                    List<AbstractCheck> matched = new ArrayList<>();
-
-                    if (stableKeySelector) {
-                        for (AbstractCheck check : player.getChecks()) {
-                            if (check.getStableKey() != null
-                                    && check.getStableKey().equalsIgnoreCase(stableKey)) {
-                                matched.add(check);
-                            }
-                        }
-                    } else {
-                        // Prefer exact check names so aliases cannot make a selector such
-                        // as "NoSlow" accidentally include FastConsume.
-                        for (AbstractCheck check : player.getChecks()) {
-                            String checkName = check.getCheckName() == null
-                                    ? ""
-                                    : check.getCheckName().toLowerCase(Locale.ROOT);
-                            if (checkName.equals(command)) {
-                                matched.add(check);
-                            }
-                        }
-
-                        if (matched.isEmpty()) {
-                            for (AbstractCheck check : player.getChecks()) {
-                                String checkName = check.getCheckName() == null
-                                        ? ""
-                                        : check.getCheckName().toLowerCase(Locale.ROOT);
-                                if (checkName.contains(command)) {
-                                    matched.add(check);
-                                }
-                            }
-                        }
-
-                        if (matched.isEmpty()) {
-                            for (AbstractCheck check : player.getChecks()) {
-                                String alternativeName = check.getAlternativeName() == null
-                                        ? ""
-                                        : check.getAlternativeName().toLowerCase(Locale.ROOT);
-                                if (!alternativeName.isEmpty() && alternativeName.contains(command)) {
-                                    matched.add(check);
-                                }
-                            }
-                        }
-                    }
+                    List<AbstractCheck> matched =
+                            selectConfiguredChecks(command);
 
                     for (AbstractCheck check : matched) {
                         if (exclude) {
@@ -910,31 +873,63 @@ public class PunishmentManager implements ConfigReloadable {
         if (variable.startsWith("vl:")) {
             String requested =
                     variable.substring("vl:".length())
-                            .toLowerCase(Locale.ROOT);
+                            .trim();
+
+            int bestPriority = 0;
+            double count = 0.0D;
 
             for (AbstractCheck candidate : group.checks) {
-                String name =
-                        candidate.getCheckName() == null
-                                ? ""
-                                : candidate.getCheckName()
-                                .toLowerCase(Locale.ROOT);
+                int priority =
+                        PunishmentSelectorPolicy.exactMatchPriority(
+                                requested,
+                                candidate.getCheckName(),
+                                candidate.getAlternativeName(),
+                                candidate.getStableKey(),
+                                canonicalCheckNames
+                        );
 
-                String alternative =
-                        candidate.getAlternativeName() == null
-                                ? ""
-                                : candidate.getAlternativeName()
-                                .toLowerCase(Locale.ROOT);
-
-                if (name.equals(requested)
-                        || alternative.equals(requested)) {
-                    return group.violations.count(candidate);
+                if (priority > bestPriority) {
+                    bestPriority = priority;
+                    count = group.violations.count(candidate);
+                } else if (priority != 0
+                        && priority == bestPriority) {
+                    count += group.violations.count(candidate);
                 }
             }
 
-            return 0.0D;
+            return count;
         }
 
         return Double.NaN;
+    }
+
+    private List<AbstractCheck> selectConfiguredChecks(
+            String selector
+    ) {
+        int bestPriority = 0;
+        List<AbstractCheck> matched = new ArrayList<>();
+
+        for (AbstractCheck check : player.getChecks()) {
+            int priority =
+                    PunishmentSelectorPolicy.matchPriority(
+                            selector,
+                            check.getCheckName(),
+                            check.getAlternativeName(),
+                            check.getStableKey(),
+                            canonicalCheckNames
+                    );
+
+            if (priority > bestPriority) {
+                bestPriority = priority;
+                matched.clear();
+                matched.add(check);
+            } else if (priority != 0
+                    && priority == bestPriority) {
+                matched.add(check);
+            }
+        }
+
+        return matched;
     }
 
     private static boolean defaultsToPerCheckScope(
@@ -944,7 +939,8 @@ public class PunishmentManager implements ConfigReloadable {
             String key = check.getStableKey();
             if ("grim.movement.noslow".equals(key)
                     || "grim.interaction.fast_consume".equals(key)
-                    || "grim.velocity.anti_knockback".equals(key)) {
+                    || "grim.velocity.anti_knockback".equals(key)
+                    || "grim.prediction.simulation".equals(key)) {
                 return true;
             }
         }
