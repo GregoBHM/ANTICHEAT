@@ -293,13 +293,18 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         reward();
                     }
                 }
-            } else if (threshold > 0.05) {
+            } else {
+                // A clean/non-flagging velocity sample breaks the requirement
+                // for consecutive strong special-environment evidence.
                 specialEvidenceStreak = 0;
-                threshold *= multiplier;
-                if (System.nanoTime() - lastEnforcementNanos
-                        > enforcementEpisodeResetNanos) {
-                    enforcementRetries = 0;
-                    enforcementEpisodeStartedNanos = 0L;
+                specialEvidenceKey = "";
+                if (threshold > 0.05) {
+                    threshold *= multiplier;
+                    if (System.nanoTime() - lastEnforcementNanos
+                            > enforcementEpisodeResetNanos) {
+                        enforcementRetries = 0;
+                        enforcementEpisodeStartedNanos = 0L;
+                    }
                 }
             }
         }

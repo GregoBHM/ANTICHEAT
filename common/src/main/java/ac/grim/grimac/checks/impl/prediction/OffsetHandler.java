@@ -64,6 +64,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private double environmentRecoveryMinRawOffset;
     private boolean wasSpecialEnvironment;
     private int specialEnvironmentCorrectionStreak;
+    private String specialEnvironmentCorrectionKey = "";
 
     private boolean shortBlinkEnabled;
     private long shortBlinkMinGapNanos;
@@ -280,6 +281,8 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             advantageGained = 0.0D;
             specialEnvironmentFlagStreak = 0;
             specialEnvironmentFlagKey = "";
+            specialEnvironmentCorrectionStreak = 0;
+            specialEnvironmentCorrectionKey = "";
             resetEnforcementState();
             resetShortBlinkState();
             removeOffsetLenience();
@@ -311,6 +314,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                             && environmentRecoveryTicksRemaining > 0
             );
             final String specialEpisodeDebug;
+            final String specialEpisodeToken;
 
             if (environmentProtectedWindow) {
                 advantageGained = 0.0D;
@@ -367,13 +371,15 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     return;
                 }
 
+                specialEpisodeToken = sharedEpisode.token();
                 specialEpisodeDebug = " episode="
-                        + sharedEpisode.token()
+                        + specialEpisodeToken
                         + " sharedFlags="
                         + decision.sharedFlags();
             } else {
                 specialEnvironmentFlagStreak = 0;
                 specialEnvironmentFlagKey = "";
+                specialEpisodeToken = "";
                 specialEpisodeDebug = "";
             }
 
@@ -413,6 +419,15 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         }
 
                         if (environmentProtectedWindow) {
+                            String correctionKey = simulationComponent
+                                    + "|" + specialEpisodeToken;
+                            if (!correctionKey.equals(
+                                    specialEnvironmentCorrectionKey
+                            )) {
+                                specialEnvironmentCorrectionStreak = 0;
+                                specialEnvironmentCorrectionKey = correctionKey;
+                            }
+
                             if (offset >= specialEnvironmentCorrectionMinRawOffset
                                     && enforcementOffset >= enforcementStrongOffset) {
                                 specialEnvironmentCorrectionStreak++;
@@ -426,6 +441,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                                     >= specialEnvironmentCorrectionStrongTicks);
                         } else {
                             specialEnvironmentCorrectionStreak = 0;
+                            specialEnvironmentCorrectionKey = "";
                             severeMovement = enforcementOffset >= enforcementSevereOffset
                                     || enforcementStrongStreak >= enforcementStrongConsecutiveTicks;
                         }
@@ -598,6 +614,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         environmentRecoveryMinRawOffset = 0.0D;
         wasSpecialEnvironment = false;
         specialEnvironmentCorrectionStreak = 0;
+        specialEnvironmentCorrectionKey = "";
         specialEnvironmentFlagStreak = 0;
         specialEnvironmentFlagKey = "";
     }

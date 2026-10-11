@@ -66,6 +66,8 @@ public class NoSlow extends Check implements PostPredictionListener {
         }
         if (!player.packetStateData.isSlowedByUsingItem()) {
             resetTickState();
+            contextualStrongStreak = 0;
+            lastContextEvidenceKey = "";
             return;
         }
 
@@ -73,6 +75,8 @@ public class NoSlow extends Check implements PostPredictionListener {
                 && didSlotChangeLastTick) {
             didSlotChangeLastTick = false;
             resetTickState();
+            contextualStrongStreak = 0;
+            lastContextEvidenceKey = "";
             return;
         }
 
