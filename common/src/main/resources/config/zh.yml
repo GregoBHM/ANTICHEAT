@@ -696,6 +696,8 @@ movement-enforcement:
         disable-short-blink: true
         # v22: special physics needs persistent, clearly impossible raw movement before correction.
         correction-strong-ticks: 3
+        # Observed Bukkit velocity is uncertainty, never a trusted bypass.
+        observed-velocity-min-raw-offset: 0.12
         # Special-physics Simulation flags are evidence episodes, not one VL per tick.
         flag-strong-ticks: 3
         flag-episode-window-ms: 1500
