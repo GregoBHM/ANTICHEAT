@@ -51,24 +51,27 @@ public final class MovementContextListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
+        var contexts = GrimAPI.INSTANCE.getMovementContextManager();
+        // Trusted/observed movement authored before a teleport belongs to the
+        // old position. Cleanup is lifecycle-owned and must run even when the
+        // automatic Bukkit observation bridge is disabled.
+        contexts.clear(event.getPlayer().getUniqueId());
         if (!enabled()) return;
+
         long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
         String cause = event.getCause() == null ? "UNKNOWN" : event.getCause().name();
-        var contexts = GrimAPI.INSTANCE.getMovementContextManager();
-        // Movement authored before a teleport belongs to the old position and
-        // must not suppress NoSlow/AntiKB/Simulation at the destination.
-        contexts.clear(event.getPlayer().getUniqueId());
         contexts.beginObserved(
                 event.getPlayer().getUniqueId(), MovementContextType.TELEPORT, "Bukkit:Teleport", duration, "cause=" + cause);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldChange(PlayerChangedWorldEvent event) {
-        if (!enabled()) return;
-        long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
         var player = event.getPlayer();
         var contexts = GrimAPI.INSTANCE.getMovementContextManager();
         contexts.clear(player.getUniqueId());
+        if (!enabled()) return;
+
+        long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
         contexts.beginObserved(
                 player.getUniqueId(),
                 MovementContextType.TELEPORT,
@@ -80,9 +83,9 @@ public final class MovementContextListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onGameModeChange(PlayerGameModeChangeEvent event) {
-        if (!enabled()) return;
-        // A gamemode switch is a movement-policy discontinuity. Do not carry a
-        // trusted dash/launch/root/flight window into the new mode.
+        // A gamemode switch is a movement-policy discontinuity. This cleanup is
+        // independent from movement-context-auto because explicit trusted
+        // plugin contexts must not survive into the new mode either.
         GrimAPI.INSTANCE.getMovementContextManager()
                 .clear(event.getPlayer().getUniqueId());
     }
