@@ -103,6 +103,11 @@ public class PacketPlayerRespawn extends PacketListenerAbstract {
             if (health.getHealth() <= 0) {
                 player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> {
                     player.compensatedEntities.self.isDead = true;
+                    player.packetStateData.setSlowedByUsingItem(false);
+                    player.itemUseSessionTracker.end(
+                            ItemUseResetPolicy.Reason.DEATH
+                    );
+                    player.detectionEpisodeManager.clearAll();
                     player.checkManager.get(BadPacketsM.class).onDeath();
                 });
             } else {
@@ -168,6 +173,7 @@ public class PacketPlayerRespawn extends PacketListenerAbstract {
                 player.itemUseSessionTracker.end(
                         ItemUseResetPolicy.Reason.RESPAWN
                 );
+                player.detectionEpisodeManager.clearAll();
                 player.packetStateData.packetPlayerOnGround = false; // If somewhere else pulls last ground to fix other issues
                 player.packetStateData.lastClaimedPosition = new Vector3d();
                 player.filterMojangStupidityOnMojangStupidity.zero();
