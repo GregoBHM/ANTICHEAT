@@ -266,15 +266,13 @@ public final class ConsumeTiming extends Check {
         return "fastconsume.food";
     }
 
-    private static boolean itemKeysMatch(
+    static boolean itemKeysMatch(
             String packetKey,
             String serverKey
     ) {
         String left = ItemUseSessionTracker.normalizeItemKey(packetKey);
         String right = ItemUseSessionTracker.normalizeItemKey(serverKey);
-        return left.equals(right)
-                || left.endsWith("_" + right)
-                || right.endsWith("_" + left);
+        return left.equals(right);
     }
 
     private static long clamp(long value, long min, long max) {
