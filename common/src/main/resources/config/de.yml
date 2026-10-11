@@ -460,7 +460,7 @@ config-version: 30
 # By default correction diagnostics are visible only to /grim verbose listeners.
 # They never add VL or execute punishments; normal mode is available only for explicit debugging.
 correction-diagnostics:
-    enabled: true
+    # mode is authoritative. Legacy "enabled" is only read from old configs during migration/runtime fallback.
     # off = hidden, verbose = only /grim verbose listeners, normal = normal staff alerts.
     # v10 defaults to verbose so corrections never look like a second violation.
     mode: verbose
