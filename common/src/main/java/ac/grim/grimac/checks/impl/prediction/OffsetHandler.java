@@ -310,7 +310,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     !specialEnvironment
                             && environmentRecoveryTicksRemaining > 0
             );
-            String specialEpisodeDebug = "";
+            final String specialEpisodeDebug;
 
             if (environmentProtectedWindow) {
                 advantageGained = 0.0D;
@@ -374,6 +374,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             } else {
                 specialEnvironmentFlagStreak = 0;
                 specialEnvironmentFlagKey = "";
+                specialEpisodeDebug = "";
             }
 
             synchronized (flags) {
