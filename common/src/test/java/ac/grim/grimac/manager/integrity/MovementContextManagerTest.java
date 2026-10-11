@@ -2,6 +2,7 @@ package ac.grim.grimac.manager.integrity;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -60,5 +61,60 @@ class MovementContextManagerTest {
         assertFalse(manager.hasTrustedVelocityContext(uuid));
         assertFalse(manager.hasObservedVelocityContext(uuid));
         assertFalse(manager.hasAnyVelocityContext(uuid));
+    }
+
+    @Test
+    void disablingOnePluginOnlyClearsThatSourcePrefix() {
+        MovementContextManager manager = new MovementContextManager();
+        UUID uuid = UUID.randomUUID();
+
+        manager.beginTrusted(
+                uuid,
+                MovementContextType.DASH,
+                "RPGItems:Leap",
+                1000L
+        );
+        manager.beginTrusted(
+                uuid,
+                MovementContextType.LAUNCH,
+                "MagicSpells:Jump",
+                1000L
+        );
+        manager.beginTrusted(
+                uuid,
+                MovementContextType.PULL,
+                "CombatPlus:Hook",
+                1000L
+        );
+
+        manager.clearSourcePrefix("RPGItems");
+
+        List<MovementContextManager.Context> active = manager.getActive(uuid);
+        assertFalse(active.stream().anyMatch(
+                context -> context.getSource().startsWith("RPGItems:")
+        ));
+        assertTrue(active.stream().anyMatch(
+                context -> context.getSource().startsWith("MagicSpells:")
+        ));
+        assertTrue(active.stream().anyMatch(
+                context -> context.getSource().startsWith("CombatPlus:")
+        ));
+    }
+
+    @Test
+    void perPlayerContextCardinalityIsBounded() {
+        MovementContextManager manager = new MovementContextManager();
+        UUID uuid = UUID.randomUUID();
+
+        for (int index = 0; index < 256; index++) {
+            manager.beginObserved(
+                    uuid,
+                    MovementContextType.KNOCKBACK,
+                    "Plugin:" + index,
+                    15_000L
+            );
+        }
+
+        assertTrue(manager.getActive(uuid).size() <= 64);
     }
 }

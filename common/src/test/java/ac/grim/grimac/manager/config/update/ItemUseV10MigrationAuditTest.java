@@ -211,6 +211,40 @@ class ItemUseV10MigrationAuditTest {
         return (Map<String, Object>) new Yaml().load(Files.readString(path));
     }
 
+
+    @Test
+    void migrationIsIdempotentAfterFirstV30Upgrade(
+            @TempDir Path tempDir
+    ) throws Exception {
+        Path config = tempDir.resolve("config.yml");
+        Files.writeString(config, """
+                config-version: 28
+                config-flavor: V2
+                correction-diagnostics:
+                    enabled: false
+                    format: "&eKEEP"
+                NoSlow:
+                    context-policy:
+                        special-minimum-offset: 0.77
+                """);
+
+        ConfigUpdater updater = new ConfigUpdater(
+                GrimConfigSpecs.class,
+                Logger.getLogger("item-use-v10-idempotence-test")
+        );
+
+        ConfigUpdater.Result first =
+                updater.update(config.toFile(), GrimConfigSpecs.mainConfig());
+        String afterFirst = Files.readString(config);
+        ConfigUpdater.Result second =
+                updater.update(config.toFile(), GrimConfigSpecs.mainConfig());
+        String afterSecond = Files.readString(config);
+
+        assertTrue(first.migrated);
+        assertFalse(second.migrated);
+        assertEquals(afterFirst, afterSecond);
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> map(
             Map<String, Object> parent,

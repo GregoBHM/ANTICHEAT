@@ -2,6 +2,10 @@ package ac.grim.grimac.manager.integrity;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -154,4 +158,30 @@ class DetectionEpisodeManagerTest {
                 1
         ).allowFlag());
     }
+
+    @Test
+    void thousandsOfEpisodeKeysForOneComponentDoNotGrowStateMap()
+            throws Exception {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        for (int index = 0; index < 5000; index++) {
+            manager.evaluate(
+                    "simulation.cobweb",
+                    "episode-" + index,
+                    1500L,
+                    0L,
+                    1
+            );
+        }
+
+        Field field = DetectionEpisodeManager.class.getDeclaredField("states");
+        field.setAccessible(true);
+        Map<?, ?> states = (Map<?, ?>) field.get(manager);
+
+        assertEquals(1, states.size());
+
+        manager.clearAll();
+        assertEquals(0, states.size());
+    }
+
 }

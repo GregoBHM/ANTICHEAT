@@ -97,4 +97,57 @@ class ItemUseLifecycleAuditTest {
                 "getInteractionContextManager()"
         ));
     }
+
+    @Test
+    void teleportAndWorldChangeDoNotClearPhysicalConsumeSessionIndirectly()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
+        ));
+
+        int teleportStart = source.indexOf("public void onTeleport(");
+        int worldStart = source.indexOf("public void onWorldChange(", teleportStart);
+        int gameModeStart = source.indexOf("public void onGameMode(", worldStart);
+
+        String teleport = source.substring(teleportStart, worldStart);
+        String worldChange = source.substring(worldStart, gameModeStart);
+
+        assertTrue(teleport.contains("clear(event.getPlayer().getUniqueId(), false)"));
+        assertTrue(worldChange.contains("clear(event.getPlayer().getUniqueId(), false)"));
+        assertFalse(teleport.contains("ConsumeTiming.class).reset()"));
+        assertFalse(worldChange.contains("ConsumeTiming.class).reset()"));
+    }
+
+    @Test
+    void consumeDecisionsReturnToPlayerEventLoopAndQuitDropsPendingState()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
+        ));
+
+        assertTrue(source.contains(
+                "grim.runSafely(() -> consume.applyServerConsumeDecision(decision))"
+        ));
+        assertTrue(source.contains("public void onQuit(PlayerQuitEvent event)"));
+        assertTrue(source.contains("PENDING_CONSUME.remove(uuid)"));
+        assertTrue(source.contains("suppressesConsumeTiming(uuid)"));
+    }
+
+    @Test
+    void teleportReplacesOldMovementContextsWithObservedTransition()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
+        ));
+
+        int start = source.indexOf("public void onTeleport(");
+        int end = source.indexOf("public void onWorldChange(", start);
+        String method = source.substring(start, end);
+
+        assertTrue(method.contains("contexts.clear(event.getPlayer().getUniqueId())"));
+        assertTrue(method.contains("beginObserved("));
+        assertTrue(method.contains("MovementContextType.TELEPORT"));
+        assertFalse(method.contains("beginTrusted("));
+    }
+
 }
