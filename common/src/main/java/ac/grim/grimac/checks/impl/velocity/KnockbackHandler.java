@@ -10,8 +10,6 @@ import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.EnvironmentContext;
 import ac.grim.grimac.manager.integrity.EnvironmentContextManager;
-import ac.grim.grimac.manager.integrity.MovementContextManager;
-import ac.grim.grimac.manager.integrity.MovementContextType;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import ac.grim.grimac.utils.data.Pair;
@@ -231,7 +229,9 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 EnvironmentContextManager environment =
                         GrimAPI.INSTANCE.getEnvironmentContextManager();
                 Set<EnvironmentContext> contexts = environment.classify(player);
-                boolean observedVelocityContext = hasObservedVelocityContext();
+                boolean observedVelocityContext = GrimAPI.INSTANCE
+                        .getMovementContextManager()
+                        .hasObservedVelocityContext(player.uuid);
                 boolean uncertainVelocity = specialEvidenceEnabled
                         && (environment.isVelocityUncertainEnvironment(player)
                         || observedVelocityContext);
@@ -305,7 +305,8 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         if (suppressInSpecialEnvironments
                 && (GrimAPI.INSTANCE.getEnvironmentContextManager()
                 .isVelocityUncertainEnvironment(player)
-                || hasObservedVelocityContext())) {
+                || GrimAPI.INSTANCE.getMovementContextManager()
+                .hasObservedVelocityContext(player.uuid))) {
             return false;
         }
 
@@ -407,21 +408,6 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         )) {
             reward();
         }
-    }
-
-    private boolean hasObservedVelocityContext() {
-        for (MovementContextManager.Context context :
-                GrimAPI.INSTANCE.getMovementContextManager()
-                        .getActive(player.uuid)) {
-            MovementContextType type = context.getType();
-            if (type == MovementContextType.KNOCKBACK
-                    || type == MovementContextType.LAUNCH
-                    || type == MovementContextType.DASH
-                    || type == MovementContextType.PULL) {
-                return !context.isTrusted();
-            }
-        }
-        return false;
     }
 
     private static @NotNull String velocityComponent(
