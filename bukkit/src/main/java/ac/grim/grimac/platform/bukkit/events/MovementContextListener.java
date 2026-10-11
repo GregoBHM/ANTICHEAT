@@ -7,6 +7,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
@@ -52,8 +54,37 @@ public final class MovementContextListener implements Listener {
         if (!enabled()) return;
         long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
         String cause = event.getCause() == null ? "UNKNOWN" : event.getCause().name();
-        GrimAPI.INSTANCE.getMovementContextManager().beginObserved(
+        var contexts = GrimAPI.INSTANCE.getMovementContextManager();
+        // Movement authored before a teleport belongs to the old position and
+        // must not suppress NoSlow/AntiKB/Simulation at the destination.
+        contexts.clear(event.getPlayer().getUniqueId());
+        contexts.beginObserved(
                 event.getPlayer().getUniqueId(), MovementContextType.TELEPORT, "Bukkit:Teleport", duration, "cause=" + cause);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        if (!enabled()) return;
+        long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
+        var player = event.getPlayer();
+        var contexts = GrimAPI.INSTANCE.getMovementContextManager();
+        contexts.clear(player.getUniqueId());
+        contexts.beginObserved(
+                player.getUniqueId(),
+                MovementContextType.TELEPORT,
+                "Bukkit:WorldChange",
+                duration,
+                "from=" + event.getFrom().getName() + ",to=" + player.getWorld().getName()
+        );
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onGameModeChange(PlayerGameModeChangeEvent event) {
+        if (!enabled()) return;
+        // A gamemode switch is a movement-policy discontinuity. Do not carry a
+        // trusted dash/launch/root/flight window into the new mode.
+        GrimAPI.INSTANCE.getMovementContextManager()
+                .clear(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

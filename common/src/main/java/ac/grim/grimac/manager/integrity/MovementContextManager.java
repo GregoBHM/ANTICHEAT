@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 public final class MovementContextManager {
     private static final long MAX_CONTEXT_MILLIS = 15_000L;
     private static final long MAX_TRUSTED_VELOCITY_MILLIS = 1_500L;
+    private static final int MAX_CONTEXTS_PER_PLAYER = 64;
 
     private final Map<UUID, CopyOnWriteArrayList<Context>> contexts = new ConcurrentHashMap<>();
 
@@ -63,8 +64,16 @@ public final class MovementContextManager {
         String normalizedSource = sanitizeSource(source);
         Context context = new Context(type, normalizedSource, sanitizeDetail(detail), trusted, now, expiresAtNanos);
         CopyOnWriteArrayList<Context> list = contexts.computeIfAbsent(uuid, ignored -> new CopyOnWriteArrayList<>());
-        list.removeIf(existing -> existing.type == type && existing.source.equals(normalizedSource) && existing.trusted == trusted);
-        list.add(context);
+        synchronized (list) {
+            list.removeIf(existing ->
+                    existing.type == type
+                            && existing.source.equals(normalizedSource)
+                            && existing.trusted == trusted);
+            while (list.size() >= MAX_CONTEXTS_PER_PLAYER) {
+                list.remove(0);
+            }
+            list.add(context);
+        }
         return context;
     }
 

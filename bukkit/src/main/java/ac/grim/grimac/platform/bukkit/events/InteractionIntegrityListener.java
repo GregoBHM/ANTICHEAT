@@ -7,7 +7,6 @@ import ac.grim.grimac.checks.impl.integrity.InventoryFrequency;
 import ac.grim.grimac.checks.impl.integrity.PacketBurst;
 import ac.grim.grimac.manager.integrity.InteractionContextType;
 import ac.grim.grimac.player.GrimPlayer;
-import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -19,6 +18,7 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
@@ -74,6 +74,18 @@ public final class InteractionIntegrityListener implements Listener {
 
         ConsumeTiming.ConsumeDecision decision = PENDING_CONSUME.remove(uuid);
 
+        // An explicit integration context may be registered by a trusted plugin
+        // after HIGHEST but before MONITOR. Honor that narrow late context
+        // instead of applying a FastConsume decision created earlier in the
+        // same Bukkit event. Generic cancellation alone is not enough to bypass
+        // a Grim prevention decision.
+        if (event.isCancelled()
+                && GrimAPI.INSTANCE.getInteractionContextManager()
+                .suppressesConsumeTiming(uuid)) {
+            grim.runSafely(consume::reset);
+            return;
+        }
+
         if (event.isCancelled() && (decision == null || !decision.shouldPrevent())) {
             GrimAPI.INSTANCE.getInteractionContextManager().begin(
                     uuid,
@@ -87,6 +99,9 @@ public final class InteractionIntegrityListener implements Listener {
         }
 
         if (decision != null) {
+            // Bukkit consume events run on the platform thread while Grim's
+            // checks/punishment state are player-event-loop owned. Move the
+            // actual flag/reward mutation back onto the player's event loop.
             grim.runSafely(() -> consume.applyServerConsumeDecision(decision));
         }
     }
@@ -122,38 +137,51 @@ public final class InteractionIntegrityListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onDeath(PlayerDeathEvent event) {
-        clear(event.getEntity().getUniqueId());
+        clear(event.getEntity().getUniqueId(), true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onRespawn(PlayerRespawnEvent event) {
-        clear(event.getPlayer().getUniqueId());
+        clear(event.getPlayer().getUniqueId(), true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
-        clear(event.getPlayer().getUniqueId());
+        // Teleport invalidates pending interaction evidence but does not prove
+        // that the client stopped physically using the held item.
+        clear(event.getPlayer().getUniqueId(), false);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldChange(PlayerChangedWorldEvent event) {
-        clear(event.getPlayer().getUniqueId());
+        clear(event.getPlayer().getUniqueId(), false);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onGameMode(PlayerGameModeChangeEvent event) {
-        GameMode mode = event.getNewGameMode();
-        if (mode == GameMode.CREATIVE || mode == GameMode.SPECTATOR) clear(event.getPlayer().getUniqueId());
+        // Any gamemode transition invalidates the previous interaction state.
+        // CombatIntegrityListener ends the physical use with the explicit
+        // GAMEMODE_CHANGE reason.
+        clear(event.getPlayer().getUniqueId(), true);
     }
 
-    private static void clear(UUID uuid) {
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        PENDING_CONSUME.remove(uuid);
+        GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
+    }
+
+    private static void clear(UUID uuid, boolean resetConsume) {
         PENDING_CONSUME.remove(uuid);
         GrimAPI.INSTANCE.getInteractionContextManager().clear(uuid);
         GrimPlayer grim = grim(uuid);
         if (grim == null) return;
         grim.runSafely(() -> {
             grim.checkManager.get(InventoryFrequency.class).reset();
-            grim.checkManager.get(ConsumeTiming.class).reset();
+            if (resetConsume) {
+                grim.checkManager.get(ConsumeTiming.class).reset();
+            }
             grim.checkManager.get(PacketBurst.class).reset();
             grim.checkManager.get(AttackFrequency.class).reset();
             grim.detectionEpisodeManager.clearAll();

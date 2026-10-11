@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 /** Source-aware interaction exceptions; never a global anticheat bypass. */
 public final class InteractionContextManager {
     private static final long MAX_CONTEXT_MILLIS = 15_000L;
+    private static final int MAX_CONTEXTS_PER_PLAYER = 64;
     private final ConcurrentHashMap<UUID, CopyOnWriteArrayList<Context>> contexts = new ConcurrentHashMap<>();
 
     public @NotNull Context begin(@NotNull UUID uuid, @NotNull InteractionContextType type,
@@ -29,8 +30,15 @@ public final class InteractionContextManager {
         Context context = new Context(type, normalizedSource, sanitizeDetail(detail), now,
                 now + TimeUnit.MILLISECONDS.toNanos(duration));
         CopyOnWriteArrayList<Context> list = contexts.computeIfAbsent(uuid, ignored -> new CopyOnWriteArrayList<>());
-        list.removeIf(existing -> existing.type == type && existing.source.equals(normalizedSource));
-        list.add(context);
+        synchronized (list) {
+            list.removeIf(existing ->
+                    existing.type == type
+                            && existing.source.equals(normalizedSource));
+            while (list.size() >= MAX_CONTEXTS_PER_PLAYER) {
+                list.remove(0);
+            }
+            list.add(context);
+        }
         return context;
     }
 
