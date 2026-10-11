@@ -3,6 +3,7 @@ package ac.grim.grimac.manager.integrity;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.player.GrimPlayer;
+import ac.grim.grimac.utils.item.ItemUseSessionTracker;
 import ac.grim.grimac.utils.math.GrimMath;
 import ac.grim.grimac.utils.nmsutil.StuckSpeed;
 import com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState;
@@ -19,6 +20,8 @@ import java.util.Set;
 public final class EnvironmentContextManager {
     private volatile boolean enabled = true;
     private volatile int recentBlockTicks = 4;
+    private volatile long evidenceEpisodeWindowMillis = 1500L;
+    private volatile int evidenceEpisodeMaxTotalFlags = 2;
 
     private volatile double cobwebSimulationMultiplier = 0.35D;
     private volatile double stuckMovementSimulationMultiplier = 0.50D;
@@ -56,6 +59,22 @@ public final class EnvironmentContextManager {
                 config.getLongElse("environment-context.recent-block-change-ticks", 4L),
                 0L,
                 20L
+        );
+        evidenceEpisodeWindowMillis = clamp(
+                config.getLongElse(
+                        "environment-context.evidence-episodes.window-ms",
+                        1500L
+                ),
+                100L,
+                10_000L
+        );
+        evidenceEpisodeMaxTotalFlags = (int) clamp(
+                config.getLongElse(
+                        "environment-context.evidence-episodes.max-total-flags",
+                        2L
+                ),
+                1L,
+                10L
         );
 
         cobwebSimulationMultiplier = clamp(
@@ -333,6 +352,41 @@ public final class EnvironmentContextManager {
 
     public @NotNull String summary(@NotNull GrimPlayer player) {
         return summary(classify(player));
+    }
+
+    public @NotNull DetectionEpisodeManager.SharedEpisode resolveMovementEvidenceEpisode(
+            @NotNull GrimPlayer player,
+            @NotNull Set<EnvironmentContext> contexts,
+            boolean observedVelocity,
+            boolean trustedVelocity,
+            boolean recovery
+    ) {
+        ItemUseSessionTracker.Session itemSession =
+                player.itemUseSessionTracker.activeSession();
+
+        long itemSessionId = itemSession == null
+                ? 0L
+                : itemSession.sessionId();
+
+        String velocity = trustedVelocity
+                ? "trusted"
+                : observedVelocity ? "observed" : "none";
+
+        String contextKey = (recovery
+                ? "transition"
+                : summary(contexts))
+                + "|velocity=" + velocity
+                + "|item=" + itemSessionId;
+
+        return player.detectionEpisodeManager.resolveSharedEpisode(
+                "movement-special",
+                contextKey,
+                evidenceEpisodeWindowMillis
+        );
+    }
+
+    public int evidenceEpisodeMaxTotalFlags() {
+        return evidenceEpisodeMaxTotalFlags;
     }
 
     public @NotNull String summary(
