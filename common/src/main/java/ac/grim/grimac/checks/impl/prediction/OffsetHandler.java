@@ -310,6 +310,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     !specialEnvironment
                             && environmentRecoveryTicksRemaining > 0
             );
+            String specialEpisodeDebug = "";
 
             if (environmentProtectedWindow) {
                 advantageGained = 0.0D;
@@ -365,6 +366,11 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     removeOffsetLenience();
                     return;
                 }
+
+                specialEpisodeDebug = " episode="
+                        + sharedEpisode.token()
+                        + " sharedFlags="
+                        + decision.sharedFlags();
             } else {
                 specialEnvironmentFlagStreak = 0;
                 specialEnvironmentFlagKey = "";
@@ -379,8 +385,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         () -> humanFormattedOffset(offset)
                                 + " context="
                                 + environment.summary(environmentContexts)
-                                + " episode=" + sharedEpisode.token()
-                                + " sharedFlags=" + decision.sharedFlags()
+                                + specialEpisodeDebug
                                 + " /gl " + flagId
                 );
 
