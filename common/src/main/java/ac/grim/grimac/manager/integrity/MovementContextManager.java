@@ -176,6 +176,18 @@ public final class MovementContextManager {
     }
 
     public void clearSourcePrefix(@NotNull String sourcePrefix) {
+    public void clearSourcePrefix(
+            @NotNull UUID uuid,
+            @NotNull String sourcePrefix
+    ) {
+        CopyOnWriteArrayList<Context> list = contexts.get(uuid);
+        if (list == null) return;
+        String prefix = sanitizeSource(sourcePrefix);
+        list.removeIf(context ->
+                sourceMatchesPrefix(context.source, prefix));
+        if (list.isEmpty()) contexts.remove(uuid, list);
+    }
+
         String prefix = sanitizeSource(sourcePrefix);
         contexts.forEach((uuid, list) -> {
             list.removeIf(context ->

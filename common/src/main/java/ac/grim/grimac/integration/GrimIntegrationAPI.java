@@ -66,7 +66,8 @@ public final class GrimIntegrationAPI {
     }
 
     public static void clearMovementContexts(@NotNull UUID playerId, @NotNull String sourcePlugin) {
-        GrimAPI.INSTANCE.getMovementContextManager().clear(playerId, sourcePlugin);
+        GrimAPI.INSTANCE.getMovementContextManager()
+                .clearSourcePrefix(playerId, sourcePlugin);
     }
 
     public static void clearAllMovementContexts(@NotNull UUID playerId) {
@@ -123,7 +124,8 @@ public final class GrimIntegrationAPI {
     }
 
     public static void clearInteractionContexts(@NotNull UUID playerId, @NotNull String sourcePlugin) {
-        GrimAPI.INSTANCE.getInteractionContextManager().clear(playerId, sourcePlugin);
+        GrimAPI.INSTANCE.getInteractionContextManager()
+                .clearSourcePrefix(playerId, sourcePlugin);
     }
 
     public static void clearAllInteractionContexts(@NotNull UUID playerId) {

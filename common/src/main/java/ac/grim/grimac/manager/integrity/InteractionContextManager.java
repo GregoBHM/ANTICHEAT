@@ -88,6 +88,18 @@ public final class InteractionContextManager {
     }
 
     public void clearSourcePrefix(@NotNull String sourcePrefix) {
+    public void clearSourcePrefix(
+            @NotNull UUID uuid,
+            @NotNull String sourcePrefix
+    ) {
+        CopyOnWriteArrayList<Context> list = contexts.get(uuid);
+        if (list == null) return;
+        String prefix = sanitize(sourcePrefix);
+        list.removeIf(context ->
+                sourceMatchesPrefix(context.source, prefix));
+        if (list.isEmpty()) contexts.remove(uuid, list);
+    }
+
         String prefix = sanitize(sourcePrefix);
         contexts.forEach((uuid, list) -> {
             list.removeIf(context ->
