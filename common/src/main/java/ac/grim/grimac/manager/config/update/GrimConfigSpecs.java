@@ -55,9 +55,12 @@ public final class GrimConfigSpecs {
      * raw pre-prediction movement, action-first prevention becomes opt-in,
      * recovery cannot re-lock itself, and item-use ownership is left exclusively
      * to ConsumeTiming/NoSlow instead of StallActions.
+     * v28 -> v29: Item Use / Detection Policy v10. Adds physical-use session
+     * timing, context-aware NoSlow/AntiKB/Simulation episode limits, and
+     * verbose-only correction diagnostics without weakening deterministic checks.
      */
     public static @NotNull ConfigUpdater.Spec mainConfig() {
-        return ConfigUpdater.Spec.builder("/config/", 28, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/config/", 29, ConfigUpdater.ConfigFlavor.V2)
                 .migration(10, ctx -> {
                     String typeRaw = ctx.input().getString("history.database.type");
                     String type = typeRaw == null ? null : typeRaw.trim().toUpperCase(Locale.ROOT);
@@ -147,6 +150,106 @@ public final class GrimConfigSpecs {
                     ctx.output().put(
                             "combat-integrity.kill-on-next-join-if-needed",
                             false
+                    );
+                })
+                .migration(29, ctx -> {
+                    Object correctionEnabled =
+                            ctx.input().get("correction-diagnostics.enabled");
+                    boolean correctionOff =
+                            correctionEnabled instanceof Boolean enabled
+                                    && !enabled;
+
+                    ctx.output().put(
+                            "correction-diagnostics.mode",
+                            correctionOff ? "off" : "verbose"
+                    );
+                    ctx.output().put(
+                            "correction-diagnostics.format",
+                            "&8[correction] &7%check_name% &f%verbose%"
+                    );
+
+                    ctx.output().put(
+                            "interaction-integrity.consume.session-end-grace-ms",
+                            500
+                    );
+
+                    ctx.output().put(
+                            "NoSlow.context-policy.enabled",
+                            true
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.special-minimum-offset",
+                            0.12D
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.velocity-minimum-offset",
+                            0.035D
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.recovery-minimum-offset",
+                            0.15D
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.strong-consecutive-ticks",
+                            3
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.recovery-ticks",
+                            4
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.episode-window-ms",
+                            1200
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.flag-interval-ms",
+                            600
+                    );
+                    ctx.output().put(
+                            "NoSlow.context-policy.max-flags-per-episode",
+                            1
+                    );
+
+                    ctx.output().put(
+                            "Knockback.special-environment.enabled",
+                            true
+                    );
+                    ctx.output().put(
+                            "Knockback.special-environment.minimum-offset",
+                            0.08D
+                    );
+                    ctx.output().put(
+                            "Knockback.special-environment.strong-consecutive-ticks",
+                            3
+                    );
+                    ctx.output().put(
+                            "Knockback.special-environment.episode-window-ms",
+                            1500
+                    );
+                    ctx.output().put(
+                            "Knockback.special-environment.flag-interval-ms",
+                            900
+                    );
+                    ctx.output().put(
+                            "Knockback.special-environment.max-flags-per-episode",
+                            1
+                    );
+
+                    ctx.output().put(
+                            "movement-enforcement.environment.flag-strong-ticks",
+                            3
+                    );
+                    ctx.output().put(
+                            "movement-enforcement.environment.flag-episode-window-ms",
+                            1500
+                    );
+                    ctx.output().put(
+                            "movement-enforcement.environment.flag-interval-ms",
+                            900
+                    );
+                    ctx.output().put(
+                            "movement-enforcement.environment.max-flags-per-episode",
+                            1
                     );
                 })
                 .build();
