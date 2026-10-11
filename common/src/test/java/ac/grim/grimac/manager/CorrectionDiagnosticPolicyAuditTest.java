@@ -50,12 +50,24 @@ class CorrectionDiagnosticPolicyAuditTest {
                 "src/main/java/ac/grim/grimac/manager/PunishmentManager.java"
         ));
 
-        assertTrue(source.contains("stableKey + \".correction\""));
-        assertTrue(source.contains(
-                ".evaluate(\n"
-                        + "                                            player.uuid,\n"
-                        + "                                            check.getStableKey(),"
-        ));
+        int correctionStart = source.indexOf(
+                "public void handleCorrectionDiagnostic("
+        );
+        int alertStart = source.indexOf(
+                "public boolean handleAlert(",
+                correctionStart
+        );
+        int alertEnd = source.indexOf(
+                "private boolean conditionPasses(",
+                alertStart
+        );
+
+        String correction = source.substring(correctionStart, alertStart);
+        String normalAlert = source.substring(alertStart, alertEnd);
+
+        assertTrue(correction.contains("stableKey + \".correction\""));
+        assertTrue(normalAlert.contains("check.getStableKey()"));
+        assertFalse(normalAlert.contains("stableKey + \".correction\""));
     }
 
     @Test

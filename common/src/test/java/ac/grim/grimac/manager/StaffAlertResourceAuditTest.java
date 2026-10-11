@@ -21,7 +21,14 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("config-version: 4"), path.toString());
                 assertTrue(text.contains("verbose-format: \"[alert] &7%verbose%\""), path.toString());
                 assertTrue(text.contains("alerts-format-proxy: \"&8[proxy] [alert]\""), path.toString());
-                assertTrue(text.contains("%component%"), path.toString());
+                String alertFormat = text.lines()
+                        .filter(line -> line.startsWith("alerts-format:"))
+                        .findFirst()
+                        .orElse("");
+                assertTrue(
+                        alertFormat.contains("%component%"),
+                        path + " alerts-format must render %component%"
+                );
             }
         }
     }
@@ -73,6 +80,31 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("stable:grim.interaction.fast_consume"), path.toString());
             }
         }
+    }
+
+
+    @Test
+    void punishmentLocaleLogicMatchesEnglishDefaults() throws IOException {
+        Path dir = Path.of("src/main/resources/punishments");
+        String english = normalizedLogic(
+                Files.readString(dir.resolve("en.yml"))
+        );
+
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path path : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
+                assertTrue(
+                        normalizedLogic(Files.readString(path)).equals(english),
+                        path + " punishment logic differs from en.yml"
+                );
+            }
+        }
+    }
+
+    private static String normalizedLogic(String text) {
+        return text.lines()
+                .filter(line -> !line.trim().isEmpty())
+                .filter(line -> !line.trim().startsWith("#"))
+                .reduce("", (left, right) -> left + right + "\n");
     }
 
     private static void assertGroupUsesCheckScope(String text, String group, Path path) {

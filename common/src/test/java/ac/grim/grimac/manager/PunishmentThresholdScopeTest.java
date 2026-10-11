@@ -25,10 +25,10 @@ class PunishmentThresholdScopeTest {
         ));
 
         assertTrue(source.contains(
-                "group.thresholdScope == ThresholdScope.CHECK\n"
-                        + "                            ? checkVl\n"
-                        + "                            : groupVl"
+                "group.thresholdScope == ThresholdScope.CHECK"
         ));
+        assertTrue(source.contains("? checkVl"));
+        assertTrue(source.contains(": groupVl"));
     }
 
     @Test
@@ -38,10 +38,8 @@ class PunishmentThresholdScopeTest {
                 "src/main/java/ac/grim/grimac/manager/PunishmentManager.java"
         ));
 
-        assertTrue(source.contains(
-                "thresholdScopeRaw == null\n"
-                        + "                                && defaultsToPerCheckScope(checksList)"
-        ));
+        assertTrue(source.contains("thresholdScopeRaw == null"));
+        assertTrue(source.contains("defaultsToPerCheckScope(checksList)"));
         assertTrue(source.contains("\"grim.movement.noslow\".equals(key)"));
         assertTrue(source.contains(
                 "\"grim.interaction.fast_consume\".equals(key)"
