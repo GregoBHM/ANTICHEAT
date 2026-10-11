@@ -59,6 +59,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private int specialEnvironmentMaxFlagsPerEpisode;
     private int specialEnvironmentFlagStreak;
     private int environmentRecoveryTicksRemaining;
+    private double environmentRecoveryMinRawOffset;
     private boolean wasSpecialEnvironment;
     private int specialEnvironmentCorrectionStreak;
 
@@ -114,6 +115,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         if (!predictionComplete.isChecked()) {
             resetEnforcementState();
             resetShortBlinkState();
+            resetEnvironmentState();
             return;
         }
 
@@ -168,8 +170,17 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
         if (specialEnvironment) {
             environmentRecoveryTicksRemaining = environmentRecoveryTicks;
+            environmentRecoveryMinRawOffset =
+                    specialEnvironmentCorrectionMinRawOffset;
         } else if (environmentRecoveryTicksRemaining > 0) {
+            specialEnvironmentCorrectionMinRawOffset =
+                    Math.max(
+                            specialEnvironmentCorrectionMinRawOffset,
+                            environmentRecoveryMinRawOffset
+                    );
             environmentRecoveryTicksRemaining--;
+        } else {
+            environmentRecoveryMinRawOffset = 0.0D;
         }
 
         double enforcementMultiplier = 1.0D;
@@ -200,7 +211,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         if (!enforcementEligible) {
             resetEnforcementState();
             resetShortBlinkState();
-            resetEnvironmentState();
         } else {
             boolean allowShortBlink = !blinkMitigationOwned
                     && (!disableShortBlinkInSpecialEnvironment
@@ -521,6 +531,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
     private void resetEnvironmentState() {
         environmentRecoveryTicksRemaining = 0;
+        environmentRecoveryMinRawOffset = 0.0D;
         wasSpecialEnvironment = false;
         specialEnvironmentCorrectionStreak = 0;
         specialEnvironmentFlagStreak = 0;
