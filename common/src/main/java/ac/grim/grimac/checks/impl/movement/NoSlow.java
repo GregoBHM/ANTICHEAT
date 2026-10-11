@@ -8,8 +8,6 @@ import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.EnvironmentContext;
 import ac.grim.grimac.manager.integrity.EnvironmentContextManager;
-import ac.grim.grimac.manager.integrity.MovementContextManager;
-import ac.grim.grimac.manager.integrity.MovementContextType;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import ac.grim.grimac.utils.item.ItemUseSessionTracker;
@@ -78,7 +76,9 @@ public class NoSlow extends Check implements PostPredictionListener {
         Set<EnvironmentContext> contexts = environment.classify(player);
         boolean specialEnvironment =
                 environment.isSpecialMovementEnvironment(contexts);
-        boolean velocityContext = hasVelocityContext();
+        boolean velocityContext = GrimAPI.INSTANCE
+                .getMovementContextManager()
+                .hasAnyVelocityContext(player.uuid);
 
         if (!contextPolicyEnabled) {
             handleNormal(session);
@@ -192,21 +192,6 @@ public class NoSlow extends Check implements PostPredictionListener {
         }
 
         bestOffset = 1.0D;
-    }
-
-    private boolean hasVelocityContext() {
-        for (MovementContextManager.Context context :
-                GrimAPI.INSTANCE.getMovementContextManager()
-                        .getActive(player.uuid)) {
-            MovementContextType type = context.getType();
-            if (type == MovementContextType.KNOCKBACK
-                    || type == MovementContextType.LAUNCH
-                    || type == MovementContextType.DASH
-                    || type == MovementContextType.PULL) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static @NotNull String componentFor(
