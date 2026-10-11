@@ -119,7 +119,7 @@ class ItemUseLifecycleAuditTest {
     }
 
     @Test
-    void consumeDecisionsReturnToPlayerEventLoopAndQuitDropsPendingState()
+    void consumeDecisionsArePlayerOwnedAndReturnToPlayerEventLoop()
             throws Exception {
         String source = Files.readString(Path.of(
                 "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/InteractionIntegrityListener.java"
@@ -129,7 +129,9 @@ class ItemUseLifecycleAuditTest {
                 "grim.runSafely(() -> consume.applyServerConsumeDecision(decision))"
         ));
         assertTrue(source.contains("public void onQuit(PlayerQuitEvent event)"));
-        assertTrue(source.contains("PENDING_CONSUME.remove(uuid)"));
+        assertFalse(source.contains("PENDING_CONSUME"));
+        assertTrue(source.contains("consume.setPendingDecision(decision)"));
+        assertTrue(source.contains("consume.takePendingDecision()"));
         assertTrue(source.contains("suppressesConsumeTiming(uuid)"));
     }
 
@@ -168,6 +170,19 @@ class ItemUseLifecycleAuditTest {
         assertTrue(world.indexOf("contexts.clear(") < world.indexOf("if (!enabled()) return"));
         assertTrue(gameMode.contains(".clear(event.getPlayer().getUniqueId())"));
         assertFalse(gameMode.contains("if (!enabled()) return"));
+    }
+
+    @Test
+    void consumeTimingOwnsPendingDecisionWithoutGlobalUuidMap()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
+        ));
+
+        assertTrue(source.contains("private ConsumeDecision pendingDecision;"));
+        assertTrue(source.contains("setPendingDecision("));
+        assertTrue(source.contains("takePendingDecision()"));
+        assertTrue(source.contains("clearPendingDecision()"));
     }
 
     @Test
