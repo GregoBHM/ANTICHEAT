@@ -204,6 +204,28 @@ class MovementDetectionPolicyAuditTest {
         assertTrue(eventBlock.contains("specialEnvironmentEpisodeFlagAccepted = false"));
     }
 
+
+    @Test
+    void specialSimulationCorrectionIsOneShotPerPhysicalEpisode()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        assertTrue(source.contains(
+                "private boolean specialEnvironmentEpisodeCorrectionApplied"
+        ));
+        assertTrue(source.contains(
+                "&& !specialEnvironmentEpisodeCorrectionApplied"
+        ));
+        assertTrue(source.contains(
+                "specialEnvironmentEpisodeCorrectionApplied = true"
+        ));
+        assertTrue(source.contains(
+                "specialEnvironmentEpisodeCorrectionApplied = false"
+        ));
+    }
+
     private static String read(String path) throws IOException {
         return Files.readString(Path.of(path));
     }

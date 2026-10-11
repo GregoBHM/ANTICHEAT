@@ -65,6 +65,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private boolean wasSpecialEnvironment;
     private int specialEnvironmentCorrectionStreak;
     private boolean specialEnvironmentEpisodeFlagAccepted;
+    private boolean specialEnvironmentEpisodeCorrectionApplied;
 
     private boolean shortBlinkEnabled;
     private long shortBlinkMinGapNanos;
@@ -275,6 +276,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             specialEnvironmentFlagStreak = 0;
             specialEnvironmentCorrectionStreak = 0;
             specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentEpisodeCorrectionApplied = false;
             specialEnvironmentFlagKey = "";
             return;
         }
@@ -289,6 +291,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             specialEnvironmentFlagKey = "";
             specialEnvironmentCorrectionStreak = 0;
             specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentEpisodeCorrectionApplied = false;
             resetEnforcementState();
             resetShortBlinkState();
             removeOffsetLenience();
@@ -302,6 +305,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             specialEnvironmentFlagStreak = 0;
             specialEnvironmentCorrectionStreak = 0;
             specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentEpisodeCorrectionApplied = false;
             specialEnvironmentFlagKey = "";
             removeOffsetLenience();
             return;
@@ -344,6 +348,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     specialEnvironmentFlagStreak = 0;
                     specialEnvironmentCorrectionStreak = 0;
                     specialEnvironmentEpisodeFlagAccepted = false;
+                    specialEnvironmentEpisodeCorrectionApplied = false;
                     specialEnvironmentFlagKey = evidenceKey;
                 }
 
@@ -394,6 +399,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 specialEnvironmentFlagKey = "";
                 specialEnvironmentCorrectionStreak = 0;
                 specialEnvironmentEpisodeFlagAccepted = false;
+                specialEnvironmentEpisodeCorrectionApplied = false;
                 specialEpisodeToken = "";
                 specialEpisodeDebug = "";
                 specialFlagAllowed = true;
@@ -402,6 +408,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             if (!specialFlagAllowed) {
                 boolean persistentCorrection = environmentProtectedWindow
                         && specialEnvironmentEpisodeFlagAccepted
+                        && !specialEnvironmentEpisodeCorrectionApplied
                         && enforcementEligible
                         && offset >= specialEnvironmentCorrectionMinRawOffset
                         && (enforcementOffset >= enforcementSevereOffset
@@ -415,8 +422,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         && enforcementImmediateSetback
                         && !isNoSetbackPermission()) {
                     predictionComplete.setSafePositionUpdateBlocked(true);
-                    player.getSetbackTeleportUtil()
-                            .executeViolationSetback(this);
+                    if (player.getSetbackTeleportUtil()
+                            .executeViolationSetback(this)) {
+                        specialEnvironmentEpisodeCorrectionApplied = true;
+                    }
                 }
 
                 removeOffsetLenience();
@@ -477,9 +486,15 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                             && !trustedVelocityContext
                             && severeMovement
                             && enforcementImmediateSetback
-                            && !isNoSetbackPermission()) {
+                            && !isNoSetbackPermission()
+                            && (!environmentProtectedWindow
+                            || !specialEnvironmentEpisodeCorrectionApplied)) {
                         predictionComplete.setSafePositionUpdateBlocked(true);
-                        player.getSetbackTeleportUtil().executeViolationSetback(this);
+                        boolean corrected = player.getSetbackTeleportUtil()
+                                .executeViolationSetback(this);
+                        if (corrected && environmentProtectedWindow) {
+                            specialEnvironmentEpisodeCorrectionApplied = true;
+                        }
                     } else if (!blinkRecovery
                             && !velocityRecovery
                             && !trustedVelocityContext
@@ -641,6 +656,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         wasSpecialEnvironment = false;
         specialEnvironmentCorrectionStreak = 0;
         specialEnvironmentEpisodeFlagAccepted = false;
+        specialEnvironmentEpisodeCorrectionApplied = false;
         specialEnvironmentFlagStreak = 0;
         specialEnvironmentFlagKey = "";
     }
