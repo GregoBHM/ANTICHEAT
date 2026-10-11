@@ -39,7 +39,7 @@ public class PunishmentManager implements ConfigReloadable {
 
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
-    private boolean correctionDiagnosticsEnabled = true;
+    private String correctionDiagnosticsMode = "verbose";
     private long correctionDiagnosticsCooldownMillis = 125L;
     private String correctionDiagnosticsFormat;
     private final Map<String, Long> correctionDiagnosticsCooldowns = new java.util.HashMap<>();
@@ -67,8 +67,17 @@ public class PunishmentManager implements ConfigReloadable {
                 "[alert] &7%verbose%"
         );
 
-        correctionDiagnosticsEnabled =
+        boolean legacyCorrectionDiagnosticsEnabled =
                 config.getBooleanElse("correction-diagnostics.enabled", true);
+        correctionDiagnosticsMode = config.getStringElse(
+                "correction-diagnostics.mode",
+                legacyCorrectionDiagnosticsEnabled ? "verbose" : "off"
+        ).trim().toLowerCase(Locale.ROOT);
+        if (!correctionDiagnosticsMode.equals("off")
+                && !correctionDiagnosticsMode.equals("verbose")
+                && !correctionDiagnosticsMode.equals("normal")) {
+            correctionDiagnosticsMode = "verbose";
+        }
 
         correctionDiagnosticsCooldownMillis = Math.max(0L, Math.min(5000L,
                 config.getLongElse("correction-diagnostics.cooldown-ms", 125L)));
@@ -126,38 +135,72 @@ public class PunishmentManager implements ConfigReloadable {
 
                 for (String configuredCheck : checks) {
                     String command =
-                            configuredCheck.toLowerCase(Locale.ROOT);
+                            configuredCheck.toLowerCase(Locale.ROOT).trim();
 
                     boolean exclude = false;
 
                     if (command.startsWith("!")) {
                         exclude = true;
-                        command = command.substring(1);
+                        command = command.substring(1).trim();
                     }
 
-                    for (AbstractCheck check : player.getChecks()) {
-                        String checkName =
-                                check.getCheckName() == null
-                                        ? ""
-                                        : check.getCheckName()
-                                        .toLowerCase(Locale.ROOT);
+                    boolean stableKeySelector = command.startsWith("key:")
+                            || command.startsWith("stable:");
+                    String stableKey = stableKeySelector
+                            ? command.substring(command.indexOf(':') + 1).trim()
+                            : "";
 
-                        String alternativeName =
-                                check.getAlternativeName() == null
-                                        ? ""
-                                        : check.getAlternativeName()
-                                        .toLowerCase(Locale.ROOT);
+                    List<AbstractCheck> matched = new ArrayList<>();
 
-                        if (checkName.contains(command)
-                                || alternativeName.contains(command)) {
-
-                            if (exclude) {
-                                if (!excluded.contains(check)) {
-                                    excluded.add(check);
-                                }
-                            } else if (!checksList.contains(check)) {
-                                checksList.add(check);
+                    if (stableKeySelector) {
+                        for (AbstractCheck check : player.getChecks()) {
+                            if (check.getStableKey() != null
+                                    && check.getStableKey().equalsIgnoreCase(stableKey)) {
+                                matched.add(check);
                             }
+                        }
+                    } else {
+                        // Prefer exact check names so aliases cannot make a selector such
+                        // as "NoSlow" accidentally include FastConsume.
+                        for (AbstractCheck check : player.getChecks()) {
+                            String checkName = check.getCheckName() == null
+                                    ? ""
+                                    : check.getCheckName().toLowerCase(Locale.ROOT);
+                            if (checkName.equals(command)) {
+                                matched.add(check);
+                            }
+                        }
+
+                        if (matched.isEmpty()) {
+                            for (AbstractCheck check : player.getChecks()) {
+                                String checkName = check.getCheckName() == null
+                                        ? ""
+                                        : check.getCheckName().toLowerCase(Locale.ROOT);
+                                if (checkName.contains(command)) {
+                                    matched.add(check);
+                                }
+                            }
+                        }
+
+                        if (matched.isEmpty()) {
+                            for (AbstractCheck check : player.getChecks()) {
+                                String alternativeName = check.getAlternativeName() == null
+                                        ? ""
+                                        : check.getAlternativeName().toLowerCase(Locale.ROOT);
+                                if (!alternativeName.isEmpty() && alternativeName.contains(command)) {
+                                    matched.add(check);
+                                }
+                            }
+                        }
+                    }
+
+                    for (AbstractCheck check : matched) {
+                        if (exclude) {
+                            if (!excluded.contains(check)) {
+                                excluded.add(check);
+                            }
+                        } else if (!checksList.contains(check)) {
+                            checksList.add(check);
                         }
                     }
 
@@ -389,7 +432,7 @@ public class PunishmentManager implements ConfigReloadable {
             String fallbackName,
             String verbose
     ) {
-        if (!correctionDiagnosticsEnabled) {
+        if (correctionDiagnosticsMode.equals("off")) {
             return;
         }
 
@@ -459,7 +502,9 @@ public class PunishmentManager implements ConfigReloadable {
 
         Component message = MessageUtil.miniMessage(rendered);
 
-        if (testMode) {
+        if (correctionDiagnosticsMode.equals("verbose")) {
+            GrimAPI.INSTANCE.getAlertManager().sendVerbose(message, null);
+        } else if (testMode) {
             player.sendMessage(message);
         } else {
             GrimAPI.INSTANCE.getAlertManager().sendAlert(message, null);
@@ -583,7 +628,7 @@ public class PunishmentManager implements ConfigReloadable {
                                     .getAlertAggregationManager()
                                     .evaluate(
                                             player.uuid,
-                                            check.getStableKey(),
+                                            aggregationKey(check),
                                             checkVl
                                     );
 
@@ -887,7 +932,22 @@ public class PunishmentManager implements ConfigReloadable {
         return Double.NaN;
     }
 
+    private static String aggregationKey(Check check) {
+        String stable = check.getStableKey() == null || check.getStableKey().isBlank()
+                ? "unknown"
+                : check.getStableKey();
+        String component = check.getLastComponent();
+        return component == null || component.isBlank()
+                ? stable
+                : stable + "#" + component;
+    }
+
     private static String componentFor(Check check) {
+        String explicit = check.getLastComponent();
+        if (explicit != null && !explicit.isBlank()) {
+            return explicit;
+        }
+
         String key =
                 check.getStableKey();
 
