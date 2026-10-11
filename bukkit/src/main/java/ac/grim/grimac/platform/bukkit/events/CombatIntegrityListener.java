@@ -186,7 +186,18 @@ public final class CombatIntegrityListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPluginDisable(PluginDisableEvent event) {
-        if (!"CombatPlus".equalsIgnoreCase(event.getPlugin().getName())) return;
+        String pluginName = event.getPlugin().getName();
+
+        // Explicit integration contexts carry a source such as
+        // "RPGItems:power", "MagicSpells:spell" or "CombatPlus:mechanic".
+        // Remove them immediately when their owner plugin disables instead of
+        // waiting for the bounded expiry window.
+        GrimAPI.INSTANCE.getMovementContextManager()
+                .clearSourcePrefix(pluginName);
+        GrimAPI.INSTANCE.getInteractionContextManager()
+                .clearSourcePrefix(pluginName);
+
+        if (!"CombatPlus".equalsIgnoreCase(pluginName)) return;
         combatPlusProvider.clearCache();
         manager().setExternalProvider(null);
     }

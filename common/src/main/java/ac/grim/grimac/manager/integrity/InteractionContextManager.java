@@ -79,6 +79,17 @@ public final class InteractionContextManager {
         if (list.isEmpty()) contexts.remove(uuid, list);
     }
 
+    public void clearSourcePrefix(@NotNull String sourcePrefix) {
+        String prefix = sanitize(sourcePrefix);
+        contexts.forEach((uuid, list) -> {
+            list.removeIf(context ->
+                    sourceMatchesPrefix(context.source, prefix));
+            if (list.isEmpty()) {
+                contexts.remove(uuid, list);
+            }
+        });
+    }
+
     public void tick() {
         long now = System.nanoTime();
         contexts.forEach((uuid, list) -> cleanup(uuid, list, now));
@@ -87,6 +98,22 @@ public final class InteractionContextManager {
     private void cleanup(UUID uuid, CopyOnWriteArrayList<Context> list, long now) {
         list.removeIf(context -> context.expiresAtNanos <= now);
         if (list.isEmpty()) contexts.remove(uuid, list);
+    }
+
+    private static boolean sourceMatchesPrefix(
+            @NotNull String source,
+            @NotNull String prefix
+    ) {
+        return source.equalsIgnoreCase(prefix)
+                || (source.length() > prefix.length()
+                && source.regionMatches(
+                        true,
+                        0,
+                        prefix,
+                        0,
+                        prefix.length()
+                )
+                && source.charAt(prefix.length()) == ':');
     }
 
     private static String sanitize(String source) {
