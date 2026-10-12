@@ -1,10 +1,12 @@
 package ac.grim.grimac.manager;
 
 import org.junit.jupiter.api.Test;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -71,9 +73,13 @@ class StaffAlertResourceAuditTest {
         try (Stream<Path> files = Files.list(dir)) {
             for (Path path : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
                 String text = Files.readString(path);
-                assertGroupUsesCheckScope(text, "Simulation", path);
-                assertGroupUsesCheckScope(text, "Knockback", path);
-                assertGroupUsesCheckScope(text, "Misc", path);
+                Map<?, ?> root = (Map<?, ?>) new Yaml().load(text);
+                Object rawPunishments = root.get("Punishments");
+                assertTrue(rawPunishments instanceof Map<?, ?>, path.toString());
+                Map<?, ?> groups = (Map<?, ?>) rawPunishments;
+                assertGroupUsesCheckScope(groups, "Simulation", path);
+                assertGroupUsesCheckScope(groups, "Knockback", path);
+                assertGroupUsesCheckScope(groups, "Misc", path);
                 assertTrue(text.contains("stable:grim.prediction.simulation"), path.toString());
                 assertTrue(text.contains("stable:grim.velocity.anti_knockback"), path.toString());
                 assertTrue(text.contains("stable:grim.movement.noslow"), path.toString());
@@ -107,11 +113,17 @@ class StaffAlertResourceAuditTest {
                 .reduce("", (left, right) -> left + right + "\n");
     }
 
-    private static void assertGroupUsesCheckScope(String text, String group, Path path) {
-        int start = text.indexOf("  " + group + ":");
-        assertTrue(start >= 0, path + " missing " + group);
-        int next = text.indexOf("\n  ", start + 3);
-        String block = text.substring(start, next < 0 ? text.length() : next);
-        assertTrue(block.contains("threshold-scope: check"), path + " " + group);
+    private static void assertGroupUsesCheckScope(
+            Map<?, ?> groups,
+            String group,
+            Path path
+    ) {
+        Object rawGroup = groups.get(group);
+        assertTrue(rawGroup instanceof Map<?, ?>, path + " missing " + group);
+        Map<?, ?> groupMap = (Map<?, ?>) rawGroup;
+        assertTrue(
+                "check".equals(String.valueOf(groupMap.get("threshold-scope"))),
+                path + " " + group
+        );
     }
 }
