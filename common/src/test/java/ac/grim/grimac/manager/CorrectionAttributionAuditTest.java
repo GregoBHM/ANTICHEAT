@@ -37,7 +37,7 @@ class CorrectionAttributionAuditTest {
         assertTrue(timer.contains("executeNonSimulatingSetback(this)"));
         assertTrue(timerLimit.contains("apply(player, true, this)"));
         assertTrue(connection.contains("apply(player, true, this)"));
-        assertTrue(connection.contains("executeNonSimulatingSetback(this)"));
+        assertTrue(connection.contains("tryExecuteNonSimulatingSetback(this)"));
         assertTrue(offset.contains("executeViolationSetback(this)"));
         assertTrue(offset.contains("apply(player, true, this)"));
         assertTrue(cancelledBlock.contains("executeNonSimulatingForceResync(this)"));
