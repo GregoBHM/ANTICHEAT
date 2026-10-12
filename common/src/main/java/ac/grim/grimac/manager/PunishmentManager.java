@@ -30,6 +30,7 @@ public class PunishmentManager implements ConfigReloadable {
 
     private final GrimPlayer player;
     private final List<PunishGroup> groups = new ArrayList<>();
+    private final Set<String> canonicalCheckNames = new java.util.HashSet<>();
 
     private String experimentalSymbol = "*";
     private String alertString;
@@ -39,10 +40,12 @@ public class PunishmentManager implements ConfigReloadable {
 
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
-    private boolean correctionDiagnosticsEnabled = true;
+    private CorrectionDiagnosticMode correctionDiagnosticsMode =
+            CorrectionDiagnosticMode.VERBOSE;
     private long correctionDiagnosticsCooldownMillis = 125L;
     private String correctionDiagnosticsFormat;
-    private final Map<String, Long> correctionDiagnosticsCooldowns = new java.util.HashMap<>();
+    private final Map<String, Long> correctionDiagnosticsCooldowns =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public PunishmentManager(GrimPlayer player) {
         this.player = player;
@@ -67,15 +70,21 @@ public class PunishmentManager implements ConfigReloadable {
                 "[alert] &7%verbose%"
         );
 
-        correctionDiagnosticsEnabled =
+        boolean legacyCorrectionDiagnosticsEnabled =
                 config.getBooleanElse("correction-diagnostics.enabled", true);
+        correctionDiagnosticsMode = CorrectionDiagnosticMode.parse(
+                config.getString(
+                        "correction-diagnostics.mode"
+                ),
+                legacyCorrectionDiagnosticsEnabled
+        );
 
         correctionDiagnosticsCooldownMillis = Math.max(0L, Math.min(5000L,
                 config.getLongElse("correction-diagnostics.cooldown-ms", 125L)));
 
         correctionDiagnosticsFormat = config.getStringElse(
                 "correction-diagnostics.format",
-                "[alert] &7%verbose%"
+                "&8[correction] &7%check_name% &8[%component%] &f%verbose%"
         );
 
         correctionDiagnosticsCooldowns.clear();
@@ -90,9 +99,18 @@ public class PunishmentManager implements ConfigReloadable {
 
         try {
             groups.clear();
+            canonicalCheckNames.clear();
 
             for (AbstractCheck check : player.getChecks()) {
                 check.setEnabled(false);
+                if (check.getCheckName() != null
+                        && !check.getCheckName().isBlank()) {
+                    canonicalCheckNames.add(
+                            check.getCheckName()
+                                    .trim()
+                                    .toLowerCase(Locale.ROOT)
+                    );
+                }
             }
 
             for (Object rawGroup : punish) {
@@ -112,8 +130,7 @@ public class PunishmentManager implements ConfigReloadable {
                                 300
                         );
 
-                ThresholdScope thresholdScope =
-                        ThresholdScope.parse(map.get("threshold-scope"));
+                Object thresholdScopeRaw = map.get("threshold-scope");
 
                 List<ParsedCommand> parsed =
                         new ArrayList<>();
@@ -126,38 +143,25 @@ public class PunishmentManager implements ConfigReloadable {
 
                 for (String configuredCheck : checks) {
                     String command =
-                            configuredCheck.toLowerCase(Locale.ROOT);
+                            configuredCheck.toLowerCase(Locale.ROOT).trim();
 
                     boolean exclude = false;
 
                     if (command.startsWith("!")) {
                         exclude = true;
-                        command = command.substring(1);
+                        command = command.substring(1).trim();
                     }
 
-                    for (AbstractCheck check : player.getChecks()) {
-                        String checkName =
-                                check.getCheckName() == null
-                                        ? ""
-                                        : check.getCheckName()
-                                        .toLowerCase(Locale.ROOT);
+                    List<AbstractCheck> matched =
+                            selectConfiguredChecks(command);
 
-                        String alternativeName =
-                                check.getAlternativeName() == null
-                                        ? ""
-                                        : check.getAlternativeName()
-                                        .toLowerCase(Locale.ROOT);
-
-                        if (checkName.contains(command)
-                                || alternativeName.contains(command)) {
-
-                            if (exclude) {
-                                if (!excluded.contains(check)) {
-                                    excluded.add(check);
-                                }
-                            } else if (!checksList.contains(check)) {
-                                checksList.add(check);
+                    for (AbstractCheck check : matched) {
+                        if (exclude) {
+                            if (!excluded.contains(check)) {
+                                excluded.add(check);
                             }
+                        } else if (!checksList.contains(check)) {
+                            checksList.add(check);
                         }
                     }
 
@@ -165,6 +169,12 @@ public class PunishmentManager implements ConfigReloadable {
                         checksList.remove(check);
                     }
                 }
+
+                ThresholdScope thresholdScope =
+                        thresholdScopeRaw == null
+                                && defaultsToPerCheckScope(checksList)
+                                ? ThresholdScope.CHECK
+                                : ThresholdScope.parse(thresholdScopeRaw);
 
                 for (AbstractCheck check : checksList) {
                     check.setEnabled(true);
@@ -389,7 +399,7 @@ public class PunishmentManager implements ConfigReloadable {
             String fallbackName,
             String verbose
     ) {
-        if (!correctionDiagnosticsEnabled) {
+        if (correctionDiagnosticsMode == CorrectionDiagnosticMode.OFF) {
             return;
         }
 
@@ -403,13 +413,10 @@ public class PunishmentManager implements ConfigReloadable {
 
         long now = System.currentTimeMillis();
         String cooldownKey = sourceName.toLowerCase(Locale.ROOT);
-        Long last = correctionDiagnosticsCooldowns.get(cooldownKey);
 
-        if (last != null && now - last < correctionDiagnosticsCooldownMillis) {
+        if (!claimCorrectionDiagnosticCooldown(cooldownKey, now)) {
             return;
         }
-
-        correctionDiagnosticsCooldowns.put(cooldownKey, now);
 
         int checkVl = 0;
         int groupVl = 0;
@@ -444,6 +451,27 @@ public class PunishmentManager implements ConfigReloadable {
         String correctionVerbose = "type=correction "
                 + (verbose == null ? "" : verbose);
 
+        int suppressed = 0;
+
+        if (correctionDiagnosticsMode == CorrectionDiagnosticMode.NORMAL) {
+            ac.grim.grimac.manager.integrity.AlertAggregationManager.Decision
+                    decision =
+                    GrimAPI.INSTANCE
+                            .getAlertAggregationManager()
+                            .evaluate(
+                                    player.uuid,
+                                    stableKey + ".correction",
+                                    component,
+                                    checkVl
+                            );
+
+            if (!decision.send()) {
+                return;
+            }
+
+            suppressed = decision.suppressedSinceLastAlert();
+        }
+
         String rendered = replaceAlertPlaceholders(
                 correctionDiagnosticsFormat,
                 checkVl,
@@ -454,12 +482,14 @@ public class PunishmentManager implements ConfigReloadable {
                 stableKey,
                 component,
                 correctionVerbose,
-                0
+                suppressed
         );
 
         Component message = MessageUtil.miniMessage(rendered);
 
-        if (testMode) {
+        if (correctionDiagnosticsMode == CorrectionDiagnosticMode.VERBOSE) {
+            GrimAPI.INSTANCE.getAlertManager().sendVerbose(message, null);
+        } else if (testMode) {
             player.sendMessage(message);
         } else {
             GrimAPI.INSTANCE.getAlertManager().sendAlert(message, null);
@@ -584,6 +614,7 @@ public class PunishmentManager implements ConfigReloadable {
                                     .evaluate(
                                             player.uuid,
                                             check.getStableKey(),
+                                            componentFor(check),
                                             checkVl
                                     );
 
@@ -860,34 +891,108 @@ public class PunishmentManager implements ConfigReloadable {
         if (variable.startsWith("vl:")) {
             String requested =
                     variable.substring("vl:".length())
-                            .toLowerCase(Locale.ROOT);
+                            .trim();
+
+            int bestPriority = 0;
+            double count = 0.0D;
 
             for (AbstractCheck candidate : group.checks) {
-                String name =
-                        candidate.getCheckName() == null
-                                ? ""
-                                : candidate.getCheckName()
-                                .toLowerCase(Locale.ROOT);
+                int priority =
+                        PunishmentSelectorPolicy.exactMatchPriority(
+                                requested,
+                                candidate.getCheckName(),
+                                candidate.getAlternativeName(),
+                                candidate.getStableKey(),
+                                canonicalCheckNames
+                        );
 
-                String alternative =
-                        candidate.getAlternativeName() == null
-                                ? ""
-                                : candidate.getAlternativeName()
-                                .toLowerCase(Locale.ROOT);
-
-                if (name.equals(requested)
-                        || alternative.equals(requested)) {
-                    return group.violations.count(candidate);
+                if (priority > bestPriority) {
+                    bestPriority = priority;
+                    count = group.violations.count(candidate);
+                } else if (priority != 0
+                        && priority == bestPriority) {
+                    count += group.violations.count(candidate);
                 }
             }
 
-            return 0.0D;
+            return count;
         }
 
         return Double.NaN;
     }
 
+    private List<AbstractCheck> selectConfiguredChecks(
+            String selector
+    ) {
+        int bestPriority = 0;
+        List<AbstractCheck> matched = new ArrayList<>();
+
+        for (AbstractCheck check : player.getChecks()) {
+            int priority =
+                    PunishmentSelectorPolicy.matchPriority(
+                            selector,
+                            check.getCheckName(),
+                            check.getAlternativeName(),
+                            check.getStableKey(),
+                            canonicalCheckNames
+                    );
+
+            if (priority > bestPriority) {
+                bestPriority = priority;
+                matched.clear();
+                matched.add(check);
+            } else if (priority != 0
+                    && priority == bestPriority) {
+                matched.add(check);
+            }
+        }
+
+        return matched;
+    }
+
+    private static boolean defaultsToPerCheckScope(
+            List<AbstractCheck> checks
+    ) {
+        for (AbstractCheck check : checks) {
+            String key = check.getStableKey();
+            if ("grim.movement.noslow".equals(key)
+                    || "grim.interaction.fast_consume".equals(key)
+                    || "grim.velocity.anti_knockback".equals(key)
+                    || "grim.prediction.simulation".equals(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean claimCorrectionDiagnosticCooldown(
+            String key,
+            long now
+    ) {
+        final boolean[] claimed = {false};
+
+        correctionDiagnosticsCooldowns.compute(
+                key,
+                (ignored, last) -> {
+                    if (last == null
+                            || now - last
+                            >= correctionDiagnosticsCooldownMillis) {
+                        claimed[0] = true;
+                        return now;
+                    }
+                    return last;
+                }
+        );
+
+        return claimed[0];
+    }
+
     private static String componentFor(Check check) {
+        String explicit = check.getLastComponent();
+        if (explicit != null && !explicit.isBlank()) {
+            return explicit;
+        }
+
         String key =
                 check.getStableKey();
 

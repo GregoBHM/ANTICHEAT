@@ -4,7 +4,8 @@ import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.item.ItemBehaviour;
 import ac.grim.grimac.utils.item.ItemBehaviourRegistry;
-import ac.grim.grimac.utils.item.LegacyItemUseResetPolicy;
+import ac.grim.grimac.utils.item.ItemUseResetPolicy;
+import ac.grim.grimac.utils.item.ItemUseSessionTracker;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
@@ -40,12 +41,17 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
 
         if (item == null) {
             player.packetStateData.setSlowedByUsingItem(false);
+            player.itemUseSessionTracker.end(ItemUseResetPolicy.Reason.REAL_ITEM_CHANGE);
             return;
         }
 
         if (player.checkManager.getCompensatedCooldown().hasItem(item)) {
-            boolean valid = !player.packetStateData.isSlowedByUsingItem() || player.packetStateData.itemInUseHand == hand;
-            if (valid) player.packetStateData.setSlowedByUsingItem(false);
+            boolean valid = !player.packetStateData.isSlowedByUsingItem()
+                    || player.packetStateData.itemInUseHand == hand;
+            if (valid) {
+                player.packetStateData.setSlowedByUsingItem(false);
+                player.itemUseSessionTracker.end(ItemUseResetPolicy.Reason.COOLDOWN);
+            }
             return;
         }
 
@@ -53,9 +59,16 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
         final ItemBehaviour itemBehaviour = ItemBehaviourRegistry.getItemBehaviour(player, material);
 
         if (itemBehaviour.canUse(item, player.compensatedWorld, player, hand)) {
-            player.packetStateData.slowedByUsingItemTransaction = player.lastTransactionReceived.get();
+            player.packetStateData.slowedByUsingItemTransaction =
+                    player.lastTransactionReceived.get();
             player.packetStateData.setSlowedByUsingItem(true);
             player.packetStateData.itemInUseHand = hand;
+            player.itemUseSessionTracker.begin(
+                    hand,
+                    item,
+                    System.currentTimeMillis(),
+                    player.lastTransactionReceived.get()
+            );
         }
     }
 
@@ -70,7 +83,9 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
 
                 boolean wasUsingItem = player.packetStateData.isSlowedByUsingItem();
                 player.packetStateData.setSlowedByUsingItem(false);
-                player.packetStateData.slowedByUsingItemTransaction = player.lastTransactionReceived.get();
+                player.packetStateData.slowedByUsingItemTransaction =
+                        player.lastTransactionReceived.get();
+                player.itemUseSessionTracker.end(ItemUseResetPolicy.Reason.CLIENT_RELEASE);
 
                 if (wasUsingItem && PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_13)) {
                     ItemStack hand = player.inventory.getItemInHand(player.packetStateData.itemInUseHand);
@@ -92,6 +107,9 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
 
                 if (slotChanged) {
                     player.packetStateData.setSlowedByUsingItem(false);
+                    player.itemUseSessionTracker.end(
+                            ItemUseResetPolicy.Reason.REAL_SLOT_CHANGE
+                    );
                     player.checkManager.getNoSlow().didSlotChangeLastTick = true;
                 }
             }
@@ -108,12 +126,25 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
             CheckManagerListener.handleQueuedPlaces(player, false, 0, 0, System.currentTimeMillis());
 
             if (player.packetStateData.lastSlotSelected != slot) {
-                if (player.isResetItemUsageOnSlotChange() && GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer) == InteractionHand.MAIN_HAND) {
-                    GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+                if (player.isResetItemUsageOnSlotChange()) {
+                    player.itemUseSessionTracker.requestServerReset(
+                            ItemUseResetPolicy.Reason.REAL_SLOT_CHANGE,
+                            InteractionHand.MAIN_HAND,
+                            null
+                    );
+                } else {
+                    player.itemUseSessionTracker.end(
+                            ItemUseResetPolicy.Reason.REAL_SLOT_CHANGE
+                    );
                 }
 
-                boolean usingInMainHand = player.packetStateData.isSlowedByUsingItem() && player.packetStateData.itemInUseHand == InteractionHand.MAIN_HAND;
-                if (usingInMainHand && player.canSkipTicks() && !player.isTickingReliablyFor(3)) {
+                boolean usingInMainHand =
+                        player.packetStateData.isSlowedByUsingItem()
+                                && player.packetStateData.itemInUseHand
+                                == InteractionHand.MAIN_HAND;
+                if (usingInMainHand
+                        && player.canSkipTicks()
+                        && !player.isTickingReliablyFor(3)) {
                     player.packetStateData.setSlowedByUsingItem(false);
                     player.checkManager.getNoSlow().didSlotChangeLastTick = true;
                 }
@@ -133,15 +164,21 @@ public class PacketPlayerDigging extends PacketListenerAbstract {
                     ? new WrapperPlayClientUseItem(event).getHand()
                     : InteractionHand.MAIN_HAND;
 
-            InteractionHand activeHand = GrimAPI.INSTANCE.getItemResetHandler().getItemUsageHand(player.platformPlayer);
-            boolean preserveLegacyUse = LegacyItemUseResetPolicy.preserveRepeatedUse(
+            InteractionHand activeHand = GrimAPI.INSTANCE
+                    .getItemResetHandler()
+                    .getItemUsageHand(player.platformPlayer);
+            boolean preserveLegacyUse = ItemUseResetPolicy.preserveRepeatedUse(
                     player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8),
                     player.packetStateData.isSlowedByUsingItem(),
                     activeHand == hand
             );
 
             if (player.isResetItemUsageOnItemUse() && !preserveLegacyUse) {
-                GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+                player.itemUseSessionTracker.requestServerReset(
+                        ItemUseResetPolicy.Reason.REPEATED_USE,
+                        hand,
+                        player.inventory.getItemInHand(hand)
+                );
             }
 
             handleUseItem(player, hand);

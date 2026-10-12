@@ -35,11 +35,12 @@ webhook-test-failed: "Discord webhook test failed!"
 # %prefix%
 # %player%
 # %check_name%
+# %component% - detection component
 # %description%
 # %experimental%
 # %vl% - 違反回数
 # %verbose% - チェックからの追加情報（全てのチェックが情報を追加するわけではありません）
-alerts-format: "%prefix% &f%player% が <hover:show_text:\"&b%check_name%%experimental%\n&8説明: &f%description%\">&b%check_name%%experimental%</hover> &fに失敗しました (x&c%vl%&f) &7%verbose%"
+alerts-format: "%prefix% &f%player% が <hover:show_text:\"&b%check_name%%experimental%\n&8説明: &f%description%\n&8Component: &f%component%\">&b%check_name%%experimental%</hover> &fに失敗しました (x&c%vl%&f) &7%verbose%"
 alerts-format-proxy: "&8[proxy] [alert]"
 verbose-format: "[alert] &7%verbose%"
 experimental-symbol: "*"

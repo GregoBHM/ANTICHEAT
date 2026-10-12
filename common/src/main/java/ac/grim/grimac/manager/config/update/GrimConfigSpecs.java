@@ -55,9 +55,14 @@ public final class GrimConfigSpecs {
      * raw pre-prediction movement, action-first prevention becomes opt-in,
      * recovery cannot re-lock itself, and item-use ownership is left exclusively
      * to ConsumeTiming/NoSlow instead of StallActions.
+     * v28 -> v29: Item Use / Detection Policy v10. Adds physical-use session
+     * timing, context-aware NoSlow/AntiKB/Simulation episode limits, and
+     * verbose-only correction diagnostics without weakening deterministic checks.
+     * v29 -> v30: finalizes v10 alert presentation, shared movement episode
+     * defaults, component-safe aggregation and correction diagnostic formatting.
      */
     public static @NotNull ConfigUpdater.Spec mainConfig() {
-        return ConfigUpdater.Spec.builder("/config/", 28, ConfigUpdater.ConfigFlavor.V2)
+        return ConfigUpdater.Spec.builder("/config/", 30, ConfigUpdater.ConfigFlavor.V2)
                 .migration(10, ctx -> {
                     String typeRaw = ctx.input().getString("history.database.type");
                     String type = typeRaw == null ? null : typeRaw.trim().toUpperCase(Locale.ROOT);
@@ -149,7 +154,125 @@ public final class GrimConfigSpecs {
                             false
                     );
                 })
+                .migration(29, ctx -> {
+                    Object correctionEnabled =
+                            ctx.input().get("correction-diagnostics.enabled");
+                    boolean correctionOff =
+                            correctionEnabled instanceof Boolean enabled
+                                    && !enabled;
+
+                    putIfMissing(
+                            ctx,
+                            "correction-diagnostics.mode",
+                            correctionOff ? "off" : "verbose"
+                    );
+
+                    String previousCorrectionFormat =
+                            ctx.input().getString("correction-diagnostics.format");
+                    if (previousCorrectionFormat == null
+                            || previousCorrectionFormat.equals("[alert] &7%verbose%")) {
+                        ctx.output().put(
+                                "correction-diagnostics.format",
+                                "&8[correction] &7%check_name% &f%verbose%"
+                        );
+                    }
+
+                    putIfMissing(
+                            ctx,
+                            "interaction-integrity.consume.session-end-grace-ms",
+                            500
+                    );
+
+                    putIfMissing(ctx, "NoSlow.context-policy.enabled", true);
+                    putIfMissing(ctx, "NoSlow.context-policy.special-minimum-offset", 0.12D);
+                    putIfMissing(ctx, "NoSlow.context-policy.velocity-minimum-offset", 0.035D);
+                    putIfMissing(ctx, "NoSlow.context-policy.recovery-minimum-offset", 0.15D);
+                    putIfMissing(ctx, "NoSlow.context-policy.strong-consecutive-ticks", 3);
+                    putIfMissing(ctx, "NoSlow.context-policy.recovery-ticks", 4);
+                    putIfMissing(ctx, "NoSlow.context-policy.episode-window-ms", 1200);
+                    putIfMissing(ctx, "NoSlow.context-policy.flag-interval-ms", 600);
+                    putIfMissing(ctx, "NoSlow.context-policy.max-flags-per-episode", 1);
+
+                    putIfMissing(ctx, "Knockback.special-environment.enabled", true);
+                    putIfMissing(ctx, "Knockback.special-environment.minimum-offset", 0.08D);
+                    putIfMissing(ctx, "Knockback.special-environment.strong-consecutive-ticks", 3);
+                    putIfMissing(ctx, "Knockback.special-environment.episode-window-ms", 1500);
+                    putIfMissing(ctx, "Knockback.special-environment.flag-interval-ms", 900);
+                    putIfMissing(ctx, "Knockback.special-environment.max-flags-per-episode", 1);
+
+                    putIfMissing(
+                            ctx,
+                            "movement-enforcement.environment.observed-velocity-min-raw-offset",
+                            0.12D
+                    );
+                    putIfMissing(ctx, "movement-enforcement.environment.flag-strong-ticks", 3);
+                    putIfMissing(ctx, "movement-enforcement.environment.flag-episode-window-ms", 1500);
+                    putIfMissing(ctx, "movement-enforcement.environment.flag-interval-ms", 900);
+                    putIfMissing(ctx, "movement-enforcement.environment.max-flags-per-episode", 1);
+                })
+                .migration(30, ctx -> {
+                    Object correctionEnabled =
+                            ctx.input().get("correction-diagnostics.enabled");
+                    boolean correctionOff =
+                            correctionEnabled instanceof Boolean enabled
+                                    && !enabled;
+
+                    putIfMissing(
+                            ctx,
+                            "correction-diagnostics.mode",
+                            correctionOff ? "off" : "verbose"
+                    );
+                    putIfMissing(
+                            ctx,
+                            "correction-diagnostics.cooldown-ms",
+                            125
+                    );
+
+                    String previousCorrectionFormat =
+                            ctx.input().getString(
+                                    "correction-diagnostics.format"
+                            );
+                    if (previousCorrectionFormat == null
+                            || previousCorrectionFormat.equals(
+                            "[alert] &7%verbose%"
+                    )
+                            || previousCorrectionFormat.equals(
+                            "&8[correction] &7%check_name% &f%verbose%"
+                    )) {
+                        ctx.output().put(
+                                "correction-diagnostics.format",
+                                "&8[correction] &7%check_name% "
+                                        + "&8[%component%] &f%verbose%"
+                        );
+                    }
+
+                    putIfMissing(
+                            ctx,
+                            "alerts.component-buckets",
+                            false
+                    );
+                    putIfMissing(
+                            ctx,
+                            "environment-context.evidence-episodes.window-ms",
+                            1500
+                    );
+                    putIfMissing(
+                            ctx,
+                            "environment-context.evidence-episodes.max-total-flags",
+                            2
+                    );
+                })
                 .build();
+    }
+
+    private static void putIfMissing(
+            @NotNull MigrationContext ctx,
+            @NotNull String key,
+            @NotNull Object value
+    ) {
+        if (ctx.input().get(key) == null) {
+            ctx.output().put(key, value);
+        }
     }
 
     private static @Nullable String backendIdFor(@Nullable String legacyType) {

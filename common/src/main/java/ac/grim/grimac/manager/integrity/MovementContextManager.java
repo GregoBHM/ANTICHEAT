@@ -13,22 +13,30 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Stores short-lived trusted movement contexts created by server plugins.
+ * Stores short-lived observed and explicitly trusted movement contexts.
  *
  * <p>This is deliberately not a permission-based bypass system. Contexts expire automatically,
- * are attached to a source name, and only affect integrity behavior declared by the context type.</p>
+ * are attached to a source name, and only affect integrity behavior declared by the context type.
+ * Generic begin(...) calls are observed by default; trusted velocity requires an explicit
+ * beginTrusted(...) call and is additionally limited by the context type.</p>
  */
 public final class MovementContextManager {
     private static final long MAX_CONTEXT_MILLIS = 15_000L;
     private static final long MAX_TRUSTED_VELOCITY_MILLIS = 1_500L;
+    private static final int MAX_CONTEXTS_PER_PLAYER = 64;
 
     private final Map<UUID, CopyOnWriteArrayList<Context>> contexts = new ConcurrentHashMap<>();
 
+    /**
+     * Safe default for generic/internal observations. Trusted velocity must
+     * always be opted into explicitly through beginTrusted(...) or the
+     * integration facade.
+     */
     public Context begin(@NotNull UUID uuid,
                          @NotNull MovementContextType type,
                          @NotNull String source,
                          long durationMillis) {
-        return beginTrusted(uuid, type, source, durationMillis, null);
+        return beginObserved(uuid, type, source, durationMillis, null);
     }
 
     public Context begin(@NotNull UUID uuid,
@@ -36,7 +44,7 @@ public final class MovementContextManager {
                          @NotNull String source,
                          long durationMillis,
                          @Nullable String detail) {
-        return beginTrusted(uuid, type, source, durationMillis, detail);
+        return beginObserved(uuid, type, source, durationMillis, detail);
     }
 
     public Context beginTrusted(@NotNull UUID uuid, @NotNull MovementContextType type, @NotNull String source, long durationMillis) {
@@ -63,8 +71,16 @@ public final class MovementContextManager {
         String normalizedSource = sanitizeSource(source);
         Context context = new Context(type, normalizedSource, sanitizeDetail(detail), trusted, now, expiresAtNanos);
         CopyOnWriteArrayList<Context> list = contexts.computeIfAbsent(uuid, ignored -> new CopyOnWriteArrayList<>());
-        list.removeIf(existing -> existing.type == type && existing.source.equals(normalizedSource) && existing.trusted == trusted);
-        list.add(context);
+        synchronized (list) {
+            list.removeIf(existing ->
+                    existing.type == type
+                            && existing.source.equals(normalizedSource)
+                            && existing.trusted == trusted);
+            while (list.size() >= MAX_CONTEXTS_PER_PLAYER) {
+                list.remove(0);
+            }
+            list.add(context);
+        }
         return context;
     }
 
@@ -112,6 +128,35 @@ public final class MovementContextManager {
         return false;
     }
 
+    public boolean hasObservedVelocityContext(@NotNull UUID uuid) {
+        return hasVelocityContext(uuid, false, true);
+    }
+
+    public boolean hasAnyVelocityContext(@NotNull UUID uuid) {
+        return hasVelocityContext(uuid, true, true);
+    }
+
+    private boolean hasVelocityContext(
+            @NotNull UUID uuid,
+            boolean includeTrusted,
+            boolean includeObserved
+    ) {
+        long now = System.nanoTime();
+        CopyOnWriteArrayList<Context> list = contexts.get(uuid);
+        if (list == null) return false;
+        cleanup(uuid, list, now);
+        for (Context context : list) {
+            if (context.expiresAtNanos <= now
+                    || !context.type.allowsTrustedVelocityOverride()) {
+                continue;
+            }
+            if (context.trusted ? includeTrusted : includeObserved) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public @NotNull List<Context> getActive(@NotNull UUID uuid) {
         long now = System.nanoTime();
         CopyOnWriteArrayList<Context> list = contexts.get(uuid);
@@ -137,6 +182,29 @@ public final class MovementContextManager {
         if (list.isEmpty()) contexts.remove(uuid, list);
     }
 
+    public void clearSourcePrefix(
+            @NotNull UUID uuid,
+            @NotNull String sourcePrefix
+    ) {
+        CopyOnWriteArrayList<Context> list = contexts.get(uuid);
+        if (list == null) return;
+        String prefix = sanitizeSource(sourcePrefix);
+        list.removeIf(context ->
+                sourceMatchesPrefix(context.source, prefix));
+        if (list.isEmpty()) contexts.remove(uuid, list);
+    }
+
+    public void clearSourcePrefix(@NotNull String sourcePrefix) {
+        String prefix = sanitizeSource(sourcePrefix);
+        contexts.forEach((uuid, list) -> {
+            list.removeIf(context ->
+                    sourceMatchesPrefix(context.source, prefix));
+            if (list.isEmpty()) {
+                contexts.remove(uuid, list);
+            }
+        });
+    }
+
     public void tick() {
         long now = System.nanoTime();
         contexts.forEach((uuid, list) -> cleanup(uuid, list, now));
@@ -145,6 +213,22 @@ public final class MovementContextManager {
     private void cleanup(UUID uuid, CopyOnWriteArrayList<Context> list, long now) {
         list.removeIf(context -> context.expiresAtNanos <= now);
         if (list.isEmpty()) contexts.remove(uuid, list);
+    }
+
+    private static boolean sourceMatchesPrefix(
+            @NotNull String source,
+            @NotNull String prefix
+    ) {
+        return source.equalsIgnoreCase(prefix)
+                || (source.length() > prefix.length()
+                && source.regionMatches(
+                        true,
+                        0,
+                        prefix,
+                        0,
+                        prefix.length()
+                )
+                && source.charAt(prefix.length()) == ':');
     }
 
     private static String sanitizeSource(String source) {

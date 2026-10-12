@@ -16,6 +16,7 @@ import ac.grim.grimac.events.packets.CheckManagerListener;
 import ac.grim.grimac.events.packets.PacketEntityReplication;
 import ac.grim.grimac.manager.*;
 import ac.grim.grimac.manager.player.features.FeatureManagerImpl;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.player.handlers.DefaultResyncHandler;
 import ac.grim.grimac.manager.player.handlers.NoOpResyncHandler;
 import ac.grim.grimac.platform.api.player.PlatformPlayer;
@@ -40,6 +41,7 @@ import ac.grim.grimac.utils.data.tags.SyncedTags;
 import ac.grim.grimac.utils.enums.FluidTag;
 import ac.grim.grimac.utils.enums.Pose;
 import ac.grim.grimac.utils.latency.*;
+import ac.grim.grimac.utils.item.ItemUseSessionTracker;
 import ac.grim.grimac.utils.math.GrimMath;
 import ac.grim.grimac.utils.math.Location;
 import ac.grim.grimac.utils.math.TrigHandler;
@@ -126,6 +128,8 @@ public class GrimPlayer implements GrimUser {
     public final @NotNull AttackCooldownHandler attackCooldown;
     public final @NotNull PunishmentManager punishmentManager;
     public final @NotNull MovementCheckRunner movementCheckRunner;
+    public final @NotNull ItemUseSessionTracker itemUseSessionTracker;
+    public final @NotNull DetectionEpisodeManager detectionEpisodeManager;
     public final @NotNull SyncedTags tagManager;
     // End manager like classes
     public @NotNull Vector3dm clientVelocity = new Vector3dm();
@@ -291,6 +295,8 @@ public class GrimPlayer implements GrimUser {
     public GrimPlayer(@NotNull User user) {
         this.user = Objects.requireNonNull(user, "user");
         this.uuid = Objects.requireNonNull(user.getUUID(), "uuid");
+        this.itemUseSessionTracker = new ItemUseSessionTracker(this);
+        this.detectionEpisodeManager = new DetectionEpisodeManager();
         this.fireworks = new CompensatedFireworks(this); // Must be before checkmanager
         this.inventory = new CompensatedInventory(this);
 
@@ -1011,6 +1017,12 @@ public class GrimPlayer implements GrimUser {
         resetItemUsageOnItemUpdate = config.getBooleanElse("reset-item-usage-on-item-update", true);
         resetItemUsageOnSlotChange = config.getBooleanElse("reset-item-usage-on-slot-change", true);
         resetItemUsageOnItemUse = config.getBooleanElse("reset-item-usage-on-item-use", true);
+
+        // Detection episode windows are configuration-dependent. Preserve the
+        // physical item-use session during /grim reload, but never carry old
+        // movement episode budgets/streak identity into a new policy.
+        detectionEpisodeManager.clearAll();
+
         // reload all checks
         checkManager.reload();
         // reload punishment manager

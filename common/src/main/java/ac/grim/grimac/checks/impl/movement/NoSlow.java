@@ -1,22 +1,44 @@
 package ac.grim.grimac.checks.impl.movement;
 
+import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PostPredictionListener;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
+import ac.grim.grimac.manager.integrity.EnvironmentContext;
+import ac.grim.grimac.manager.integrity.EnvironmentContextManager;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
+import ac.grim.grimac.utils.item.ItemUseSessionTracker;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import org.jetbrains.annotations.NotNull;
 
-@CheckData(name = "NoSlow", stableKey = "grim.movement.noslow", description = "Was not slowed while using an item", setback = 5)
+import java.util.Set;
+
+@CheckData(name = "NoSlow", stableKey = "grim.movement.noslow",
+        description = "Was not slowed while using an item", setback = 5)
 public class NoSlow extends Check implements PostPredictionListener {
-    // The player sends that they switched items the next tick if they switch from an item that can be used
-    // to another item that can be used.  What the fuck Mojang.  Affects 1.8 (and most likely 1.7) clients.
     public boolean didSlotChangeLastTick = false;
     public boolean flaggedLastTick = false;
+
     private double offsetToFlag;
-    private double bestOffset = 1;
+    private double bestOffset = 1.0D;
+
+    private boolean contextPolicyEnabled;
+    private double specialMinimumOffset;
+    private double velocityMinimumOffset;
+    private double recoveryMinimumOffset;
+    private int strongConsecutiveTicks;
+    private int recoveryTicks;
+    private long episodeWindowMillis;
+    private long episodeFlagIntervalMillis;
+    private int maxFlagsPerEpisode;
+
+    private int contextualStrongStreak;
+    private int recoveryTicksRemaining;
+    private boolean wasSpecialOrVelocity;
+    private String lastContextEvidenceKey = "";
 
     public NoSlow(GrimPlayer player) {
         super(player);
@@ -24,30 +46,249 @@ public class NoSlow extends Check implements PostPredictionListener {
 
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
-        if (!predictionComplete.isChecked()) return;
+        if (!predictionComplete.isChecked()) {
+            resetTickState();
+            resetContextState();
+            return;
+        }
 
-        // If the player was using an item for certain, and their predicted velocity had a flipped item
-        if (player.packetStateData.isSlowedByUsingItem()) {
-            // 1.8 users are not slowed the first tick they use an item, strangely
-            if (player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8) && didSlotChangeLastTick) {
-                didSlotChangeLastTick = false;
-                flaggedLastTick = false;
-            }
+        ItemUseSessionTracker.Session session =
+                player.itemUseSessionTracker.activeSession();
 
-            if (bestOffset > offsetToFlag) {
-                if (flaggedLastTick) {
-                    flagWithSetback();
-                }
-                flaggedLastTick = true;
-            } else {
-                reward();
-                flaggedLastTick = false;
+        // The physical session is the source of truth. PacketStateData is still
+        // consulted because PredictionEngine temporarily flips it while testing
+        // alternate vectors and NoSlow only has usable evidence when the final
+        // predicted state agrees that the item is being used.
+        if (session == null) {
+            resetTickState();
+            resetContextState();
+            return;
+        }
+        if (!player.packetStateData.isSlowedByUsingItem()) {
+            resetTickState();
+            contextualStrongStreak = 0;
+            lastContextEvidenceKey = "";
+            return;
+        }
+
+        if (player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)
+                && didSlotChangeLastTick) {
+            didSlotChangeLastTick = false;
+            resetTickState();
+            contextualStrongStreak = 0;
+            lastContextEvidenceKey = "";
+            return;
+        }
+
+        EnvironmentContextManager environment =
+                GrimAPI.INSTANCE.getEnvironmentContextManager();
+        Set<EnvironmentContext> contexts = environment.classify(player);
+        boolean specialEnvironment =
+                environment.isSpecialMovementEnvironment(contexts);
+        var movementContexts = GrimAPI.INSTANCE.getMovementContextManager();
+        boolean trustedVelocityContext =
+                movementContexts.hasTrustedVelocityContext(player.uuid);
+        boolean observedVelocityContext =
+                movementContexts.hasObservedVelocityContext(player.uuid);
+
+        if (trustedVelocityContext) {
+            // A trusted plugin-authorized dash/launch/pull can invalidate
+            // vanilla NoSlow movement evidence for a very short bounded window.
+            // This suppresses only NoSlow evidence; it does not affect Phase,
+            // Reach, Timer, PacketOrder or FastConsume.
+            recoveryTicksRemaining = recoveryTicks;
+            wasSpecialOrVelocity = true;
+            contextualStrongStreak = 0;
+            lastContextEvidenceKey = "";
+            resetTickState();
+            return;
+        }
+
+        if (!contextPolicyEnabled) {
+            handleNormal(session);
+            return;
+        }
+
+        if (specialEnvironment || observedVelocityContext) {
+            recoveryTicksRemaining = recoveryTicks;
+            wasSpecialOrVelocity = true;
+            double contextualMinimum = specialEnvironment
+                    ? Math.max(
+                    specialMinimumOffset,
+                    environment.minimumCorrectionRawOffset(contexts)
+            )
+                    : velocityMinimumOffset;
+
+            DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                    environment.resolveMovementEvidenceEpisode(
+                            player,
+                            contexts,
+                            observedVelocityContext,
+                            false,
+                            false
+                    );
+
+            handleContextual(
+                    session,
+                    componentFor(
+                            contexts,
+                            observedVelocityContext,
+                            false
+                    ),
+                    contextualMinimum,
+                    environment.summary(contexts),
+                    sharedEpisode,
+                    environment.evidenceEpisodeMaxTotalFlags()
+            );
+            return;
+        }
+
+        if (wasSpecialOrVelocity && recoveryTicksRemaining > 0) {
+            recoveryTicksRemaining--;
+            DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                    environment.resolveMovementEvidenceEpisode(
+                            player,
+                            contexts,
+                            false,
+                            false,
+                            true
+                    );
+            handleContextual(
+                    session,
+                    "noslow.transition",
+                    recoveryMinimumOffset,
+                    "recovery",
+                    sharedEpisode,
+                    environment.evidenceEpisodeMaxTotalFlags()
+            );
+            if (recoveryTicksRemaining == 0) {
+                wasSpecialOrVelocity = false;
+                contextualStrongStreak = 0;
             }
+            return;
+        }
+
+        wasSpecialOrVelocity = false;
+        contextualStrongStreak = 0;
+        handleNormal(session);
+    }
+
+    private void handleNormal(@NotNull ItemUseSessionTracker.Session session) {
+        if (bestOffset > offsetToFlag) {
+            if (flaggedLastTick) {
+                flagComponentWithSetback(
+                        "noslow.normal",
+                        "offset=" + formatOffset(bestOffset)
+                                + " session=" + session.sessionId()
+                );
+            }
+            flaggedLastTick = true;
         } else {
-            // Consecutive evidence is scoped to one continuous item-use session.
+            reward();
             flaggedLastTick = false;
         }
-        bestOffset = 1;
+        bestOffset = 1.0D;
+    }
+
+    private void handleContextual(
+            @NotNull ItemUseSessionTracker.Session session,
+            @NotNull String component,
+            double minimumOffset,
+            @NotNull String contextKey,
+            @NotNull DetectionEpisodeManager.SharedEpisode sharedEpisode,
+            int maxSharedFlags
+    ) {
+        flaggedLastTick = false;
+
+        String evidenceKey = session.sessionId()
+                + "|" + component
+                + "|" + contextKey
+                + "|" + sharedEpisode.token();
+
+        if (!evidenceKey.equals(lastContextEvidenceKey)) {
+            contextualStrongStreak = 0;
+            lastContextEvidenceKey = evidenceKey;
+        }
+
+        if (bestOffset <= minimumOffset) {
+            // Ambiguous special-physics evidence is neutral. Do not award
+            // decay here or players could intentionally enter a web/liquid
+            // to wash previously accumulated NoSlow VL.
+            contextualStrongStreak = 0;
+            bestOffset = 1.0D;
+            return;
+        }
+
+        contextualStrongStreak++;
+        if (contextualStrongStreak < strongConsecutiveTicks) {
+            bestOffset = 1.0D;
+            return;
+        }
+
+        String episodeKey = evidenceKey;
+
+        DetectionEpisodeManager.Decision decision =
+                player.detectionEpisodeManager.evaluate(
+                        component,
+                        episodeKey,
+                        episodeWindowMillis,
+                        episodeFlagIntervalMillis,
+                        maxFlagsPerEpisode,
+                        sharedEpisode,
+                        maxSharedFlags
+                );
+
+        if (decision.allowFlag()) {
+            flagComponent(
+                    component,
+                    "offset=" + formatOffset(bestOffset)
+                            + " session=" + session.sessionId()
+                            + " context=" + contextKey
+                            + " strong=" + contextualStrongStreak
+                            + " episode=" + sharedEpisode.token()
+                            + " episodeFlags=" + decision.flags()
+                            + " sharedFlags=" + decision.sharedFlags()
+            );
+        }
+
+        bestOffset = 1.0D;
+    }
+
+    private static @NotNull String componentFor(
+            @NotNull Set<EnvironmentContext> contexts,
+            boolean velocityContext,
+            boolean recovery
+    ) {
+        if (recovery) return "noslow.transition";
+        if (contexts.contains(EnvironmentContext.COBWEB)) {
+            return "noslow.cobweb";
+        }
+        if (contexts.contains(EnvironmentContext.STUCK_MOVEMENT)) {
+            return "noslow.stuck";
+        }
+        if (contexts.contains(EnvironmentContext.CLIMBABLE)) {
+            return "noslow.climbable";
+        }
+        if (contexts.contains(EnvironmentContext.WATER)
+                || contexts.contains(EnvironmentContext.LAVA)) {
+            return "noslow.liquid";
+        }
+        if (velocityContext) {
+            return "noslow.velocity";
+        }
+        return "noslow.special";
+    }
+
+    private void resetTickState() {
+        flaggedLastTick = false;
+        bestOffset = 1.0D;
+    }
+
+    private void resetContextState() {
+        contextualStrongStreak = 0;
+        recoveryTicksRemaining = 0;
+        wasSpecialOrVelocity = false;
+        lastContextEvidenceKey = "";
     }
 
     public void handlePredictionAnalysis(double offset) {
@@ -56,6 +297,82 @@ public class NoSlow extends Check implements PostPredictionListener {
 
     @Override
     public void onReload(@NotNull ConfigManager config) {
-        offsetToFlag = config.getDoubleElse(getConfigName() + ".threshold", 0.001);
+        offsetToFlag = config.getDoubleElse(
+                getConfigName() + ".threshold",
+                0.001D
+        );
+
+        contextPolicyEnabled = config.getBooleanElse(
+                "NoSlow.context-policy.enabled",
+                true
+        );
+        specialMinimumOffset = Math.max(
+                offsetToFlag,
+                config.getDoubleElse(
+                        "NoSlow.context-policy.special-minimum-offset",
+                        0.120D
+                )
+        );
+        velocityMinimumOffset = Math.max(
+                offsetToFlag,
+                config.getDoubleElse(
+                        "NoSlow.context-policy.velocity-minimum-offset",
+                        0.035D
+                )
+        );
+        recoveryMinimumOffset = Math.max(
+                specialMinimumOffset,
+                config.getDoubleElse(
+                        "NoSlow.context-policy.recovery-minimum-offset",
+                        0.150D
+                )
+        );
+        strongConsecutiveTicks = (int) clamp(
+                config.getLongElse(
+                        "NoSlow.context-policy.strong-consecutive-ticks",
+                        3L
+                ),
+                2L,
+                20L
+        );
+        recoveryTicks = (int) clamp(
+                config.getLongElse(
+                        "NoSlow.context-policy.recovery-ticks",
+                        4L
+                ),
+                0L,
+                20L
+        );
+        episodeWindowMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.context-policy.episode-window-ms",
+                        1200L
+                ),
+                100L,
+                10_000L
+        );
+        episodeFlagIntervalMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.context-policy.flag-interval-ms",
+                        600L
+                ),
+                0L,
+                10_000L
+        );
+        maxFlagsPerEpisode = (int) clamp(
+                config.getLongElse(
+                        "NoSlow.context-policy.max-flags-per-episode",
+                        1L
+                ),
+                1L,
+                10L
+        );
+
+        resetTickState();
+        resetContextState();
+    }
+
+    private static long clamp(long value, long min, long max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

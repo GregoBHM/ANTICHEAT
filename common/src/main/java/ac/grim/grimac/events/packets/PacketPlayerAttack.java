@@ -3,6 +3,7 @@ package ac.grim.grimac.events.packets;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.checks.impl.combat.InvalidInteractTarget;
 import ac.grim.grimac.player.GrimPlayer;
+import ac.grim.grimac.utils.item.ItemUseResetPolicy;
 import ac.grim.grimac.utils.data.packetentity.PacketEntity;
 import ac.grim.grimac.utils.data.packetentity.PacketEntityHorse;
 import com.github.retrooper.packetevents.PacketEvents;
@@ -18,6 +19,7 @@ import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.player.DiggingAction;
 import com.github.retrooper.packetevents.protocol.player.GameMode;
+import com.github.retrooper.packetevents.protocol.player.InteractionHand;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientAttack;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging;
@@ -67,7 +69,11 @@ public class PacketPlayerAttack extends PacketListenerAbstract {
                 if (player == null) return;
 
                 if (player.isResetItemUsageOnAttack()) {
-                    GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+                    player.itemUseSessionTracker.requestServerReset(
+                            ItemUseResetPolicy.Reason.ATTACK,
+                            InteractionHand.MAIN_HAND,
+                            null
+                    );
                 }
             }
         }
@@ -93,7 +99,11 @@ public class PacketPlayerAttack extends PacketListenerAbstract {
         if (isInvalidEntity(event, player, entityId)) return;
 
         if (player.isResetItemUsageOnAttack()) {
-            GrimAPI.INSTANCE.getItemResetHandler().resetItemUsage(player.platformPlayer);
+            player.itemUseSessionTracker.requestServerReset(
+                    ItemUseResetPolicy.Reason.ATTACK,
+                    InteractionHand.MAIN_HAND,
+                    null
+            );
         }
 
         // This is not vanilla behaviour as the attack damage attribute is marked as not synced to the client

@@ -9,6 +9,7 @@ import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.checks.impl.velocity.KnockbackHandler;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.EnvironmentContext;
 import ac.grim.grimac.manager.integrity.EnvironmentContextManager;
 import ac.grim.grimac.player.GrimPlayer;
@@ -52,9 +53,19 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private double environmentRecoveryMultiplier;
     private boolean disableShortBlinkInSpecialEnvironment;
     private int specialEnvironmentCorrectionStrongTicks;
+    private double observedVelocityMinRawOffset;
+    private int specialEnvironmentFlagStrongTicks;
+    private long specialEnvironmentFlagEpisodeWindowMillis;
+    private long specialEnvironmentFlagIntervalMillis;
+    private int specialEnvironmentMaxFlagsPerEpisode;
+    private int specialEnvironmentFlagStreak;
+    private String specialEnvironmentFlagKey = "";
     private int environmentRecoveryTicksRemaining;
+    private double environmentRecoveryMinRawOffset;
     private boolean wasSpecialEnvironment;
     private int specialEnvironmentCorrectionStreak;
+    private boolean specialEnvironmentEpisodeFlagAccepted;
+    private boolean specialEnvironmentEpisodeCorrectionApplied;
 
     private boolean shortBlinkEnabled;
     private long shortBlinkMinGapNanos;
@@ -108,6 +119,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         if (!predictionComplete.isChecked()) {
             resetEnforcementState();
             resetShortBlinkState();
+            resetEnvironmentState();
             return;
         }
 
@@ -151,34 +163,61 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 && !GrimAPI.INSTANCE.getMovementContextManager()
                 .suppressesConnectionStall(player.uuid);
 
+        EnvironmentContextManager environment =
+                GrimAPI.INSTANCE.getEnvironmentContextManager();
+        Set<EnvironmentContext> environmentContexts =
+                environment.classify(player);
+        boolean observedVelocityContext = GrimAPI.INSTANCE
+                .getMovementContextManager()
+                .hasObservedVelocityContext(player.uuid);
+        boolean specialEnvironment =
+                environment.isSpecialMovementEnvironment(environmentContexts)
+                        || observedVelocityContext;
+        double specialEnvironmentCorrectionMinRawOffset =
+                environment.minimumCorrectionRawOffset(environmentContexts);
+        if (observedVelocityContext) {
+            specialEnvironmentCorrectionMinRawOffset = Math.max(
+                    specialEnvironmentCorrectionMinRawOffset,
+                    observedVelocityMinRawOffset
+            );
+        }
+
+        boolean environmentRecoveryActive = false;
+        if (trustedVelocityContext) {
+            environmentRecoveryTicksRemaining = environmentRecoveryTicks;
+            environmentRecoveryMinRawOffset = Math.max(
+                    specialEnvironmentCorrectionMinRawOffset,
+                    observedVelocityMinRawOffset
+            );
+        } else if (specialEnvironment) {
+            environmentRecoveryTicksRemaining = environmentRecoveryTicks;
+            environmentRecoveryMinRawOffset =
+                    specialEnvironmentCorrectionMinRawOffset;
+        } else if (environmentRecoveryTicksRemaining > 0) {
+            environmentRecoveryActive = true;
+            specialEnvironmentCorrectionMinRawOffset =
+                    Math.max(
+                            specialEnvironmentCorrectionMinRawOffset,
+                            environmentRecoveryMinRawOffset
+                    );
+            environmentRecoveryTicksRemaining--;
+        } else {
+            environmentRecoveryMinRawOffset = 0.0D;
+        }
+
         double enforcementMultiplier = 1.0D;
-        boolean specialEnvironment = false;
-        double specialEnvironmentCorrectionMinRawOffset = 0.0D;
 
         if (enforcementEligible) {
-            EnvironmentContextManager environment =
-                    GrimAPI.INSTANCE.getEnvironmentContextManager();
-            Set<EnvironmentContext> environmentContexts =
-                    environment.classify(player);
-
-            specialEnvironment =
-                    environment.isSpecialMovementEnvironment(environmentContexts);
-
             double configuredEnvironmentMultiplier =
                     environment.enforcementMultiplier(environmentContexts);
-            specialEnvironmentCorrectionMinRawOffset =
-                    environment.minimumCorrectionRawOffset(environmentContexts);
 
             if (specialEnvironment) {
-                environmentRecoveryTicksRemaining = environmentRecoveryTicks;
-
                 if (!wasSpecialEnvironment) {
                     resetEnforcementState();
                 }
 
                 enforcementMultiplier = configuredEnvironmentMultiplier;
-            } else if (environmentRecoveryTicksRemaining > 0) {
-                environmentRecoveryTicksRemaining--;
+            } else if (environmentRecoveryActive) {
                 enforcementMultiplier = environmentRecoveryMultiplier;
             }
 
@@ -189,16 +228,15 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         final double setbackEvidenceOffset =
                 enforcementEligible ? enforcementOffset : offset;
         final boolean environmentProtectedWindow = specialEnvironment
-                || environmentRecoveryTicksRemaining > 0;
+                || environmentRecoveryActive;
 
         if (!enforcementEligible) {
             resetEnforcementState();
             resetShortBlinkState();
-            resetEnvironmentState();
         } else {
             boolean allowShortBlink = !blinkMitigationOwned
                     && (!disableShortBlinkInSpecialEnvironment
-                    || (!specialEnvironment && environmentRecoveryTicksRemaining == 0));
+                    || (!specialEnvironment && !environmentRecoveryActive));
 
             if (allowShortBlink) {
                 processShortBlink(
@@ -235,6 +273,28 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         if (COMPLETE_CHANNEL.fire(player, this, offset)) {
             resetEnforcementState();
             resetShortBlinkState();
+            specialEnvironmentFlagStreak = 0;
+            specialEnvironmentCorrectionStreak = 0;
+            specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentEpisodeCorrectionApplied = false;
+            specialEnvironmentFlagKey = "";
+            return;
+        }
+
+        if (trustedVelocityContext) {
+            // Trusted plugin-authored velocity is explicitly incompatible with
+            // vanilla Simulation for a short bounded window. Keep the predictor
+            // running, but do not turn the authorized dash/launch/pull into
+            // Simulation VL or movement debt. Other checks remain untouched.
+            advantageGained = 0.0D;
+            specialEnvironmentFlagStreak = 0;
+            specialEnvironmentFlagKey = "";
+            specialEnvironmentCorrectionStreak = 0;
+            specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentEpisodeCorrectionApplied = false;
+            resetEnforcementState();
+            resetShortBlinkState();
+            removeOffsetLenience();
             return;
         }
 
@@ -242,6 +302,11 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         // Simulation VL. The one-shot Blink owner has already removed that
         // advantage and records the release as ConnectionStall evidence.
         if (blinkFreezeSafe) {
+            specialEnvironmentFlagStreak = 0;
+            specialEnvironmentCorrectionStreak = 0;
+            specialEnvironmentEpisodeFlagAccepted = false;
+            specialEnvironmentEpisodeCorrectionApplied = false;
+            specialEnvironmentFlagKey = "";
             removeOffsetLenience();
             return;
         }
@@ -256,12 +321,128 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             }
             giveOffsetLenienceNextTick(offset);
 
+            String simulationComponent = simulationComponent(
+                    environmentContexts,
+                    observedVelocityContext,
+                    environmentRecoveryActive
+            );
+            final String specialEpisodeDebug;
+            final String specialEpisodeToken;
+            final boolean specialFlagAllowed;
+
+            if (environmentProtectedWindow) {
+                advantageGained = 0.0D;
+
+                DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                        environment.resolveMovementEvidenceEpisode(
+                                player,
+                                environmentContexts,
+                                observedVelocityContext,
+                                false,
+                                environmentRecoveryActive
+                        );
+                String evidenceKey = simulationComponent
+                        + "|" + sharedEpisode.token();
+
+                if (!evidenceKey.equals(specialEnvironmentFlagKey)) {
+                    specialEnvironmentFlagStreak = 0;
+                    specialEnvironmentCorrectionStreak = 0;
+                    specialEnvironmentEpisodeFlagAccepted = false;
+                    specialEnvironmentEpisodeCorrectionApplied = false;
+                    specialEnvironmentFlagKey = evidenceKey;
+                }
+
+                if (offset < specialEnvironmentCorrectionMinRawOffset) {
+                    // Ambiguous special-physics movement is neutral. Do not
+                    // decay existing Simulation VL just because the player is
+                    // currently in a cobweb/liquid/recovery window.
+                    specialEnvironmentFlagStreak = 0;
+                    specialEnvironmentCorrectionStreak = 0;
+                    removeOffsetLenience();
+                    return;
+                }
+
+                specialEnvironmentFlagStreak++;
+
+                if (enforcementEligible
+                        && enforcementOffset >= enforcementStrongOffset) {
+                    specialEnvironmentCorrectionStreak++;
+                } else {
+                    specialEnvironmentCorrectionStreak = 0;
+                }
+
+                if (specialEnvironmentFlagStreak
+                        < specialEnvironmentFlagStrongTicks) {
+                    removeOffsetLenience();
+                    return;
+                }
+
+                DetectionEpisodeManager.Decision decision =
+                        player.detectionEpisodeManager.evaluate(
+                                simulationComponent,
+                                evidenceKey,
+                                specialEnvironmentFlagEpisodeWindowMillis,
+                                specialEnvironmentFlagIntervalMillis,
+                                specialEnvironmentMaxFlagsPerEpisode,
+                                sharedEpisode,
+                                environment.evidenceEpisodeMaxTotalFlags()
+                        );
+
+                specialEpisodeToken = sharedEpisode.token();
+                specialEpisodeDebug = " episode="
+                        + specialEpisodeToken
+                        + " sharedFlags="
+                        + decision.sharedFlags();
+                specialFlagAllowed = decision.allowFlag();
+            } else {
+                specialEnvironmentFlagStreak = 0;
+                specialEnvironmentFlagKey = "";
+                specialEnvironmentCorrectionStreak = 0;
+                specialEnvironmentEpisodeFlagAccepted = false;
+                specialEnvironmentEpisodeCorrectionApplied = false;
+                specialEpisodeToken = "";
+                specialEpisodeDebug = "";
+                specialFlagAllowed = true;
+            }
+
+            if (!specialFlagAllowed) {
+                boolean persistentCorrection = environmentProtectedWindow
+                        && specialEnvironmentEpisodeFlagAccepted
+                        && !specialEnvironmentEpisodeCorrectionApplied
+                        && enforcementEligible
+                        && offset >= specialEnvironmentCorrectionMinRawOffset
+                        && (enforcementOffset >= enforcementSevereOffset
+                        || specialEnvironmentCorrectionStreak
+                        >= specialEnvironmentCorrectionStrongTicks);
+
+                if (!blinkRecovery
+                        && !velocityRecovery
+                        && !trustedVelocityContext
+                        && persistentCorrection
+                        && enforcementImmediateSetback
+                        && !isNoSetbackPermission()) {
+                    predictionComplete.setSafePositionUpdateBlocked(true);
+                    if (player.getSetbackTeleportUtil()
+                            .executeViolationSetback(this)) {
+                        specialEnvironmentEpisodeCorrectionApplied = true;
+                    }
+                }
+
+                removeOffsetLenience();
+                return;
+            }
+
             synchronized (flags) {
                 int flagId = (flags.get() & 255) + 1;
 
-                boolean accepted = flag(
+                boolean accepted = flagComponent(
+                        simulationComponent,
                         V.write(verbose()).f64(offset),
-                        () -> humanFormattedOffset(offset) + " /gl " + flagId
+                        () -> humanFormattedOffset(offset)
+                                + " context="
+                                + environment.summary(environmentContexts)
+                                + specialEpisodeDebug
+                                + " /gl " + flagId
                 );
 
                 if (accepted) {
@@ -287,19 +468,14 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         }
 
                         if (environmentProtectedWindow) {
-                            if (offset >= specialEnvironmentCorrectionMinRawOffset
-                                    && enforcementOffset >= enforcementStrongOffset) {
-                                specialEnvironmentCorrectionStreak++;
-                            } else {
-                                specialEnvironmentCorrectionStreak = 0;
-                            }
-
+                            specialEnvironmentEpisodeFlagAccepted = true;
                             severeMovement = offset >= specialEnvironmentCorrectionMinRawOffset
                                     && (enforcementOffset >= enforcementSevereOffset
                                     || specialEnvironmentCorrectionStreak
                                     >= specialEnvironmentCorrectionStrongTicks);
                         } else {
                             specialEnvironmentCorrectionStreak = 0;
+                            specialEnvironmentEpisodeFlagAccepted = false;
                             severeMovement = enforcementOffset >= enforcementSevereOffset
                                     || enforcementStrongStreak >= enforcementStrongConsecutiveTicks;
                         }
@@ -310,9 +486,15 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                             && !trustedVelocityContext
                             && severeMovement
                             && enforcementImmediateSetback
-                            && !isNoSetbackPermission()) {
+                            && !isNoSetbackPermission()
+                            && (!environmentProtectedWindow
+                            || !specialEnvironmentEpisodeCorrectionApplied)) {
                         predictionComplete.setSafePositionUpdateBlocked(true);
-                        player.getSetbackTeleportUtil().executeViolationSetback(this);
+                        boolean corrected = player.getSetbackTeleportUtil()
+                                .executeViolationSetback(this);
+                        if (corrected && environmentProtectedWindow) {
+                            specialEnvironmentEpisodeCorrectionApplied = true;
+                        }
                     } else if (!blinkRecovery
                             && !velocityRecovery
                             && !trustedVelocityContext
@@ -332,6 +514,8 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             advantageGained = Math.min(advantageGained, maxCeiling);
         } else {
             advantageGained *= setbackDecayMultiplier;
+            specialEnvironmentFlagStreak = 0;
+            specialEnvironmentCorrectionStreak = 0;
 
             if (enforcementEligible && !enforcementQuarantineActive) {
                 enforcementStrongStreak = 0;
@@ -467,8 +651,45 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
     private void resetEnvironmentState() {
         environmentRecoveryTicksRemaining = 0;
+        environmentRecoveryMinRawOffset = 0.0D;
         wasSpecialEnvironment = false;
         specialEnvironmentCorrectionStreak = 0;
+        specialEnvironmentEpisodeFlagAccepted = false;
+        specialEnvironmentEpisodeCorrectionApplied = false;
+        specialEnvironmentFlagStreak = 0;
+        specialEnvironmentFlagKey = "";
+    }
+
+    private static @NotNull String simulationComponent(
+            @NotNull Set<EnvironmentContext> contexts,
+            boolean observedVelocity,
+            boolean recovery
+    ) {
+        if (recovery) return "simulation.transition";
+        if (contexts.contains(EnvironmentContext.COBWEB)) {
+            return "simulation.cobweb";
+        }
+        if (contexts.contains(EnvironmentContext.STUCK_MOVEMENT)) {
+            return "simulation.stuck";
+        }
+        if (contexts.contains(EnvironmentContext.CLIMBABLE)) {
+            return "simulation.climbable";
+        }
+        if (contexts.contains(EnvironmentContext.WATER)
+                || contexts.contains(EnvironmentContext.LAVA)) {
+            return "simulation.liquid";
+        }
+        if (contexts.contains(EnvironmentContext.PISTON)) {
+            return "simulation.piston";
+        }
+        if (contexts.contains(EnvironmentContext.RECENT_BLOCK_CHANGE)) {
+            return "simulation.recent-block";
+        }
+        if (contexts.contains(EnvironmentContext.COMPLEX_COLLISION)) {
+            return "simulation.complex-collision";
+        }
+        if (observedVelocity) return "simulation.plugin-velocity";
+        return "simulation.normal";
     }
 
     @Override
@@ -553,6 +774,36 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     requirePositiveInt(
                             config,
                             "movement-enforcement.environment.correction-strong-ticks"
+                    );
+
+            observedVelocityMinRawOffset =
+                    requirePositiveDouble(
+                            config,
+                            "movement-enforcement.environment.observed-velocity-min-raw-offset"
+                    );
+
+            specialEnvironmentFlagStrongTicks =
+                    requirePositiveInt(
+                            config,
+                            "movement-enforcement.environment.flag-strong-ticks"
+                    );
+
+            specialEnvironmentFlagEpisodeWindowMillis =
+                    requirePositiveLong(
+                            config,
+                            "movement-enforcement.environment.flag-episode-window-ms"
+                    );
+
+            specialEnvironmentFlagIntervalMillis =
+                    requireNonNegativeLong(
+                            config,
+                            "movement-enforcement.environment.flag-interval-ms"
+                    );
+
+            specialEnvironmentMaxFlagsPerEpisode =
+                    requirePositiveInt(
+                            config,
+                            "movement-enforcement.environment.max-flags-per-episode"
                     );
 
             shortBlinkEnabled =
@@ -757,6 +1008,25 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         return value;
     }
 
+    private static long requireNonNegativeLong(
+            ConfigManager config,
+            String key
+    ) {
+        Object raw = config.get(key);
+
+        if (!(raw instanceof Number number)) {
+            throw invalidConfig(key, "non-negative integer", raw);
+        }
+
+        long value = number.longValue();
+
+        if (value < 0L) {
+            throw invalidConfig(key, "non-negative integer", raw);
+        }
+
+        return value;
+    }
+
     private static long requirePositiveLong(
             ConfigManager config,
             String key
@@ -788,7 +1058,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 "Invalid SparkGrim config key '" + key
                         + "': expected " + expected
                         + ", got " + actualType
-                        + ". Update to config-version 20."
+                        + ". Update to config-version 29."
         );
     }
 }

@@ -85,6 +85,9 @@ dependencies {
     compileOnly(libs.netty)
     compileOnly(libs.luckperms)
 
+    // Tests exercise item-use sessions that carry PacketEvents InteractionHand.
+    // Keep PE out of production API/shading while making those tests runnable.
+    testImplementation(libs.packetevents.api)
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

@@ -19,7 +19,10 @@ public class MultiActionsA extends Check implements PreViaPacketReceiveListener 
 
     @Override
     public void onPreViaPacketReceive(PacketReceiveEvent event) {
-        if (player.packetStateData.isSlowedByUsingItem() && (player.packetStateData.lastSlotSelected == player.packetStateData.getSlowedByUsingItemSlot() || player.packetStateData.itemInUseHand == InteractionHand.OFF_HAND)) {
+        if (player.itemUseSessionTracker.isActive()
+                && player.packetStateData.isSlowedByUsingItem()
+                && (player.packetStateData.lastSlotSelected == player.packetStateData.getSlowedByUsingItemSlot()
+                || player.packetStateData.itemInUseHand == InteractionHand.OFF_HAND)) {
             if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY && new WrapperPlayClientInteractEntity(event).getAction() == WrapperPlayClientInteractEntity.InteractAction.ATTACK
                     || event.getPacketType() == PacketType.Play.Client.ATTACK || event.getPacketType() == PacketType.Play.Client.SPECTATE_ENTITY
                     || event.getPacketType() == PacketType.Play.Client.PLAYER_DIGGING && new WrapperPlayClientPlayerDigging(event).getAction() == DiggingAction.STAB) {

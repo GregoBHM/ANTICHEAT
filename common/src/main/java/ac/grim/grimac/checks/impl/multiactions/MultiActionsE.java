@@ -21,8 +21,11 @@ public class MultiActionsE extends Check implements PreViaPacketReceiveListener 
 
     @Override
     public void onPreViaPacketReceive(PacketReceiveEvent event) {
-        if (!dropping && player.packetStateData.isSlowedByUsingItem()
-                && (player.packetStateData.lastSlotSelected == player.packetStateData.getSlowedByUsingItemSlot() || player.packetStateData.itemInUseHand == InteractionHand.OFF_HAND)
+        if (!dropping
+                && player.itemUseSessionTracker.isActive()
+                && player.packetStateData.isSlowedByUsingItem()
+                && (player.packetStateData.lastSlotSelected == player.packetStateData.getSlowedByUsingItemSlot()
+                || player.packetStateData.itemInUseHand == InteractionHand.OFF_HAND)
                 && isAnimation(event.getPacketType())) {
             // this is possible to false on 1.7
             if (player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_7_10)) {

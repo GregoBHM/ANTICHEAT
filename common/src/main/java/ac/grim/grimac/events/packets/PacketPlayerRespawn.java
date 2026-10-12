@@ -11,6 +11,7 @@ import ac.grim.grimac.utils.data.TrackerData;
 import ac.grim.grimac.utils.data.packetentity.PacketEntitySelf;
 import ac.grim.grimac.utils.enums.Pose;
 import ac.grim.grimac.utils.math.Vector3dm;
+import ac.grim.grimac.utils.item.ItemUseResetPolicy;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
@@ -102,6 +103,11 @@ public class PacketPlayerRespawn extends PacketListenerAbstract {
             if (health.getHealth() <= 0) {
                 player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> {
                     player.compensatedEntities.self.isDead = true;
+                    player.packetStateData.setSlowedByUsingItem(false);
+                    player.itemUseSessionTracker.end(
+                            ItemUseResetPolicy.Reason.DEATH
+                    );
+                    player.detectionEpisodeManager.clearAll();
                     player.checkManager.get(BadPacketsM.class).onDeath();
                 });
             } else {
@@ -164,6 +170,10 @@ public class PacketPlayerRespawn extends PacketListenerAbstract {
                 player.onGround = false;
                 player.isInBed = false;
                 player.packetStateData.setSlowedByUsingItem(false);
+                player.itemUseSessionTracker.end(
+                        ItemUseResetPolicy.Reason.RESPAWN
+                );
+                player.detectionEpisodeManager.clearAll();
                 player.packetStateData.packetPlayerOnGround = false; // If somewhere else pulls last ground to fix other issues
                 player.packetStateData.lastClaimedPosition = new Vector3d();
                 player.filterMojangStupidityOnMojangStupidity.zero();

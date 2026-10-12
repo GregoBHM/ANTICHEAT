@@ -1,0 +1,258 @@
+package ac.grim.grimac.manager.integrity;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class MovementDetectionPolicyAuditTest {
+
+    @Test
+    void noSlowUsesPhysicalSessionAndSharedSpecialEpisode() throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
+        );
+
+        assertTrue(source.contains("itemUseSessionTracker.activeSession()"));
+        assertTrue(source.contains("resolveMovementEvidenceEpisode"));
+        assertTrue(source.contains("hasTrustedVelocityContext"));
+        assertTrue(source.contains("hasObservedVelocityContext"));
+
+        String contextual = between(
+                source,
+                "private void handleContextual(",
+                "private static @NotNull String componentFor("
+        );
+        assertFalse(contextual.contains("reward()"));
+    }
+
+    @Test
+    void antiKbTreatsObservedAndTrustedVelocityDifferently() throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        );
+
+        assertTrue(source.contains("hasTrustedVelocityContext"));
+        assertTrue(source.contains("hasObservedVelocityContext"));
+        assertTrue(source.contains("resolveMovementEvidenceEpisode"));
+
+        String uncertain = between(
+                source,
+                "private void handleUncertainVelocityEvidence(",
+                "private static @NotNull String velocityComponent("
+        );
+        assertFalse(uncertain.contains("reward()"));
+    }
+
+    @Test
+    void simulationSuppressesOnlyTrustedVelocityIncompatibleEvidence() throws IOException {
+        String simulation = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+        String phase = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/Phase.java"
+        );
+        String fastConsume = read(
+                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
+        );
+        String timer = read(
+                "src/main/java/ac/grim/grimac/checks/impl/timer/Timer.java"
+        );
+        String reach = read(
+                "src/main/java/ac/grim/grimac/checks/impl/combat/Reach.java"
+        );
+
+        assertTrue(simulation.contains("hasTrustedVelocityContext"));
+        assertTrue(simulation.contains("resolveMovementEvidenceEpisode"));
+        assertTrue(simulation.contains("specialEnvironmentEpisodeFlagAccepted"));
+        assertFalse(phase.contains("hasTrustedVelocityContext"));
+        assertFalse(fastConsume.contains("hasTrustedVelocityContext"));
+        assertFalse(timer.contains("hasTrustedVelocityContext"));
+        assertFalse(reach.contains("hasTrustedVelocityContext"));
+    }
+
+    @Test
+    void genericBukkitMovementBridgeNeverCreatesTrustedVelocity() throws IOException {
+        String bridge = read(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
+        );
+
+        assertTrue(bridge.contains("beginObserved"));
+        assertFalse(bridge.contains("beginTrusted"));
+    }
+
+    @Test
+    void packetOrderChecksDoNotReadMovementTrustContexts() throws IOException {
+        Path root = Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/packetorder"
+        );
+
+        try (Stream<Path> files = Files.walk(root)) {
+            for (Path path : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String source = Files.readString(path);
+                assertFalse(
+                        source.contains("hasTrustedVelocityContext"),
+                        path.toString()
+                );
+            }
+        }
+    }
+
+
+    @Test
+    void simulationKeepsTheLastConfiguredRecoveryTickProtected() throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        assertTrue(source.contains("boolean environmentRecoveryActive = false"));
+        assertTrue(source.contains("environmentRecoveryActive = true"));
+        assertTrue(source.contains(
+                "final boolean environmentProtectedWindow = specialEnvironment\n                || environmentRecoveryActive"
+        ));
+        assertTrue(source.contains(
+                "simulationComponent(\n                    environmentContexts,\n                    observedVelocityContext,\n                    environmentRecoveryActive"
+        ));
+        assertTrue(source.contains(
+                "|| (!specialEnvironment && !environmentRecoveryActive)"
+        ));
+    }
+
+    @Test
+    void simulationPersistentCorrectionIsIndependentFromExtraVlSlots()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        int correctionIncrement = source.indexOf(
+                "specialEnvironmentCorrectionStreak++"
+        );
+        int episodeBudget = source.indexOf(
+                "player.detectionEpisodeManager.evaluate(",
+                correctionIncrement
+        );
+        int deniedSlot = source.indexOf(
+                "if (!specialFlagAllowed)",
+                episodeBudget
+        );
+        int correction = source.indexOf(
+                "executeViolationSetback(this)",
+                deniedSlot
+        );
+
+        assertTrue(correctionIncrement >= 0);
+        assertTrue(episodeBudget > correctionIncrement);
+        assertTrue(deniedSlot > episodeBudget);
+        assertTrue(correction > deniedSlot);
+        assertTrue(source.contains("specialEnvironmentEpisodeFlagAccepted"));
+    }
+
+    @Test
+    void antiKbSetbackVelocityCannotSpendSpecialEpisodeBudget()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        );
+
+        String uncertain = between(
+                source,
+                "private void handleUncertainVelocityEvidence(",
+                "private static @NotNull String velocityComponent("
+        );
+
+        int setback = uncertain.indexOf("if (data.isSetback)");
+        int episode = uncertain.indexOf("detectionEpisodeManager.evaluate(");
+
+        assertTrue(setback >= 0);
+        assertTrue(episode > setback);
+    }
+
+
+    @Test
+    void skippedPredictionBreaksSpecialEvidenceConsecutiveness()
+            throws IOException {
+        String antiKb = read(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        );
+        String simulation = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        int kbSkip = antiKb.indexOf(
+                "if (!predictionComplete.isChecked() || predictionComplete.getData().isTeleport())"
+        );
+        int kbReturn = antiKb.indexOf("return;", kbSkip);
+        String kbBlock = antiKb.substring(kbSkip, kbReturn);
+
+        assertTrue(kbBlock.contains("specialEvidenceStreak = 0"));
+        assertTrue(kbBlock.contains("specialEvidenceKey = \"\""));
+
+        int eventCancel = simulation.indexOf(
+                "if (COMPLETE_CHANNEL.fire(player, this, offset))"
+        );
+        int eventReturn = simulation.indexOf("return;", eventCancel);
+        String eventBlock = simulation.substring(eventCancel, eventReturn);
+
+        assertTrue(eventBlock.contains("specialEnvironmentFlagStreak = 0"));
+        assertTrue(eventBlock.contains("specialEnvironmentCorrectionStreak = 0"));
+        assertTrue(eventBlock.contains("specialEnvironmentEpisodeFlagAccepted = false"));
+    }
+
+
+    @Test
+    void specialSimulationCorrectionIsOneShotPerPhysicalEpisode()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        assertTrue(source.contains(
+                "private boolean specialEnvironmentEpisodeCorrectionApplied"
+        ));
+        assertTrue(source.contains(
+                "&& !specialEnvironmentEpisodeCorrectionApplied"
+        ));
+        assertTrue(source.contains(
+                "specialEnvironmentEpisodeCorrectionApplied = true"
+        ));
+        assertTrue(source.contains(
+                "specialEnvironmentEpisodeCorrectionApplied = false"
+        ));
+    }
+
+
+    @Test
+    void explicitTrustedNoSlowContextDoesNotDependOnHeuristicPolicyToggle()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
+        );
+
+        int trusted = source.indexOf("if (trustedVelocityContext)");
+        int policy = source.indexOf("if (!contextPolicyEnabled)");
+
+        assertTrue(trusted >= 0);
+        assertTrue(policy > trusted);
+    }
+
+    private static String read(String path) throws IOException {
+        return Files.readString(Path.of(path));
+    }
+
+    private static String between(
+            String source,
+            String startMarker,
+            String endMarker
+    ) {
+        int start = source.indexOf(startMarker);
+        int end = source.indexOf(endMarker, start + startMarker.length());
+        assertTrue(start >= 0 && end > start);
+        return source.substring(start, end);
+    }
+}

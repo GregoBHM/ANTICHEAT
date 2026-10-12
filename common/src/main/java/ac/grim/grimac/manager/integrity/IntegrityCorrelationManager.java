@@ -66,7 +66,18 @@ public final class IntegrityCorrelationManager {
                     "integrity-correlation.weights." + signal.configKey(), signal.getWeight())));
         }
         weights = Map.copyOf(configuredWeights);
-        if (!enabled) states.clear();
+        if (!enabled) {
+            states.clear();
+        } else {
+            // Historical correlation evidence remains useful across reload,
+            // but the active Simulation episode was created under the old
+            // window/repeat policy and must not be reused.
+            for (State state : states.values()) {
+                synchronized (state) {
+                    state.simulationEpisode = null;
+                }
+            }
+        }
     }
 
     public double record(@NotNull UUID uuid, @NotNull IntegritySignal signal) {
