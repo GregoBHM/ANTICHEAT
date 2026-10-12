@@ -58,10 +58,10 @@ class ItemUseV10ResourceParityAuditTest {
             for (Path path : punishments) {
                 Map<String, Object> root = yaml(path);
                 Object rawGroups = root.get("Punishments");
-                assertTrue(rawGroups instanceof List<?>, path.toString());
+                assertTrue(rawGroups instanceof Map<?, ?>, path.toString());
 
                 boolean found = false;
-                for (Object rawGroup : (List<?>) rawGroups) {
+                for (Object rawGroup : ((Map<?, ?>) rawGroups).values()) {
                     if (!(rawGroup instanceof Map<?, ?> group)) {
                         continue;
                     }
