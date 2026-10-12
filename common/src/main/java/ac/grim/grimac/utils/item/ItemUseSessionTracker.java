@@ -504,6 +504,13 @@ public final class ItemUseSessionTracker {
         return normalized.replace(' ', '_');
     }
 
+    public static boolean itemKeysMatch(
+            @Nullable String first,
+            @Nullable String second
+    ) {
+        return normalizeItemKey(first).equals(normalizeItemKey(second));
+    }
+
     public record Session(
             long sessionId,
             @NotNull InteractionHand hand,
