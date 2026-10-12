@@ -60,7 +60,7 @@ public final class ConsumeTiming extends Check {
                 ItemUseSessionTracker.normalizeItemKey(serverMaterial);
 
         if (requireItemMatch
-                && !itemKeysMatch(state.itemKey(), normalizedServerItem)) {
+                && !ItemUseSessionTracker.itemKeysMatch(state.itemKey(), normalizedServerItem)) {
             return ConsumeDecision.rewardOnly();
         }
 
@@ -264,15 +264,6 @@ public final class ConsumeTiming extends Check {
             return "fastconsume.potion";
         }
         return "fastconsume.food";
-    }
-
-    static boolean itemKeysMatch(
-            String packetKey,
-            String serverKey
-    ) {
-        String left = ItemUseSessionTracker.normalizeItemKey(packetKey);
-        String right = ItemUseSessionTracker.normalizeItemKey(serverKey);
-        return left.equals(right);
     }
 
     private static long clamp(long value, long min, long max) {
