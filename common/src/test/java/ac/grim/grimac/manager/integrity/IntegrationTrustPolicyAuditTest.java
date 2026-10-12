@@ -99,6 +99,25 @@ class IntegrationTrustPolicyAuditTest {
     }
 
     @Test
+    void bukkitMovementLifecycleClearsContextsOnRespawn() throws Exception {
+        String listener = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
+        ));
+
+        int method = listener.indexOf("void onRespawn(PlayerRespawnEvent event)");
+        int clear = listener.indexOf(
+                ".clear(event.getPlayer().getUniqueId())",
+                method
+        );
+
+        assertTrue(listener.contains(
+                "import org.bukkit.event.player.PlayerRespawnEvent;"
+        ));
+        assertTrue(method >= 0);
+        assertTrue(clear > method);
+    }
+
+    @Test
     void integrationCleanupIsPlayerScopedAndPrefixAware() throws Exception {
         String facade = Files.readString(Path.of(
                 "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
