@@ -99,22 +99,32 @@ class IntegrationTrustPolicyAuditTest {
     }
 
     @Test
-    void bukkitMovementLifecycleClearsContextsOnRespawn() throws Exception {
+    void bukkitMovementLifecycleClearsContextsOnDeathAndRespawn() throws Exception {
         String listener = Files.readString(Path.of(
                 "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
         ));
 
-        int method = listener.indexOf("void onRespawn(PlayerRespawnEvent event)");
-        int clear = listener.indexOf(
+        int deathMethod = listener.indexOf("void onDeath(PlayerDeathEvent event)");
+        int deathClear = listener.indexOf(
+                ".clear(event.getEntity().getUniqueId())",
+                deathMethod
+        );
+        int respawnMethod = listener.indexOf("void onRespawn(PlayerRespawnEvent event)");
+        int respawnClear = listener.indexOf(
                 ".clear(event.getPlayer().getUniqueId())",
-                method
+                respawnMethod
         );
 
         assertTrue(listener.contains(
+                "import org.bukkit.event.entity.PlayerDeathEvent;"
+        ));
+        assertTrue(listener.contains(
                 "import org.bukkit.event.player.PlayerRespawnEvent;"
         ));
-        assertTrue(method >= 0);
-        assertTrue(clear > method);
+        assertTrue(deathMethod >= 0);
+        assertTrue(deathClear > deathMethod);
+        assertTrue(respawnMethod >= 0);
+        assertTrue(respawnClear > respawnMethod);
     }
 
     @Test
