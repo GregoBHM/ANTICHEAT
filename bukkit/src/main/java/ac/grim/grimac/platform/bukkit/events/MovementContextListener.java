@@ -10,6 +10,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
 import org.bukkit.event.player.PlayerVelocityEvent;
@@ -79,6 +80,14 @@ public final class MovementContextListener implements Listener {
                 duration,
                 "from=" + event.getFrom().getName() + ",to=" + player.getWorld().getName()
         );
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRespawn(PlayerRespawnEvent event) {
+        // Respawn is a hard movement lifecycle boundary. Trusted and observed
+        // velocity authored before death must never survive into the new life.
+        GrimAPI.INSTANCE.getMovementContextManager()
+                .clear(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
