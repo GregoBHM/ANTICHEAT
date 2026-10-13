@@ -12,15 +12,12 @@ public final class ItemUseResetPolicy {
         ATTACK,
         INVENTORY_REFRESH,
         SERVER_METADATA,
-        SERVER_CONSUME,
         OPEN_WINDOW,
         COOLDOWN,
-        PLUGIN_CANCELLED,
         TELEPORT,
         RESPAWN,
         DEATH,
         GAMEMODE_CHANGE,
-        STALE_TIMEOUT,
         CLEAR
     }
 
@@ -53,11 +50,7 @@ public final class ItemUseResetPolicy {
 
         return switch (reason) {
             case INVENTORY_REFRESH ->
-                    !preserveInventoryRefresh(
-                            predictedUsingItem,
-                            sameHand,
-                            sameItemType
-                    );
+                    !preserveInventoryRefresh(predictedUsingItem, sameHand, sameItemType);
             case REPEATED_USE ->
                     !preserveRepeatedUse(legacyClient, true, sameHand);
             case ATTACK, REAL_SLOT_CHANGE, REAL_ITEM_CHANGE, OPEN_WINDOW ->

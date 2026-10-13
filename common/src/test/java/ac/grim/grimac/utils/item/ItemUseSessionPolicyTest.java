@@ -12,75 +12,37 @@ class ItemUseSessionPolicyTest {
     @Test
     void compatibleMetadataRefreshKeepsTheSamePhysicalIdentity() {
         assertTrue(ItemUseSessionTracker.samePhysicalIdentity(
-                "golden_apple",
-                0,
-                1600L,
-                "golden_apple",
-                0,
-                1600L
+                "golden_apple", 0,
+                "golden_apple", 0
         ));
     }
 
     @Test
-    void legacyVariantChangeCannotMasqueradeAsTheSameConsumable() {
+    void legacyVariantChangeStartsANewPhysicalIdentity() {
         assertFalse(ItemUseSessionTracker.samePhysicalIdentity(
+                "golden_apple", 0,
+                "golden_apple", 1
+        ));
+    }
+
+    @Test
+    void canonicalNamespaceAndCaseNormalizeToSameItem() {
+        assertTrue(ItemUseSessionTracker.itemKeysMatch(
+                "minecraft:GOLDEN_APPLE",
+                "golden_apple"
+        ));
+    }
+
+    @Test
+    void suffixRelatedItemsNeverAlias() {
+        assertFalse(ItemUseSessionTracker.itemKeysMatch(
                 "golden_apple",
-                0,
-                1600L,
-                "golden_apple",
-                1,
-                1600L
+                "enchanted_golden_apple"
         ));
     }
 
     @Test
-    void changedConsumeDurationStartsANewPhysicalIdentity() {
-        assertFalse(ItemUseSessionTracker.samePhysicalIdentity(
-                "custom_food",
-                0,
-                1600L,
-                "custom_food",
-                0,
-                800L
-        ));
-    }
-
-    @Test
-    void serverConfirmedUnknownTimingCanStillMatchTheRealClientUse() {
-        assertTrue(ItemUseSessionTracker.samePhysicalIdentity(
-                "potion",
-                0,
-                0L,
-                "potion",
-                0,
-                1600L
-        ));
-    }
-
-    @Test
-    void staleConsumablesExpireOnlyAfterExpectedDurationPlusGrace() {
-        assertFalse(ItemUseSessionTracker.isConsumableStale(
-                1_000L,
-                1_600L,
-                5_600L,
-                3_000L
-        ));
-        assertTrue(ItemUseSessionTracker.isConsumableStale(
-                1_000L,
-                1_600L,
-                5_601L,
-                3_000L
-        ));
-        assertFalse(ItemUseSessionTracker.isConsumableStale(
-                1_000L,
-                0L,
-                60_000L,
-                3_000L
-        ));
-    }
-
-    @Test
-    void sessionSnapshotCarriesLifecycleAndRefreshMetadata() {
+    void sessionSnapshotContainsPhysicalLifecycleOnly() {
         ItemUseSessionTracker.Session session =
                 new ItemUseSessionTracker.Session(
                         7L,
@@ -89,30 +51,22 @@ class ItemUseSessionPolicyTest {
                         "golden_apple",
                         1_000L,
                         42,
-                        1_600L,
                         3,
                         4,
                         1_450L,
                         0,
                         null,
-                        "combatplus_cooldown@CombatPlus:gapple"
+                        "none"
                 );
 
         assertTrue(session.active());
         assertEquals(3, session.refreshes());
         assertEquals(4, session.repeatedUses());
-        assertEquals(1_450L, session.lastRefreshAtMillis());
-        assertEquals(0, session.legacyData());
 
         ItemUseSessionTracker.Session ended =
-                session.withEndReason(
-                        ItemUseResetPolicy.Reason.STALE_TIMEOUT
-                );
+                session.withEndReason(ItemUseResetPolicy.Reason.CLIENT_RELEASE);
 
         assertFalse(ended.active());
-        assertEquals(
-                ItemUseResetPolicy.Reason.STALE_TIMEOUT,
-                ended.endReason()
-        );
+        assertEquals(ItemUseResetPolicy.Reason.CLIENT_RELEASE, ended.endReason());
     }
 }

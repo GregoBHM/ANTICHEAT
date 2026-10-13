@@ -23,7 +23,6 @@ import ac.grim.grimac.checks.impl.exploit.StallActions;
 import ac.grim.grimac.checks.impl.exploit.ExploitB;
 import ac.grim.grimac.checks.impl.groundspoof.NoFall;
 import ac.grim.grimac.checks.impl.integrity.AttackFrequency;
-import ac.grim.grimac.checks.impl.integrity.ConsumeTiming;
 import ac.grim.grimac.checks.impl.integrity.InventoryFrequency;
 import ac.grim.grimac.checks.impl.integrity.PacketBurst;
 import ac.grim.grimac.checks.impl.integrity.RegenPacket;
@@ -138,7 +137,6 @@ public class CheckManager implements BasicReloadable {
                 .put(StallActions.class, new StallActions(player))
                 .put(PacketBurst.class, new PacketBurst(player))
                 .put(InventoryFrequency.class, new InventoryFrequency(player))
-                .put(ConsumeTiming.class, new ConsumeTiming(player))
                 .put(AttackFrequency.class, new AttackFrequency(player))
                 .put(BadPacketsD.class, new BadPacketsD(player))
                 .put(BadPacketsE.class, new BadPacketsE(player))

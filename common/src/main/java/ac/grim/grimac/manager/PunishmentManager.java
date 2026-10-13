@@ -956,7 +956,6 @@ public class PunishmentManager implements ConfigReloadable {
         for (AbstractCheck check : checks) {
             String key = check.getStableKey();
             if ("grim.movement.noslow".equals(key)
-                    || "grim.interaction.fast_consume".equals(key)
                     || "grim.velocity.anti_knockback".equals(key)
                     || "grim.prediction.simulation".equals(key)) {
                 return true;

@@ -42,25 +42,18 @@ public final class InteractionContextManager {
         return context;
     }
 
-    public boolean suppressesConsumeTiming(@NotNull UUID uuid) {
-        return any(uuid, true);
-    }
-
     public boolean suppressesInventoryFrequency(@NotNull UUID uuid) {
-        return any(uuid, false);
-    }
-
-    private boolean any(UUID uuid, boolean consume) {
         long now = System.nanoTime();
         CopyOnWriteArrayList<Context> list = contexts.get(uuid);
         if (list == null) return false;
         cleanup(uuid, list, now);
         for (Context context : list) {
             if (context.expiresAtNanos <= now) continue;
-            if (consume ? context.type.suppressConsumeTiming() : context.type.suppressInventoryFrequency()) return true;
+            if (context.type.suppressInventoryFrequency()) return true;
         }
         return false;
     }
+
 
     public @NotNull List<Context> getActive(@NotNull UUID uuid) {
         long now = System.nanoTime();

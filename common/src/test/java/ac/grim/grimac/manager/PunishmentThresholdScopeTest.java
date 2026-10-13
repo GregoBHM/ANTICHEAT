@@ -42,9 +42,6 @@ class PunishmentThresholdScopeTest {
         assertTrue(source.contains("defaultsToPerCheckScope(checksList)"));
         assertTrue(source.contains("\"grim.movement.noslow\".equals(key)"));
         assertTrue(source.contains(
-                "\"grim.interaction.fast_consume\".equals(key)"
-        ));
-        assertTrue(source.contains(
                 "\"grim.velocity.anti_knockback\".equals(key)"
         ));
         assertTrue(source.contains(

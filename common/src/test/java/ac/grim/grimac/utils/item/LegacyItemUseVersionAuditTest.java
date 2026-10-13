@@ -45,39 +45,15 @@ class LegacyItemUseVersionAuditTest {
     }
 
     @Test
-    void fastConsumeClassificationDoesNotTreatChargeItemsAsConsumables()
-            throws Exception {
+    void physicalTrackerDoesNotClassifyOrTimeConsumables() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/ac/grim/grimac/utils/item/ItemUseSessionTracker.java"
         ));
 
-        assertTrue(source.contains(
-                "type.hasAttribute(ItemTypes.ItemAttribute.EDIBLE)"
-        ));
-        assertTrue(source.contains("type == ItemTypes.POTION"));
-        assertTrue(source.contains("type == ItemTypes.MILK_BUCKET"));
-        assertFalse(source.contains("type == ItemTypes.BOW"));
-        assertFalse(source.contains("type == ItemTypes.CROSSBOW"));
-        assertFalse(source.contains("type == ItemTypes.TRIDENT"));
-        assertFalse(source.contains("type == ItemTypes.SHIELD"));
+        assertFalse(source.contains("ItemTypes.POTION"));
+        assertFalse(source.contains("ItemTypes.MILK_BUCKET"));
+        assertFalse(source.contains("ComponentTypes.CONSUMABLE"));
+        assertFalse(source.contains("getConsumeSeconds"));
+        assertFalse(source.contains("expectedDurationMillis"));
     }
-
-    @Test
-    void fastConsumeDurationPolicyCoversLegacyAndModernConsumables()
-            throws Exception {
-        String source = Files.readString(Path.of(
-                "src/main/java/ac/grim/grimac/utils/item/ItemUseSessionTracker.java"
-        ));
-
-        assertTrue(source.contains("ComponentTypes.CONSUMABLE"));
-        assertTrue(source.contains("getConsumeSeconds() * 1000.0F"));
-        assertTrue(source.contains("type == ItemTypes.POTION"));
-        assertTrue(source.contains("type == ItemTypes.MILK_BUCKET"));
-        assertTrue(source.contains("type == ItemTypes.HONEY_BOTTLE"));
-        assertTrue(source.contains("type == ItemTypes.SUSPICIOUS_STEW"));
-        assertTrue(source.contains("type == ItemTypes.DRIED_KELP) return 800L"));
-        assertTrue(source.contains("type == ItemTypes.HONEY_BOTTLE) return 2000L"));
-        assertTrue(source.contains("return 1600L"));
-    }
-
 }
