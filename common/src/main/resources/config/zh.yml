@@ -221,7 +221,7 @@ TimerA:
         enabled: true
         # Prevention stays active during player lag; only a severely unhealthy
         # server may stop Timer packet cancellation. Sanctions are gated separately.
-        minimum-server-confidence: 0.30
+        minimum-server-confidence: 0.50
     drift: 120
     # 玩家卡顿时，可以累积以供以后使用的时间（单位：毫秒）
     # 如果设置得太高，可能会允许 1.8版本的快速使用/快速回血/快速射弓绕过，120毫秒似乎是一个很好的平衡

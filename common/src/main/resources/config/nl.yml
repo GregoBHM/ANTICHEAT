@@ -200,7 +200,7 @@ TimerA:
         enabled: true
         # Prevention stays active during player lag; only a severely unhealthy
         # server may stop Timer packet cancellation. Sanctions are gated separately.
-        minimum-server-confidence: 0.30
+        minimum-server-confidence: 0.50
     # Milliseconden die de speler kan verzamelen om later te gebruiken als hij achterop raakt
     # Kan mogelijk 1.8 snel gebruik/snelle genezing/snelle bron omleidingen toestaan als het te hoog is ingesteld, 120 ms lijkt een goede balans
     drift: 120

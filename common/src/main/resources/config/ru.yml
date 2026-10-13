@@ -201,7 +201,7 @@ TimerA:
         enabled: true
         # Prevention stays active during player lag; only a severely unhealthy
         # server may stop Timer packet cancellation. Sanctions are gated separately.
-        minimum-server-confidence: 0.30
+        minimum-server-confidence: 0.50
     # Миллисекунды, которые игрок может накапливать для последующего использования, когда он отстает.
     # Потенциально может позволить 1.8 обходов: быстрое использование/быстрое исцеление/быстрый лук, если установлено слишком высокое значение, 120 мс кажется хорошим балансом
     drift: 120
