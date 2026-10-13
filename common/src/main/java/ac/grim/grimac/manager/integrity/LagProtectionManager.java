@@ -130,25 +130,39 @@ public final class LagProtectionManager {
         return 1.0D;
     }
 
-    /** Server + per-player network confidence for heuristic evidence. */
-    public double heuristicConfidence(@NotNull GrimPlayer player) {
+    /** Per-player network-only confidence, without server TPS/spike state. */
+    public double playerNetworkConfidence(@NotNull GrimPlayer player) {
         observePlayer(player);
-        double confidence = heuristicConfidence();
         PlayerHealth health = playerHealth.get(player.uuid);
-        if (health == null) return confidence;
+        if (health == null) return 1.0D;
+
         double average;
         double jitter;
         synchronized (health) {
             average = health.averagePingMillis;
             jitter = health.jitterMillis;
         }
-        double playerConfidence = 1.0D;
+
         if (average >= severePingMillis || jitter >= severeJitterMillis) {
-            playerConfidence = severePlayerConfidence;
-        } else if (average >= highPingMillis || jitter >= highJitterMillis) {
-            playerConfidence = unstablePlayerConfidence;
+            return severePlayerConfidence;
         }
-        return Math.min(confidence, playerConfidence);
+        if (average >= highPingMillis || jitter >= highJitterMillis) {
+            return unstablePlayerConfidence;
+        }
+        return 1.0D;
+    }
+
+    public boolean isPlayerNetworkUnstable(@NotNull GrimPlayer player) {
+        return playerNetworkConfidence(player) < 1.0D;
+    }
+
+    /** Server + per-player network confidence for heuristic evidence. */
+    public double heuristicConfidence(@NotNull GrimPlayer player) {
+        observePlayer(player);
+        return Math.min(
+                heuristicConfidence(),
+                playerNetworkConfidence(player)
+        );
     }
 
     /** Includes the configurable post-spike recovery period. */

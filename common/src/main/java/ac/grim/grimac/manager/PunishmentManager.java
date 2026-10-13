@@ -38,6 +38,14 @@ public class PunishmentManager implements ConfigReloadable {
     private boolean testMode;
     private String proxyAlertString = "";
 
+    // Raw VL remains complete for staff/history. This second ledger contains
+    // only flags observed while both the server and player network are healthy
+    // enough to support automatic sanctions.
+    private double sanctionMinimumConfidence = 0.80D;
+    private double sanctionMinimumServerConfidence = 0.80D;
+    private double sanctionMinimumPlayerConfidence = 0.80D;
+    private double sanctionMinimumTps = 18.0D;
+
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
     private CorrectionDiagnosticMode correctionDiagnosticsMode =
@@ -95,6 +103,26 @@ public class PunishmentManager implements ConfigReloadable {
         proxyAlertString = config.getStringElse(
                 "alerts-format-proxy",
                 "&8[proxy] [alert]"
+        );
+
+        sanctionMinimumConfidence = clamp01(config.getDoubleElse(
+                "sanctions.minimum-confidence",
+                0.80D
+        ));
+        sanctionMinimumServerConfidence = clamp01(config.getDoubleElse(
+                "sanctions.minimum-server-confidence",
+                0.80D
+        ));
+        sanctionMinimumPlayerConfidence = clamp01(config.getDoubleElse(
+                "sanctions.minimum-player-confidence",
+                0.80D
+        ));
+        sanctionMinimumTps = Math.max(
+                1.0D,
+                Math.min(
+                        20.0D,
+                        config.getDoubleElse("sanctions.minimum-tps", 18.0D)
+                )
         );
 
         try {
@@ -327,6 +355,12 @@ public class PunishmentManager implements ConfigReloadable {
                 componentFor(check),
                 verbose,
                 suppressed
+        ).replace(
+                "%packet_modify%",
+                check.shouldModifyPackets() ? "ACTIVE" : "BYPASS"
+        ).replace(
+                "%setback_access%",
+                check.isNoSetbackPermission() ? "BYPASS" : "ACTIVE"
         );
     }
 
@@ -344,7 +378,7 @@ public class PunishmentManager implements ConfigReloadable {
     ) {
         String severity =
                 GrimAPI.INSTANCE.getAlertAggregationManager()
-                        .severity(player.uuid)
+                        .severity(player.uuid, vl)
                         .name();
 
         String template = StaffAlertTemplate.expand(
@@ -371,6 +405,56 @@ public class PunishmentManager implements ConfigReloadable {
                         .replace("%stable_key%", stableKey == null ? "" : stableKey)
                         .replace("%component%", component == null ? "Other" : component)
                         .replace("%severity%", severity)
+                        .replace(
+                                "%confidence%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .heuristicConfidence(player)
+                                )
+                        )
+                        .replace(
+                                "%server_confidence%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .heuristicConfidence()
+                                )
+                        )
+                        .replace(
+                                "%player_confidence%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .playerNetworkConfidence(player)
+                                )
+                        )
+                        .replace("%ping%", Integer.toString(player.getTransactionPing()))
+                        .replace(
+                                "%avg_ping%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .getAveragePingMillis(player.uuid)
+                                )
+                        )
+                        .replace(
+                                "%jitter%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .getPlayerJitterMillis(player.uuid)
+                                )
+                        )
+                        .replace(
+                                "%tps%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getPlatformServer().getTPS()
+                                )
+                        )
+                        .replace(
+                                "%integrity_score%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                                                .getScore(player.uuid)
+                                )
+                        )
+                        .replace("%lag_state%", lagState())
                         .replace(
                                 "%suppressed%",
                                 Integer.toString(
@@ -791,6 +875,12 @@ public class PunishmentManager implements ConfigReloadable {
             case "group_vl" ->
                     groupVl;
 
+            case "sanction_vl", "sanction_check_vl" ->
+                    group.sanctionViolations.count(check);
+
+            case "sanction_group_vl" ->
+                    group.sanctionViolations.size();
+
             case "integrity", "integrity_score" ->
                     GrimAPI.INSTANCE
                             .getIntegrityCorrelationManager()
@@ -810,6 +900,16 @@ public class PunishmentManager implements ConfigReloadable {
                     GrimAPI.INSTANCE
                             .getLagProtectionManager()
                             .heuristicConfidence(player);
+
+            case "server_confidence" ->
+                    GrimAPI.INSTANCE
+                            .getLagProtectionManager()
+                            .heuristicConfidence();
+
+            case "player_confidence", "network_confidence" ->
+                    GrimAPI.INSTANCE
+                            .getLagProtectionManager()
+                            .playerNetworkConfidence(player);
 
             case "jitter" ->
                     GrimAPI.INSTANCE
@@ -950,6 +1050,42 @@ public class PunishmentManager implements ConfigReloadable {
         return matched;
     }
 
+    private String lagState() {
+        boolean server = GrimAPI.INSTANCE
+                .getLagProtectionManager()
+                .heuristicConfidence() < 1.0D;
+        boolean playerLag = GrimAPI.INSTANCE
+                .getLagProtectionManager()
+                .playerNetworkConfidence(player) < 1.0D;
+
+        if (server && playerLag) return "SERVER+PLAYER";
+        if (server) return "SERVER";
+        if (playerLag) return "PLAYER";
+        return "OK";
+    }
+
+    private static String formatMetric(double value) {
+        if (!Double.isFinite(value)) return "0";
+        return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    private boolean sanctionableNow() {
+        var lag = GrimAPI.INSTANCE.getLagProtectionManager();
+        double serverConfidence = lag.heuristicConfidence();
+        double playerConfidence = lag.playerNetworkConfidence(player);
+        double confidence = Math.min(serverConfidence, playerConfidence);
+        double tps = GrimAPI.INSTANCE.getPlatformServer().getTPS();
+
+        return confidence >= sanctionMinimumConfidence
+                && serverConfidence >= sanctionMinimumServerConfidence
+                && playerConfidence >= sanctionMinimumPlayerConfidence
+                && tps >= sanctionMinimumTps;
+    }
+
+    private static double clamp01(double value) {
+        return Math.max(0.0D, Math.min(1.0D, value));
+    }
+
     private static boolean defaultsToPerCheckScope(
             List<AbstractCheck> checks
     ) {
@@ -1063,14 +1199,25 @@ public class PunishmentManager implements ConfigReloadable {
     }
 
     public void handleViolation(Check check) {
-        for (PunishGroup group : groups) {
-            if (group.checks.contains(check)) {
-                long currentTime =
-                        TimeUnit.NANOSECONDS.toMillis(
-                                System.nanoTime()
-                        );
+        long currentTime =
+                TimeUnit.NANOSECONDS.toMillis(
+                        System.nanoTime()
+                );
+        boolean sanctionable = sanctionableNow();
 
-                group.violations.record(
+        for (PunishGroup group : groups) {
+            if (!group.checks.contains(check)) {
+                continue;
+            }
+
+            group.violations.record(
+                    currentTime,
+                    check,
+                    group.removeViolationsAfter
+            );
+
+            if (sanctionable) {
+                group.sanctionViolations.record(
                         currentTime,
                         check,
                         group.removeViolationsAfter
@@ -1117,6 +1264,8 @@ final class PunishGroup {
     final List<AbstractCheck> checks;
     final List<ParsedCommand> commands;
     final ViolationHistory<AbstractCheck> violations =
+            new ViolationHistory<>();
+    final ViolationHistory<AbstractCheck> sanctionViolations =
             new ViolationHistory<>();
     final int removeViolationsAfter;
     final ThresholdScope thresholdScope;

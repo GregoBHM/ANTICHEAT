@@ -25,6 +25,10 @@ alerts:
         medium: 4.0
         high: 8.0
         critical: 14.0
+        vl:
+            medium: 10
+            high: 25
+            critical: 50
     # Oyunculara uyarı yayınlamanın yanı sıra, uyarılar konsola da gönderilmeli mi?
     print-to-console: true
     # Bu, uyarıların proxy'nize bağlı sunucular arasında paylaşılıp paylaşılmayacağını/nasıl paylaşılacağını kontrol eder.
@@ -192,6 +196,11 @@ Explosion:
 
 TimerA:
     setbackvl: 10
+    prevention:
+        enabled: true
+        # Prevention stays active during player lag; only a severely unhealthy
+        # server may stop Timer packet cancellation. Sanctions are gated separately.
+        minimum-server-confidence: 0.50
     # Oyuncunun geri kaldığında biriktirebileceği milisaniye miktarı
     # Çok yüksek ayarlandığında 1.8 hızlı kullanma/hızlı iyileşme/hızlı yay atlama durumlarına izin verebilir, 120 ms iyi bir denge gibi görünüyor
     drift: 120
@@ -492,6 +501,9 @@ integrity-correlation:
         max-contribution: 1.0
     weights:
         simulation: 0.5
+        timer: 3.0
+        timer-limit: 2.0
+        reach: 3.0
         selective-stall: 3.0
         airborne-stall: 2.0
         packet-burst: 1.0

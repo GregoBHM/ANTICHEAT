@@ -10,6 +10,13 @@
 # Check selectors are backward compatible by canonical name.
 # Use stable:<stable-key> for an exact cross-version selector.
 # Canonical names always win over aliases; aliases never shadow real check names.
+# Automatic sanctions use a separate high-confidence ledger. Raw VL/logs stay complete.
+sanctions:
+  minimum-confidence: 0.80
+  minimum-server-confidence: 0.80
+  minimum-player-confidence: 0.80
+  minimum-tps: 18.0
+
 Punishments:
   Simulation:
     # After how many seconds should a violation be removed?
@@ -40,10 +47,11 @@ Punishments:
     # - "5:3 [alert]"                               fires on flags 5, 8, 11, 14, ...
     #
     commands:
-      - "100:40 [alert]"
+      - "5:20 [alert]"
       - "1:1 [log]"
-      - "100:100 [webhook]"
-      - "100:100 [proxy]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+      - "1:0 if sanction_vl>=50 do kick %player% Unfair movement detected by SparkGrim."
   Knockback:
     remove-violations-after: 300
     threshold-scope: check
@@ -55,6 +63,7 @@ Punishments:
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
+      - "1:0 if sanction_vl>=25 do kick %player% Invalid knockback detected by SparkGrim."
   Post:
     remove-violations-after: 300
     checks:
@@ -64,6 +73,7 @@ Punishments:
       - "1:1 [log]"
       - "40:40 [webhook]"
       - "40:40 [proxy]"
+      - "1:0 if sanction_vl>=60 do kick %player% Invalid packet behavior detected by SparkGrim."
   BadPackets:
     remove-violations-after: 300
     checks:
@@ -75,6 +85,7 @@ Punishments:
       - "1:1 [log]"
       - "40:40 [webhook]"
       - "40:40 [proxy]"
+      - "1:0 if sanction_vl>=60 do kick %player% Invalid packet behavior detected by SparkGrim."
   Reach:
     remove-violations-after: 300
     checks:
@@ -82,8 +93,9 @@ Punishments:
     commands:
       - "1:1 [alert]"
       - "1:1 [log]"
-      - "1:1 [webhook]"
-      - "1:1 [proxy]"
+      - "3:3 [webhook]"
+      - "3:3 [proxy]"
+      - "1:0 if sanction_vl>=12 do kick %player% Invalid reach detected by SparkGrim."
   Hitboxes:
     remove-violations-after: 300
     checks:
@@ -93,6 +105,7 @@ Punishments:
       - "1:1 [log]"
       - "5:3 [webhook]"
       - "5:3 [proxy]"
+      - "1:0 if sanction_vl>=20 do kick %player% Invalid hitbox interaction detected by SparkGrim."
   Misc:
     remove-violations-after: 300
     threshold-scope: check
@@ -115,6 +128,7 @@ Punishments:
       - "1:1 [log]"
       - "20:10 [webhook]"
       - "20:10 [proxy]"
+      - "1:0 if sanction_vl>=30 do kick %player% Invalid gameplay behavior detected by SparkGrim."
   Combat:
     remove-violations-after: 300
     checks:
@@ -122,8 +136,9 @@ Punishments:
       - "Aim"
       - "AttackBurst"
     commands:
-      - "20:40 [alert]"
+      - "20:20 [alert]"
       - "1:1 [log]"
+      - "1:0 if sanction_vl>=40 do kick %player% Invalid combat behavior detected by SparkGrim."
   # As of 2.2.10, there are no AutoClicker checks and this is a placeholder. Grim will include AutoClicker checks in the future.
   Autoclicker:
     remove-violations-after: 300
@@ -142,3 +157,4 @@ Punishments:
       - "1:1 [log]"
       - "10:10 [webhook]"
       - "10:10 [proxy]"
+      - "1:0 if sanction_vl>=12 do kick %player% Invalid regeneration detected by SparkGrim."
