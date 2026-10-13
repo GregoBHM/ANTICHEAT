@@ -146,6 +146,12 @@ public final class IntegrityCorrelationManager {
         if (key == null) return;
         if ("grim.prediction.simulation".equals(key)) {
             record(player, IntegritySignal.SIMULATION);
+        } else if ("grim.timer.timer".equals(key)) {
+            record(player, IntegritySignal.TIMER);
+        } else if ("grim.timer.limit".equals(key)) {
+            record(player, IntegritySignal.TIMER_LIMIT);
+        } else if ("grim.combat.reach".equals(key)) {
+            record(player, IntegritySignal.REACH);
         } else if (key.startsWith("grim.packetorder.")) {
             record(player, IntegritySignal.PACKET_ORDER);
         } else if (key.startsWith("grim.multiactions.")) {

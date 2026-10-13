@@ -344,7 +344,7 @@ public class PunishmentManager implements ConfigReloadable {
     ) {
         String severity =
                 GrimAPI.INSTANCE.getAlertAggregationManager()
-                        .severity(player.uuid)
+                        .severity(player.uuid, vl)
                         .name();
 
         String template = StaffAlertTemplate.expand(
@@ -371,6 +371,56 @@ public class PunishmentManager implements ConfigReloadable {
                         .replace("%stable_key%", stableKey == null ? "" : stableKey)
                         .replace("%component%", component == null ? "Other" : component)
                         .replace("%severity%", severity)
+                        .replace(
+                                "%confidence%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .heuristicConfidence(player)
+                                )
+                        )
+                        .replace(
+                                "%server_confidence%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .heuristicConfidence()
+                                )
+                        )
+                        .replace(
+                                "%player_confidence%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .playerNetworkConfidence(player)
+                                )
+                        )
+                        .replace("%ping%", Integer.toString(player.getTransactionPing()))
+                        .replace(
+                                "%avg_ping%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .getAveragePingMillis(player.uuid)
+                                )
+                        )
+                        .replace(
+                                "%jitter%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getLagProtectionManager()
+                                                .getPlayerJitterMillis(player.uuid)
+                                )
+                        )
+                        .replace(
+                                "%tps%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getPlatformServer().getTPS()
+                                )
+                        )
+                        .replace(
+                                "%integrity_score%",
+                                formatMetric(
+                                        GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                                                .getScore(player.uuid)
+                                )
+                        )
+                        .replace("%lag_state%", lagState())
                         .replace(
                                 "%suppressed%",
                                 Integer.toString(
@@ -811,6 +861,16 @@ public class PunishmentManager implements ConfigReloadable {
                             .getLagProtectionManager()
                             .heuristicConfidence(player);
 
+            case "server_confidence" ->
+                    GrimAPI.INSTANCE
+                            .getLagProtectionManager()
+                            .heuristicConfidence();
+
+            case "player_confidence", "network_confidence" ->
+                    GrimAPI.INSTANCE
+                            .getLagProtectionManager()
+                            .playerNetworkConfidence(player);
+
             case "jitter" ->
                     GrimAPI.INSTANCE
                             .getLagProtectionManager()
@@ -948,6 +1008,25 @@ public class PunishmentManager implements ConfigReloadable {
         }
 
         return matched;
+    }
+
+    private String lagState() {
+        boolean server = GrimAPI.INSTANCE
+                .getLagProtectionManager()
+                .heuristicConfidence() < 1.0D;
+        boolean playerLag = GrimAPI.INSTANCE
+                .getLagProtectionManager()
+                .playerNetworkConfidence(player) < 1.0D;
+
+        if (server && playerLag) return "SERVER+PLAYER";
+        if (server) return "SERVER";
+        if (playerLag) return "PLAYER";
+        return "OK";
+    }
+
+    private static String formatMetric(double value) {
+        if (!Double.isFinite(value)) return "0";
+        return String.format(Locale.ROOT, "%.2f", value);
     }
 
     private static boolean defaultsToPerCheckScope(

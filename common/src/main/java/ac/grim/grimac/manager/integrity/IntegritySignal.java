@@ -5,6 +5,9 @@ import java.util.Locale;
 /** Signals used for short/long-lived correlation. None punish by themselves. */
 public enum IntegritySignal {
     SIMULATION(0.5D, true),
+    TIMER(3.0D, false),
+    TIMER_LIMIT(2.0D, true),
+    REACH(3.0D, false),
     SELECTIVE_STALL(3.0D, false),
     AIRBORNE_STALL(2.0D, true),
     PACKET_BURST(1.0D, true),
