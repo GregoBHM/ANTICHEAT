@@ -5,18 +5,17 @@ import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.LogUtil;
 import ac.grim.grimac.utils.anticheat.MessageUtil;
 import ac.grim.grimac.utils.common.arguments.CommonGrimArguments;
-import ac.grim.grimac.utils.data.IntToObjectPair;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.ListIterator;
+import java.util.Iterator;
 
 public class LatencyUtils {
-    private final LinkedList<IntToObjectPair<Runnable>> transactionMap = new LinkedList<>();
-    private final GrimPlayer player;
+    private record TransactionTask(int transactionId, Runnable task) {
+    }
 
-    // Built from transactionMap and cleared at start of every handleNettySyncTransaction() call
-    // The actual usage scope of this variable's use is limited to within the synchronized block of handleNettySyncTransaction
+    private final ArrayDeque<TransactionTask> transactionMap = new ArrayDeque<>();
+    private final GrimPlayer player;
     private final ArrayList<Runnable> tasksToRun = new ArrayList<>();
 
     public LatencyUtils(GrimPlayer player) {
@@ -32,7 +31,7 @@ public class LatencyUtils {
     }
 
     public void addRealTimeTask(int transaction, boolean async, Runnable runnable) {
-        if (player.lastTransactionReceived.get() >= transaction) { // If the player already responded to this transaction
+        if (player.lastTransactionReceived.get() >= transaction) {
             if (async) {
                 player.runSafely(runnable);
             } else {
@@ -40,48 +39,33 @@ public class LatencyUtils {
             }
             return;
         }
-        synchronized (this) {
-            transactionMap.add(new IntToObjectPair<>(transaction, runnable));
+
+        synchronized (transactionMap) {
+            transactionMap.addLast(new TransactionTask(transaction, runnable));
         }
     }
 
     public void handleNettySyncTransaction(int transaction) {
-        /*
-         * This code uses a two-pass approach within the synchronized block to prevent CMEs.
-         * First we collect and remove tasks using the iterator, then execute all collected tasks.
-         *
-         * The issue:
-         *     We cannot execute tasks during iteration because if a runnable modifies transactionMap
-         *     or calls addRealTimeTask, it will cause a ConcurrentModificationException.
-         *     While only seen on Folia servers, this is theoretically possible everywhere.
-         *
-         * Why this solution:
-         *     Rather than documenting "don't modify transactionMap in runnables" and risking subtle
-         *     bugs from future contributions or Check API usage, we prevent the issue entirely
-         *     at a small performance cost.
-         *
-         * Future considerations:
-         *     If this becomes a performance bottleneck, we may revisit using a single-pass approach
-         *     on non-Folia servers. We could also explore concurrent data structures or parallel
-         *     execution, but this would lose the guarantee that transactions are processed in order.
-         */
-        synchronized (this) {
+        synchronized (transactionMap) {
             tasksToRun.clear();
 
-            // First pass: collect tasks and mark them for removal
-            ListIterator<IntToObjectPair<Runnable>> iterator = transactionMap.listIterator();
+            Iterator<TransactionTask> iterator = transactionMap.iterator();
             while (iterator.hasNext()) {
-                IntToObjectPair<Runnable> pair = iterator.next();
+                TransactionTask entry = iterator.next();
+                int taskTransaction = entry.transactionId();
 
-                // We are at most a tick ahead when running tasks based on transactions, meaning this is too far
-                if (transaction + 1 < pair.first())
+                // Transaction tasks are inserted in monotonic order. Once this
+                // entry is too far ahead, every later task is also too far ahead.
+                if (transaction + 1 < taskTransaction) {
                     break;
+                }
 
-                // This is at most tick ahead of what we want
-                if (transaction == pair.first() - 1)
+                // Grim may run transaction tasks at most one tick early.
+                if (transaction == taskTransaction - 1) {
                     continue;
+                }
 
-                tasksToRun.add(pair.second());
+                tasksToRun.add(entry.task());
                 iterator.remove();
             }
 
@@ -89,13 +73,28 @@ public class LatencyUtils {
                 try {
                     runnable.run();
                 } catch (Exception e) {
-                    LogUtil.error("An error has occurred when running transactions for player: " + player.user.getName(), e);
-                    // Kick the player SO PEOPLE ACTUALLY REPORT PROBLEMS AND KNOW WHEN THEY HAPPEN
-                    if (CommonGrimArguments.KICK_ON_TRANSACTION_ERRORS.value()) {
-                        player.disconnect(MessageUtil.miniMessage(MessageUtil.replacePlaceholders(player, GrimAPI.INSTANCE.getConfigManager().getDisconnectPacketError())));
-                    }
+                    handleRunnableError(e);
                 }
             }
+        }
+    }
+
+    private void handleRunnableError(Exception e) {
+        LogUtil.error(
+                "An error has occurred when running transactions for player: "
+                        + player.user.getName(),
+                e
+        );
+        if (CommonGrimArguments.KICK_ON_TRANSACTION_ERRORS.value()) {
+            player.disconnect(
+                    MessageUtil.miniMessage(
+                            MessageUtil.replacePlaceholders(
+                                    player,
+                                    GrimAPI.INSTANCE.getConfigManager()
+                                            .getDisconnectPacketError()
+                            )
+                    )
+            );
         }
     }
 }
