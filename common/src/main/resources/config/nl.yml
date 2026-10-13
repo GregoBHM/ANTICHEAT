@@ -25,6 +25,10 @@ alerts:
         medium: 4.0
         high: 8.0
         critical: 14.0
+        vl:
+            medium: 10
+            high: 25
+            critical: 50
     # Moeten er naast het uitzenden van waarschuwingen naar spelers ook waarschuwingen naar de console worden gestuurd?
     print-to-console: true
     # Dit bepaalt of/hoe waarschuwingen worden gedeeld tussen servers die zijn verbonden met je proxy.
@@ -492,6 +496,9 @@ integrity-correlation:
         max-contribution: 1.0
     weights:
         simulation: 0.5
+        timer: 3.0
+        timer-limit: 2.0
+        reach: 3.0
         selective-stall: 3.0
         airborne-stall: 2.0
         packet-burst: 1.0

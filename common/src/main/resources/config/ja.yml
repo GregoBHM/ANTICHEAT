@@ -27,6 +27,10 @@ alerts:
         medium: 4.0
         high: 8.0
         critical: 14.0
+        vl:
+            medium: 10
+            high: 25
+            critical: 50
     # アラートを、プレイヤーに送信するだけでなくコンソールにも送信するかどうか。
     print-to-console: true
     # これは、プロキシに接続された他のサーバー間でアラートが共有される方法を制御します。
@@ -500,6 +504,9 @@ integrity-correlation:
         max-contribution: 1.0
     weights:
         simulation: 0.5
+        timer: 3.0
+        timer-limit: 2.0
+        reach: 3.0
         selective-stall: 3.0
         airborne-stall: 2.0
         packet-burst: 1.0
