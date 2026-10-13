@@ -355,6 +355,9 @@ public class PunishmentManager implements ConfigReloadable {
                 componentFor(check),
                 verbose,
                 suppressed
+        ).replace(
+                "%packet_modify%",
+                check.shouldModifyPackets() ? "ACTIVE" : "BYPASS"
         );
     }
 

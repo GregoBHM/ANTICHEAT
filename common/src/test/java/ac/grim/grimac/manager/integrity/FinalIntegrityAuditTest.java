@@ -119,4 +119,13 @@ class FinalIntegrityAuditTest {
         assertTrue(punishment.contains("sanctionMinimumTps"));
     }
 
+
+    @Test
+    void alertsExposePacketPreventionBypassState() throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+
+        assertTrue(punishment.contains("%packet_modify%"));
+        assertTrue(punishment.contains("check.shouldModifyPackets() ? \"ACTIVE\" : \"BYPASS\""));
+    }
+
 }
