@@ -10,65 +10,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PunishmentSelectorPolicyTest {
 
     private static final Set<String> CANONICAL =
-            Set.of("noslow", "fastconsume", "simulation");
-
-    @Test
-    void canonicalNoSlowCannotSelectFastConsumeThroughLegacyAlias() {
-        int noSlow = PunishmentSelectorPolicy.matchPriority(
-                "NoSlow",
-                "NoSlow",
-                "UNKNOWN",
-                "grim.movement.noslow",
-                CANONICAL
-        );
-        int oldFastConsumeAlias = PunishmentSelectorPolicy.matchPriority(
-                "NoSlow",
-                "FastConsume",
-                "NoSlow",
-                "grim.interaction.fast_consume",
-                CANONICAL
-        );
-
-        assertTrue(noSlow > 0);
-        assertEquals(0, oldFastConsumeAlias);
-    }
+            Set.of("noslow", "simulation", "antikb");
 
     @Test
     void stableSelectorsAreExactCaseInsensitiveAndCrossVersionSafe() {
         assertTrue(PunishmentSelectorPolicy.matchPriority(
-                "STABLE:GRIM.INTERACTION.FAST_CONSUME",
-                "FastConsume",
-                "FastEat",
-                "grim.interaction.fast_consume",
+                "STABLE:GRIM.MOVEMENT.NOSLOW",
+                "NoSlow",
+                "UNKNOWN",
+                "grim.movement.noslow",
                 CANONICAL
         ) > 0);
 
         assertEquals(0, PunishmentSelectorPolicy.matchPriority(
                 "stable:grim.movement.noslow",
-                "FastConsume",
-                "FastEat",
-                "grim.interaction.fast_consume",
+                "Simulation",
+                "UNKNOWN",
+                "grim.prediction.simulation",
                 CANONICAL
         ));
 
         assertEquals(0, PunishmentSelectorPolicy.matchPriority(
-                "stable:grim.interaction.fast",
-                "FastConsume",
-                "FastEat",
-                "grim.interaction.fast_consume",
+                "stable:grim.movement.no",
+                "NoSlow",
+                "UNKNOWN",
+                "grim.movement.noslow",
                 CANONICAL
         ));
-    }
-
-    @Test
-    void nonConflictingLegacyAliasStillWorks() {
-        assertTrue(PunishmentSelectorPolicy.matchPriority(
-                "FastEat",
-                "FastConsume",
-                "FastEat",
-                "grim.interaction.fast_consume",
-                CANONICAL
-        ) > 0);
     }
 
     @Test

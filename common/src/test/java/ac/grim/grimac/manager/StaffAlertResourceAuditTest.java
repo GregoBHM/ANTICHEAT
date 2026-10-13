@@ -56,7 +56,8 @@ class StaffAlertResourceAuditTest {
                 );
                 assertTrue(text.contains("format: \"&8[correction] &7%check_name% &8[%component%] &f%verbose%\""), path.toString());
                 assertTrue(text.contains("component-buckets: false"), path.toString());
-                assertTrue(text.contains("session-end-grace-ms: 500"), path.toString());
+                assertFalse(text.contains("fast-consume:"), path.toString());
+                assertFalse(text.contains("\n    consume:\n"), path.toString());
                 assertTrue(text.contains("context-policy:"), path.toString());
                 assertTrue(text.contains("special-environment:"), path.toString());
                 assertTrue(text.contains("flag-episode-window-ms: 1500"), path.toString());
@@ -83,7 +84,7 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("stable:grim.prediction.simulation"), path.toString());
                 assertTrue(text.contains("stable:grim.velocity.anti_knockback"), path.toString());
                 assertTrue(text.contains("stable:grim.movement.noslow"), path.toString());
-                assertTrue(text.contains("stable:grim.interaction.fast_consume"), path.toString());
+                assertFalse(text.contains("stable:grim.interaction.fast_consume"), path.toString());
             }
         }
     }

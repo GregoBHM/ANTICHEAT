@@ -57,9 +57,6 @@ class MovementDetectionPolicyAuditTest {
         String phase = read(
                 "src/main/java/ac/grim/grimac/checks/impl/prediction/Phase.java"
         );
-        String fastConsume = read(
-                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
-        );
         String timer = read(
                 "src/main/java/ac/grim/grimac/checks/impl/timer/Timer.java"
         );
@@ -71,7 +68,6 @@ class MovementDetectionPolicyAuditTest {
         assertTrue(simulation.contains("resolveMovementEvidenceEpisode"));
         assertTrue(simulation.contains("specialEnvironmentEpisodeFlagAccepted"));
         assertFalse(phase.contains("hasTrustedVelocityContext"));
-        assertFalse(fastConsume.contains("hasTrustedVelocityContext"));
         assertFalse(timer.contains("hasTrustedVelocityContext"));
         assertFalse(reach.contains("hasTrustedVelocityContext"));
     }
