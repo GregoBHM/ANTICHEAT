@@ -198,6 +198,11 @@ Explosion:
 
 TimerA:
     setbackvl: 10
+    prevention:
+        enabled: true
+        # Prevention stays active during player lag; only a severely unhealthy
+        # server may stop Timer packet cancellation. Sanctions are gated separately.
+        minimum-server-confidence: 0.30
     # プレイヤーがネットワーク遅延やラグの影響で操作がサーバーの予測より遅れている場合、
     # その遅れ分を後で使用できるように蓄積するためのミリ秒数を設定します。
     # この値を高く設定しすぎると、1.8版の高速使用、高速回復、高速弓などの不正な動作をバイパスできる可能性があるため、

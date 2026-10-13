@@ -196,6 +196,11 @@ Explosion:
 
 TimerA:
     setbackvl: 10
+    prevention:
+        enabled: true
+        # Prevention stays active during player lag; only a severely unhealthy
+        # server may stop Timer packet cancellation. Sanctions are gated separately.
+        minimum-server-confidence: 0.30
     # Milliseconds that the player can accumulate for later use when they fall behind
     # Could potentially allow 1.8 fast use/fast heal/fast bow bypasses if set too high, 120 ms seems like a good balance
     drift: 120

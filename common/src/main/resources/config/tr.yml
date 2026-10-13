@@ -196,6 +196,11 @@ Explosion:
 
 TimerA:
     setbackvl: 10
+    prevention:
+        enabled: true
+        # Prevention stays active during player lag; only a severely unhealthy
+        # server may stop Timer packet cancellation. Sanctions are gated separately.
+        minimum-server-confidence: 0.30
     # Oyuncunun geri kaldığında biriktirebileceği milisaniye miktarı
     # Çok yüksek ayarlandığında 1.8 hızlı kullanma/hızlı iyileşme/hızlı yay atlama durumlarına izin verebilir, 120 ms iyi bir denge gibi görünüyor
     drift: 120
