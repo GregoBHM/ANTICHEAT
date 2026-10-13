@@ -34,7 +34,7 @@ public final class GrimConfigSpecs {
      * movement context/recovery, and keeps aggressive Blink mitigation out of
      * legitimate special-physics windows.
      * v18 -> v19: adds hard Blink release prevention, correlated TimerLimit packet
-     * cancellation, queued use/interact blocking, and server-side FastConsume prevention.
+     * cancellation and queued use/interact blocking.
      * v19 -> v20: makes Blink release mitigation one-shot and pre-prediction,
      * requires sub-tick burst confirmation, rebases TimerA/TimerLimit/Simulation
      * after rollback, and prevents residual setbacks while normal movement recovers.
@@ -54,7 +54,7 @@ public final class GrimConfigSpecs {
      * v24 -> v25: player-safety hardening for legacy Blink. BadPacketsE observes
      * raw pre-prediction movement, action-first prevention becomes opt-in,
      * recovery cannot re-lock itself, and item-use ownership is left exclusively
-     * to ConsumeTiming/NoSlow instead of StallActions.
+     * to physical ItemUse/NoSlow instead of StallActions.
      * v28 -> v29: Item Use / Detection Policy v10. Adds physical-use session
      * timing, context-aware NoSlow/AntiKB/Simulation episode limits, and
      * verbose-only correction diagnostics without weakening deterministic checks.
@@ -176,12 +176,6 @@ public final class GrimConfigSpecs {
                                 "&8[correction] &7%check_name% &f%verbose%"
                         );
                     }
-
-                    putIfMissing(
-                            ctx,
-                            "interaction-integrity.consume.session-end-grace-ms",
-                            500
-                    );
 
                     putIfMissing(ctx, "NoSlow.context-policy.enabled", true);
                     putIfMissing(ctx, "NoSlow.context-policy.special-minimum-offset", 0.12D);
