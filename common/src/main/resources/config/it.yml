@@ -189,6 +189,11 @@ Explosion:
 TimerA:
     # Livello di violazione per il timer
     setbackvl: 10
+    prevention:
+        enabled: true
+        # Prevention stays active during player lag; only a severely unhealthy
+        # server may stop Timer packet cancellation. Sanctions are gated separately.
+        minimum-server-confidence: 0.30
     # Millisecondi accumulabili per il timer
     drift: 120
 
