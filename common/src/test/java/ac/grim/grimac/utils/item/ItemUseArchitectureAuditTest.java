@@ -82,6 +82,24 @@ class ItemUseArchitectureAuditTest {
         assertFalse(attack.contains(".resetItemUsage("));
     }
 
+
+    @Test
+    void compatibleHeldItemRefreshReturnsBeforeAnyServerReset() throws IOException {
+        String replication = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/events/packets/PacketEntityReplication.java"
+        ));
+
+        int setSlot = replication.indexOf("PacketType.Play.Server.SET_SLOT");
+        int compatible = replication.indexOf("if (compatibleRefresh)", setSlot);
+        int preserveReturn = replication.indexOf("return;", compatible);
+        int reset = replication.indexOf("requestServerReset(", compatible);
+
+        assertTrue(setSlot >= 0);
+        assertTrue(compatible > setSlot);
+        assertTrue(preserveReturn > compatible);
+        assertTrue(reset > preserveReturn);
+    }
+
     @Test
     void consumeDetectionAndTimingAreAbsent() throws IOException {
         Path integrity = Path.of("src/main/java/ac/grim/grimac/checks/impl/integrity");
