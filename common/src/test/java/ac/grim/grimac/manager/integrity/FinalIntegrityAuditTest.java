@@ -65,4 +65,43 @@ class FinalIntegrityAuditTest {
         assertTrue(correlation.contains("environment.classify(player)"));
         assertTrue(correlation.contains("summary(contexts)"));
     }
+
+    @Test
+    void timerPreventionIsIndependentFromSanctionConfidence() throws IOException {
+        String timer = source("checks/impl/timer/Timer.java");
+
+        assertTrue(timer.contains("boolean acceptedViolation = flag()"));
+        assertTrue(timer.contains("preventExcessPackets"));
+        assertTrue(timer.contains("preventionMinimumServerConfidence"));
+        assertTrue(timer.contains("heuristicConfidence() >= preventionMinimumServerConfidence"));
+        assertTrue(timer.contains("if (prevent && !event.isCancelled())"));
+    }
+
+    @Test
+    void timerAndReachFeedIntegritySeverity() throws IOException {
+        String correlation = source("manager/integrity/IntegrityCorrelationManager.java");
+        String signals = source("manager/integrity/IntegritySignal.java");
+
+        assertTrue(correlation.contains("grim.timer.timer"));
+        assertTrue(correlation.contains("IntegritySignal.TIMER"));
+        assertTrue(correlation.contains("grim.timer.limit"));
+        assertTrue(correlation.contains("IntegritySignal.TIMER_LIMIT"));
+        assertTrue(correlation.contains("grim.combat.reach"));
+        assertTrue(correlation.contains("IntegritySignal.REACH"));
+        assertTrue(signals.contains("TIMER(3.0D, false)"));
+        assertTrue(signals.contains("TIMER_LIMIT(2.0D, true)"));
+        assertTrue(signals.contains("REACH(3.0D, false)"));
+    }
+
+    @Test
+    void punishmentConditionsExposeSeparateServerAndPlayerConfidence() throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+        String lag = source("manager/integrity/LagProtectionManager.java");
+
+        assertTrue(punishment.contains("case \"server_confidence\""));
+        assertTrue(punishment.contains("case \"player_confidence\", \"network_confidence\""));
+        assertTrue(lag.contains("playerNetworkConfidence("));
+        assertTrue(punishment.contains("%lag_state%"));
+    }
+
 }

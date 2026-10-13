@@ -35,10 +35,11 @@ Punishments:
     # 在100vl后执行say %player% is cheating,之后的每50vl都执行一次say %player% is cheating
     #
     commands:
-      - "100:40 [alert]"
+      - "5:20 [alert]"
       - "1:1 [log]"
-      - "100:100 [webhook]"
-      - "100:100 [proxy]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+      - "50:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Unfair movement detected by SparkGrim."
   Knockback:
     remove-violations-after: 300
     threshold-scope: check
@@ -50,6 +51,7 @@ Punishments:
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
+      - "25:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid knockback detected by SparkGrim."
   Post:
     remove-violations-after: 300
     checks:
@@ -59,6 +61,7 @@ Punishments:
       - "1:1 [log]"
       - "40:40 [webhook]"
       - "40:40 [proxy]"
+      - "60:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid packet behavior detected by SparkGrim."
   BadPackets:
     remove-violations-after: 300
     checks:
@@ -70,6 +73,7 @@ Punishments:
       - "1:1 [log]"
       - "40:40 [webhook]"
       - "40:40 [proxy]"
+      - "60:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid packet behavior detected by SparkGrim."
   Reach:
     remove-violations-after: 300
     checks:
@@ -77,8 +81,9 @@ Punishments:
     commands:
       - "1:1 [alert]"
       - "1:1 [log]"
-      - "1:1 [webhook]"
-      - "1:1 [proxy]"
+      - "3:3 [webhook]"
+      - "3:3 [proxy]"
+      - "12:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid reach detected by SparkGrim."
   Hitboxes:
     remove-violations-after: 300
     checks:
@@ -88,6 +93,7 @@ Punishments:
       - "1:1 [log]"
       - "5:3 [webhook]"
       - "5:3 [proxy]"
+      - "20:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid hitbox interaction detected by SparkGrim."
   Misc:
     remove-violations-after: 300
     threshold-scope: check
@@ -110,6 +116,7 @@ Punishments:
       - "1:1 [log]"
       - "20:10 [webhook]"
       - "20:10 [proxy]"
+      - "30:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid gameplay behavior detected by SparkGrim."
   Combat:
     remove-violations-after: 300
     checks:
@@ -117,8 +124,9 @@ Punishments:
       - "Aim"
       - "AttackBurst"
     commands:
-      - "20:40 [alert]"
+      - "20:20 [alert]"
       - "1:1 [log]"
+      - "40:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid combat behavior detected by SparkGrim."
   # Grim2.0.10版本 没有连点器检查，Grim将在未来添加
   Autoclicker:
     remove-violations-after: 300
@@ -137,3 +145,4 @@ Punishments:
       - "1:1 [log]"
       - "10:10 [webhook]"
       - "10:10 [proxy]"
+      - "12:0 if confidence>=0.80 & server_confidence>=0.80 & player_confidence>=0.80 & tps>=18.0 do kick %player% Invalid regeneration detected by SparkGrim."

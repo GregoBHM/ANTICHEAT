@@ -25,6 +25,10 @@ alerts:
         medium: 4.0
         high: 8.0
         critical: 14.0
+        vl:
+            medium: 10
+            high: 25
+            critical: 50
     # In aggiunta alla trasmissione degli avvisi ai giocatori, dovrebbero essere inviati anche alla console?
     print-to-console: true
     # Questo controlla se e come gli avvisi vengono condivisi tra i server collegati al tuo proxy.
@@ -185,6 +189,11 @@ Explosion:
 TimerA:
     # Livello di violazione per il timer
     setbackvl: 10
+    prevention:
+        enabled: true
+        # Prevention stays active during player lag; only a severely unhealthy
+        # server may stop Timer packet cancellation. Sanctions are gated separately.
+        minimum-server-confidence: 0.30
     # Millisecondi accumulabili per il timer
     drift: 120
 
@@ -471,6 +480,9 @@ integrity-correlation:
         max-contribution: 1.0
     weights:
         simulation: 0.5
+        timer: 3.0
+        timer-limit: 2.0
+        reach: 3.0
         selective-stall: 3.0
         airborne-stall: 2.0
         packet-burst: 1.0

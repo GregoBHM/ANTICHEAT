@@ -21,6 +21,9 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
     protected long clockDrift;
     protected boolean hasGottenMovementAfterTransaction = false;
 
+    private boolean preventExcessPackets;
+    private double preventionMinimumServerConfidence;
+
     public Timer(GrimPlayer player) {
         super(player);
     }
@@ -48,12 +51,24 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
         lastAheadNanos = Math.max(0L, timerBalanceRealTime - now);
 
         if (timerBalanceRealTime > now) {
-            if (flag()) {
-                if (shouldModifyPackets()) {
-                    event.setCancelled(true);
-                    player.onPacketCancel();
-                }
+            boolean acceptedViolation = flag();
 
+            // Prevention is deliberately independent from punishment confidence.
+            // Server/player lag can suppress sanctions, but it must not become a
+            // usable Timer bypass. Only a severely unhealthy server may suppress
+            // packet cancellation, and that threshold is separately configurable.
+            boolean prevent = preventExcessPackets
+                    && shouldModifyPackets()
+                    && ac.grim.grimac.GrimAPI.INSTANCE
+                    .getLagProtectionManager()
+                    .heuristicConfidence() >= preventionMinimumServerConfidence;
+
+            if (prevent && !event.isCancelled()) {
+                event.setCancelled(true);
+                player.onPacketCancel();
+            }
+
+            if (acceptedViolation) {
                 ConnectionStall stall = player.checkManager.get(ConnectionStall.class);
                 boolean blinkOwned = stall != null
                         && (stall.shouldSuppressMovementSetbacks()
@@ -101,5 +116,19 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
     @Override
     public void onReload(@NotNull ConfigManager config) {
         clockDrift = (long) (config.getDoubleElse(getConfigName() + ".drift", 120.0) * 1e6);
+        preventExcessPackets = config.getBooleanElse(
+                getConfigName() + ".prevention.enabled",
+                true
+        );
+        preventionMinimumServerConfidence = Math.max(
+                0.0D,
+                Math.min(
+                        1.0D,
+                        config.getDoubleElse(
+                                getConfigName() + ".prevention.minimum-server-confidence",
+                                0.30D
+                        )
+                )
+        );
     }
 }

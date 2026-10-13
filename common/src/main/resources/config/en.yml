@@ -25,6 +25,10 @@ alerts:
         medium: 4.0
         high: 8.0
         critical: 14.0
+        vl:
+            medium: 10
+            high: 25
+            critical: 50
     # In addition to broadcasting alerts to players, should they also be sent to the console?
     print-to-console: true
     # This controls whether/how alerts are shared between servers connected to your proxy.
@@ -192,6 +196,11 @@ Explosion:
 
 TimerA:
     setbackvl: 10
+    prevention:
+        enabled: true
+        # Prevention stays active during player lag; only a severely unhealthy
+        # server may stop Timer packet cancellation. Sanctions are gated separately.
+        minimum-server-confidence: 0.30
     # Milliseconds that the player can accumulate for later use when they fall behind
     # Could potentially allow 1.8 fast use/fast heal/fast bow bypasses if set too high, 120 ms seems like a good balance
     drift: 120
@@ -493,6 +502,9 @@ integrity-correlation:
         max-contribution: 1.0
     weights:
         simulation: 0.5
+        timer: 3.0
+        timer-limit: 2.0
+        reach: 3.0
         selective-stall: 3.0
         airborne-stall: 2.0
         packet-burst: 1.0

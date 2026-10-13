@@ -28,6 +28,9 @@ public final class AlertAggregationManager {
     private volatile double mediumThreshold = 4.0D;
     private volatile double highThreshold = 8.0D;
     private volatile double criticalThreshold = 14.0D;
+    private volatile int mediumViolationThreshold = 10;
+    private volatile int highViolationThreshold = 25;
+    private volatile int criticalViolationThreshold = 50;
 
     public void reload(@NotNull ConfigManager config) {
         enabled = config.getBooleanElse("alerts.enabled", true);
@@ -43,6 +46,14 @@ public final class AlertAggregationManager {
         mediumThreshold = Math.max(0.0D, config.getDoubleElse("alerts.severity.medium", 4.0D));
         highThreshold = Math.max(mediumThreshold, config.getDoubleElse("alerts.severity.high", 8.0D));
         criticalThreshold = Math.max(highThreshold, config.getDoubleElse("alerts.severity.critical", 14.0D));
+        mediumViolationThreshold = (int) clamp(
+                config.getLongElse("alerts.severity.vl.medium", 10L), 1L, 100_000L);
+        highViolationThreshold = (int) clamp(
+                config.getLongElse("alerts.severity.vl.high", 25L),
+                mediumViolationThreshold, 100_000L);
+        criticalViolationThreshold = (int) clamp(
+                config.getLongElse("alerts.severity.vl.critical", 50L),
+                highViolationThreshold, 100_000L);
 
         java.util.List<String> configured = config.getStringListElse("alerts.milestones", java.util.List.of("1", "5", "10", "15", "20"));
         int[] parsed = configured.stream().mapToInt(value -> {
@@ -158,10 +169,27 @@ public final class AlertAggregationManager {
     }
 
     public @NotNull IntegritySeverity severity(@NotNull UUID uuid) {
+        return severity(uuid, 0);
+    }
+
+    public @NotNull IntegritySeverity severity(
+            @NotNull UUID uuid,
+            int violationLevel
+    ) {
         double score = GrimAPI.INSTANCE.getIntegrityCorrelationManager().getScore(uuid);
-        if (score >= criticalThreshold) return IntegritySeverity.CRITICAL;
-        if (score >= highThreshold) return IntegritySeverity.HIGH;
-        if (score >= mediumThreshold) return IntegritySeverity.MEDIUM;
+
+        if (score >= criticalThreshold
+                || violationLevel >= criticalViolationThreshold) {
+            return IntegritySeverity.CRITICAL;
+        }
+        if (score >= highThreshold
+                || violationLevel >= highViolationThreshold) {
+            return IntegritySeverity.HIGH;
+        }
+        if (score >= mediumThreshold
+                || violationLevel >= mediumViolationThreshold) {
+            return IntegritySeverity.MEDIUM;
+        }
         return IntegritySeverity.LOW;
     }
 
