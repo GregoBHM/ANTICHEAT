@@ -518,7 +518,6 @@ integrity-correlation:
         unsafe-disconnect: 3.0
         queued-action: 2.5
         inventory-frequency: 1.0
-        fast-consume: 2.5
         regen-packet: 2.5
         packet-order: 1.5
         multi-action: 1.5
@@ -561,21 +560,6 @@ Regen:
 
 interaction-integrity:
     enabled: true
-    consume:
-        enabled: true
-        minimum-ratio: 0.72
-        absolute-lenience-ms: 120
-        stale-extra-ms: 3000
-        # Accept a just-finished physical session when Bukkit fires the consume event.
-        # Repeated USE_ITEM packets never restart the session clock.
-        session-end-grace-ms: 500
-        flag-cooldown-ms: 1200
-        require-item-match: true
-        prevent:
-            # Cancels the Bukkit consume event only when timing is impossible enough
-            # and lag confidence is sufficient.
-            enabled: true
-            minimum-confidence: 0.60
     inventory-frequency:
         enabled: true
         short-limit: 7.0
