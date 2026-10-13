@@ -15,16 +15,17 @@ class ItemUseDetectionPolicyV10FinalAuditTest {
     }
 
     @Test
-    void fastConsumeCannotInheritNoSlowPunishmentIdentity() throws Exception {
-        String consume = read(
-                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
+    void consumeTimingDetectionIsRemoved() throws Exception {
+        String manager = read(
+                "src/main/java/ac/grim/grimac/manager/CheckManager.java"
+        );
+        String tracker = read(
+                "src/main/java/ac/grim/grimac/utils/item/ItemUseSessionTracker.java"
         );
 
-        assertTrue(consume.contains("alternativeName = \"FastEat\""));
-        assertFalse(consume.contains("alternativeName = \"NoSlow\""));
-        assertTrue(consume.contains(
-                "stableKey = \"grim.interaction.fast_consume\""
-        ));
+        assertFalse(manager.contains("ConsumeTiming"));
+        assertFalse(tracker.contains("FastConsume"));
+        assertFalse(tracker.contains("expectedDurationMillis"));
     }
 
     @Test
@@ -47,13 +48,9 @@ class ItemUseDetectionPolicyV10FinalAuditTest {
         for (String path : new String[]{
                 "src/main/java/ac/grim/grimac/checks/impl/prediction/Phase.java",
                 "src/main/java/ac/grim/grimac/checks/impl/combat/Reach.java",
-                "src/main/java/ac/grim/grimac/checks/impl/timer/Timer.java",
-                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
+                "src/main/java/ac/grim/grimac/checks/impl/timer/Timer.java"
         }) {
-            assertFalse(
-                    read(path).contains("hasTrustedVelocityContext"),
-                    path
-            );
+            assertFalse(read(path).contains("hasTrustedVelocityContext"), path);
         }
     }
 
@@ -63,13 +60,8 @@ class ItemUseDetectionPolicyV10FinalAuditTest {
                 "src/main/java/ac/grim/grimac/manager/PunishmentManager.java"
         );
 
-        int start = punishment.indexOf(
-                "public void handleCorrectionDiagnostic("
-        );
-        int end = punishment.indexOf(
-                "public boolean handleAlert(",
-                start
-        );
+        int start = punishment.indexOf("public void handleCorrectionDiagnostic(");
+        int end = punishment.indexOf("public boolean handleAlert(", start);
         String diagnostic = punishment.substring(start, end);
 
         assertFalse(diagnostic.contains("handleViolation("));
@@ -77,7 +69,7 @@ class ItemUseDetectionPolicyV10FinalAuditTest {
     }
 
     @Test
-    void sprintAndMultiActionItemUseChecksRequirePhysicalSession()
+    void sprintAndMultiActionChecksRequirePhysicalSession()
             throws Exception {
         for (String path : new String[]{
                 "src/main/java/ac/grim/grimac/checks/impl/sprint/SprintC.java",
@@ -86,15 +78,8 @@ class ItemUseDetectionPolicyV10FinalAuditTest {
                 "src/main/java/ac/grim/grimac/checks/impl/multiactions/MultiActionsE.java"
         }) {
             String source = read(path);
-            assertTrue(
-                    source.contains("itemUseSessionTracker.isActive()"),
-                    path
-            );
-            assertTrue(
-                    source.contains("packetStateData.isSlowedByUsingItem()"),
-                    path
-            );
+            assertTrue(source.contains("itemUseSessionTracker.isActive()"), path);
+            assertTrue(source.contains("packetStateData.isSlowedByUsingItem()"), path);
         }
     }
-
 }

@@ -47,19 +47,7 @@ class ItemUseArchitectureAuditTest {
     }
 
     @Test
-    void fastConsumeReadsTheSharedSessionInsteadOfOwningUsePackets() throws IOException {
-        String consume = Files.readString(Path.of(
-                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
-        ));
-
-        assertTrue(consume.contains("itemUseSessionTracker.sessionForConsume"));
-        assertFalse(consume.contains("PacketReceiveListener"));
-        assertFalse(consume.contains("PacketType.Play.Client.USE_ITEM"));
-    }
-
-
-    @Test
-    void inventoryRefreshesUsePhysicalCompatibilityInsteadOfBareMaterialType() throws IOException {
+    void inventoryRefreshUsesPhysicalCompatibility() throws IOException {
         String replication = Files.readString(Path.of(
                 "src/main/java/ac/grim/grimac/events/packets/PacketEntityReplication.java"
         ));
@@ -69,7 +57,7 @@ class ItemUseArchitectureAuditTest {
     }
 
     @Test
-    void incomingVelocityAndMovementContextsNeverOwnPhysicalUseReset() throws IOException {
+    void incomingVelocityNeverOwnsPhysicalUseReset() throws IOException {
         String movementContexts = Files.readString(Path.of(
                 "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
         ));
@@ -95,12 +83,22 @@ class ItemUseArchitectureAuditTest {
     }
 
     @Test
-    void fastConsumeStillHonorsConfiguredStaleSessionWindow() throws IOException {
-        String consume = Files.readString(Path.of(
-                "src/main/java/ac/grim/grimac/checks/impl/integrity/ConsumeTiming.java"
-        ));
+    void consumeDetectionAndTimingAreAbsent() throws IOException {
+        Path integrity = Path.of("src/main/java/ac/grim/grimac/checks/impl/integrity");
+        try (Stream<Path> files = Files.walk(integrity)) {
+            for (Path path : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String source = Files.readString(path);
+                assertFalse(source.contains("FastConsume"), path.toString());
+                assertFalse(source.contains("fast_consume"), path.toString());
+            }
+        }
 
-        assertTrue(consume.contains("interaction-integrity.consume.stale-extra-ms"));
-        assertTrue(consume.contains("configureConsumableStaleExtraMillis"));
+        String tracker = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/utils/item/ItemUseSessionTracker.java"
+        ));
+        assertFalse(tracker.contains("expectedDurationMillis"));
+        assertFalse(tracker.contains("sessionForConsume"));
+        assertFalse(tracker.contains("cancelConsume"));
+        assertFalse(tracker.contains("ComponentTypes.CONSUMABLE"));
     }
 }

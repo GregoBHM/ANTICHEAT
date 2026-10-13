@@ -15,32 +15,16 @@ class InteractionContextManagerTest {
         InteractionContextManager manager = new InteractionContextManager();
         UUID uuid = UUID.randomUUID();
 
-        manager.begin(
-                uuid,
-                InteractionContextType.CUSTOM_CONSUME,
-                "RPGItems:FoodPower",
-                1000L
-        );
-        manager.begin(
-                uuid,
-                InteractionContextType.CUSTOM_ITEM_ACTION,
-                "MagicSpells:Wand",
-                1000L
-        );
-        manager.begin(
-                uuid,
-                InteractionContextType.COMBATPLUS_COOLDOWN,
-                "CombatPlus:Gapple",
-                1000L
-        );
+        manager.begin(uuid, InteractionContextType.CUSTOM_ITEM_ACTION,
+                "RPGItems:Power", 1000L);
+        manager.begin(uuid, InteractionContextType.CUSTOM_ITEM_ACTION,
+                "MagicSpells:Wand", 1000L);
+        manager.begin(uuid, InteractionContextType.CUSTOM_INVENTORY,
+                "CombatPlus:Menu", 1000L);
 
         UUID other = UUID.randomUUID();
-        manager.begin(
-                other,
-                InteractionContextType.CUSTOM_CONSUME,
-                "RPGItems:OtherPlayer",
-                1000L
-        );
+        manager.begin(other, InteractionContextType.CUSTOM_ITEM_ACTION,
+                "RPGItems:OtherPlayer", 1000L);
 
         manager.clearSourcePrefix(uuid, "RPGItems");
 
@@ -77,19 +61,19 @@ class InteractionContextManagerTest {
     }
 
     @Test
-    void globalPluginCleanupKeepsOtherInteractionSourcesForEveryPlayer() {
+    void globalPluginCleanupKeepsOtherSourcesForEveryPlayer() {
         InteractionContextManager manager = new InteractionContextManager();
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
 
-        manager.begin(first, InteractionContextType.CUSTOM_CONSUME,
-                "RPGItems:Food", 1000L);
+        manager.begin(first, InteractionContextType.CUSTOM_ITEM_ACTION,
+                "RPGItems:Power", 1000L);
         manager.begin(first, InteractionContextType.CUSTOM_ITEM_ACTION,
                 "MagicSpells:Wand", 1000L);
-        manager.begin(second, InteractionContextType.CUSTOM_CONSUME,
-                "RPGItems:OtherFood", 1000L);
-        manager.begin(second, InteractionContextType.COMBATPLUS_COOLDOWN,
-                "CombatPlus:Gapple", 1000L);
+        manager.begin(second, InteractionContextType.CUSTOM_ITEM_ACTION,
+                "RPGItems:OtherPower", 1000L);
+        manager.begin(second, InteractionContextType.CUSTOM_INVENTORY,
+                "CombatPlus:Menu", 1000L);
 
         manager.clearSourcePrefix("RPGItems");
 
@@ -106,5 +90,4 @@ class InteractionContextManagerTest {
                 context -> context.getSource().startsWith("CombatPlus:")
         ));
     }
-
 }

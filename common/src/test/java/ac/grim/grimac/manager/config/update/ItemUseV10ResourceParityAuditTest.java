@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ItemUseV10ResourceParityAuditTest {
 
     @Test
-    void bundledMainConfigsPublishTheSameV10SafetyDefaults() throws Exception {
+    void bundledMainConfigsKeepPhysicalItemUseWithoutConsumeDetection() throws Exception {
         Path directory = Path.of("src/main/resources/config");
 
         try (Stream<Path> files = Files.list(directory)) {
@@ -31,11 +31,11 @@ class ItemUseV10ResourceParityAuditTest {
                 Map<String, Object> alerts = map(root, "alerts");
                 Map<String, Object> correction = map(root, "correction-diagnostics");
                 Map<String, Object> interaction = map(root, "interaction-integrity");
-                Map<String, Object> consume = map(interaction, "consume");
 
                 assertEquals(Boolean.FALSE, alerts.get("component-buckets"), path.toString());
                 assertEquals("verbose", correction.get("mode"), path.toString());
-                assertEquals(Boolean.TRUE, consume.get("enabled"), path.toString());
+                assertFalse(interaction.containsKey("consume"), path.toString());
+                assertFalse(Files.readString(path).contains("fast-consume:"), path.toString());
 
                 assertTrue(root.containsKey("movement-context-auto"), path.toString());
                 assertTrue(root.containsKey("movement-enforcement"), path.toString());
@@ -45,7 +45,7 @@ class ItemUseV10ResourceParityAuditTest {
     }
 
     @Test
-    void bundledPunishmentsKeepItemUseChecksIndependent() throws Exception {
+    void bundledPunishmentsKeepNoSlowIndependentAndContainNoFastConsume() throws Exception {
         Path directory = Path.of("src/main/resources/punishments");
 
         try (Stream<Path> files = Files.list(directory)) {
@@ -60,33 +60,25 @@ class ItemUseV10ResourceParityAuditTest {
                 Object rawGroups = root.get("Punishments");
                 assertTrue(rawGroups instanceof Map<?, ?>, path.toString());
 
-                boolean found = false;
+                boolean foundNoSlow = false;
                 for (Object rawGroup : ((Map<?, ?>) rawGroups).values()) {
-                    if (!(rawGroup instanceof Map<?, ?> group)) {
-                        continue;
-                    }
-
+                    if (!(rawGroup instanceof Map<?, ?> group)) continue;
                     Object rawChecks = group.get("checks");
-                    if (!(rawChecks instanceof List<?> checks)) {
-                        continue;
-                    }
+                    if (!(rawChecks instanceof List<?> checks)) continue;
 
                     boolean noSlow = checks.stream().anyMatch(value ->
                             "stable:grim.movement.noslow".equals(String.valueOf(value)));
                     boolean fastConsume = checks.stream().anyMatch(value ->
                             "stable:grim.interaction.fast_consume".equals(String.valueOf(value)));
 
-                    if (!noSlow && !fastConsume) {
-                        continue;
+                    assertFalse(fastConsume, path.toString());
+                    if (noSlow) {
+                        assertEquals("check", String.valueOf(group.get("threshold-scope")), path.toString());
+                        foundNoSlow = true;
                     }
-
-                    assertTrue(noSlow, path.toString());
-                    assertTrue(fastConsume, path.toString());
-                    assertEquals("check", String.valueOf(group.get("threshold-scope")), path.toString());
-                    found = true;
                 }
 
-                assertTrue(found, path.toString());
+                assertTrue(foundNoSlow, path.toString());
             }
         }
     }
