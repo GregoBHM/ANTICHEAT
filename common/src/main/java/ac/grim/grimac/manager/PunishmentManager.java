@@ -38,6 +38,14 @@ public class PunishmentManager implements ConfigReloadable {
     private boolean testMode;
     private String proxyAlertString = "";
 
+    // Raw VL remains complete for staff/history. This second ledger contains
+    // only flags observed while both the server and player network are healthy
+    // enough to support automatic sanctions.
+    private double sanctionMinimumConfidence = 0.80D;
+    private double sanctionMinimumServerConfidence = 0.80D;
+    private double sanctionMinimumPlayerConfidence = 0.80D;
+    private double sanctionMinimumTps = 18.0D;
+
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
     private CorrectionDiagnosticMode correctionDiagnosticsMode =
@@ -95,6 +103,26 @@ public class PunishmentManager implements ConfigReloadable {
         proxyAlertString = config.getStringElse(
                 "alerts-format-proxy",
                 "&8[proxy] [alert]"
+        );
+
+        sanctionMinimumConfidence = clamp01(config.getDoubleElse(
+                "sanctions.minimum-confidence",
+                0.80D
+        ));
+        sanctionMinimumServerConfidence = clamp01(config.getDoubleElse(
+                "sanctions.minimum-server-confidence",
+                0.80D
+        ));
+        sanctionMinimumPlayerConfidence = clamp01(config.getDoubleElse(
+                "sanctions.minimum-player-confidence",
+                0.80D
+        ));
+        sanctionMinimumTps = Math.max(
+                1.0D,
+                Math.min(
+                        20.0D,
+                        config.getDoubleElse("sanctions.minimum-tps", 18.0D)
+                )
         );
 
         try {
@@ -841,6 +869,12 @@ public class PunishmentManager implements ConfigReloadable {
             case "group_vl" ->
                     groupVl;
 
+            case "sanction_vl", "sanction_check_vl" ->
+                    group.sanctionViolations.count(check);
+
+            case "sanction_group_vl" ->
+                    group.sanctionViolations.size();
+
             case "integrity", "integrity_score" ->
                     GrimAPI.INSTANCE
                             .getIntegrityCorrelationManager()
@@ -1029,6 +1063,23 @@ public class PunishmentManager implements ConfigReloadable {
         return String.format(Locale.ROOT, "%.2f", value);
     }
 
+    private boolean sanctionableNow() {
+        var lag = GrimAPI.INSTANCE.getLagProtectionManager();
+        double serverConfidence = lag.heuristicConfidence();
+        double playerConfidence = lag.playerNetworkConfidence(player);
+        double confidence = Math.min(serverConfidence, playerConfidence);
+        double tps = GrimAPI.INSTANCE.getPlatformServer().getTPS();
+
+        return confidence >= sanctionMinimumConfidence
+                && serverConfidence >= sanctionMinimumServerConfidence
+                && playerConfidence >= sanctionMinimumPlayerConfidence
+                && tps >= sanctionMinimumTps;
+    }
+
+    private static double clamp01(double value) {
+        return Math.max(0.0D, Math.min(1.0D, value));
+    }
+
     private static boolean defaultsToPerCheckScope(
             List<AbstractCheck> checks
     ) {
@@ -1142,14 +1193,25 @@ public class PunishmentManager implements ConfigReloadable {
     }
 
     public void handleViolation(Check check) {
-        for (PunishGroup group : groups) {
-            if (group.checks.contains(check)) {
-                long currentTime =
-                        TimeUnit.NANOSECONDS.toMillis(
-                                System.nanoTime()
-                        );
+        long currentTime =
+                TimeUnit.NANOSECONDS.toMillis(
+                        System.nanoTime()
+                );
+        boolean sanctionable = sanctionableNow();
 
-                group.violations.record(
+        for (PunishGroup group : groups) {
+            if (!group.checks.contains(check)) {
+                continue;
+            }
+
+            group.violations.record(
+                    currentTime,
+                    check,
+                    group.removeViolationsAfter
+            );
+
+            if (sanctionable) {
+                group.sanctionViolations.record(
                         currentTime,
                         check,
                         group.removeViolationsAfter
@@ -1196,6 +1258,8 @@ final class PunishGroup {
     final List<AbstractCheck> checks;
     final List<ParsedCommand> commands;
     final ViolationHistory<AbstractCheck> violations =
+            new ViolationHistory<>();
+    final ViolationHistory<AbstractCheck> sanctionViolations =
             new ViolationHistory<>();
     final int removeViolationsAfter;
     final ThresholdScope thresholdScope;
