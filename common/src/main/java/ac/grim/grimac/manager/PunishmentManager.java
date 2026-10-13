@@ -358,6 +358,9 @@ public class PunishmentManager implements ConfigReloadable {
         ).replace(
                 "%packet_modify%",
                 check.shouldModifyPackets() ? "ACTIVE" : "BYPASS"
+        ).replace(
+                "%setback_access%",
+                check.isNoSetbackPermission() ? "BYPASS" : "ACTIVE"
         );
     }
 

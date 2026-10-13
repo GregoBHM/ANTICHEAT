@@ -126,6 +126,8 @@ class FinalIntegrityAuditTest {
 
         assertTrue(punishment.contains("%packet_modify%"));
         assertTrue(punishment.contains("check.shouldModifyPackets() ? \"ACTIVE\" : \"BYPASS\""));
+        assertTrue(punishment.contains("%setback_access%"));
+        assertTrue(punishment.contains("check.isNoSetbackPermission() ? \"BYPASS\" : \"ACTIVE\""));
     }
 
 }
