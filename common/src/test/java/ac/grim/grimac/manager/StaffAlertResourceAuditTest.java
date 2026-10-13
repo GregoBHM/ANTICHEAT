@@ -64,7 +64,7 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("timer-limit: 2.0"), path.toString());
                 assertTrue(text.contains("reach: 3.0"), path.toString());
                 assertTrue(text.contains("TimerA:"), path.toString());
-                assertTrue(text.contains("minimum-server-confidence: 0.30"), path.toString());
+                assertTrue(text.contains("minimum-server-confidence: 0.50"), path.toString());
                 assertFalse(text.contains("fast-consume:"), path.toString());
                 assertFalse(text.contains("\n    consume:\n"), path.toString());
                 assertTrue(text.contains("context-policy:"), path.toString());
@@ -94,11 +94,13 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("stable:grim.velocity.anti_knockback"), path.toString());
                 assertTrue(text.contains("stable:grim.movement.noslow"), path.toString());
                 assertFalse(text.contains("stable:grim.interaction.fast_consume"), path.toString());
+                assertTrue(text.contains("sanctions:"), path.toString());
+                assertTrue(text.contains("minimum-confidence: 0.80"), path.toString());
+                assertTrue(text.contains("minimum-server-confidence: 0.80"), path.toString());
+                assertTrue(text.contains("minimum-player-confidence: 0.80"), path.toString());
+                assertTrue(text.contains("minimum-tps: 18.0"), path.toString());
                 assertTrue(text.contains("do kick %player%"), path.toString());
-                assertTrue(text.contains("confidence>=0.80"), path.toString());
-                assertTrue(text.contains("server_confidence>=0.80"), path.toString());
-                assertTrue(text.contains("player_confidence>=0.80"), path.toString());
-                assertTrue(text.contains("tps>=18.0"), path.toString());
+                assertTrue(text.contains("sanction_vl>="), path.toString());
             }
         }
     }

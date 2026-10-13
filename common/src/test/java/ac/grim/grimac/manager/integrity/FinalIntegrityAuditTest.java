@@ -104,4 +104,19 @@ class FinalIntegrityAuditTest {
         assertTrue(punishment.contains("%lag_state%"));
     }
 
+
+    @Test
+    void punishmentHistorySeparatesRawAndSanctionableEvidence() throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+
+        assertTrue(punishment.contains("sanctionViolations"));
+        assertTrue(punishment.contains("boolean sanctionable = sanctionableNow()"));
+        assertTrue(punishment.contains("case \"sanction_vl\", \"sanction_check_vl\""));
+        assertTrue(punishment.contains("case \"sanction_group_vl\""));
+        assertTrue(punishment.contains("sanctionMinimumConfidence"));
+        assertTrue(punishment.contains("sanctionMinimumServerConfidence"));
+        assertTrue(punishment.contains("sanctionMinimumPlayerConfidence"));
+        assertTrue(punishment.contains("sanctionMinimumTps"));
+    }
+
 }
