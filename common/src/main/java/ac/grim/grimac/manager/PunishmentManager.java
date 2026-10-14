@@ -11,6 +11,9 @@ import ac.grim.grimac.platform.api.player.PlatformPlayer;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.LogUtil;
 import ac.grim.grimac.utils.anticheat.MessageUtil;
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.manager.server.ServerVersion;
+import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.Nullable;
 
@@ -45,6 +48,7 @@ public class PunishmentManager implements ConfigReloadable {
     private double sanctionMinimumServerConfidence = 0.80D;
     private double sanctionMinimumPlayerConfidence = 0.80D;
     private double sanctionMinimumTps = 18.0D;
+    private boolean legacyOneEightNativeSensitiveSanctionsOnly = true;
 
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
@@ -123,6 +127,10 @@ public class PunishmentManager implements ConfigReloadable {
                         20.0D,
                         config.getDoubleElse("sanctions.minimum-tps", 18.0D)
                 )
+        );
+        legacyOneEightNativeSensitiveSanctionsOnly = config.getBooleanElse(
+                "sanctions.legacy-1_8.native-sensitive-sanctions-only",
+                true
         );
 
         try {
@@ -1069,6 +1077,41 @@ public class PunishmentManager implements ConfigReloadable {
         return String.format(Locale.ROOT, "%.2f", value);
     }
 
+    private boolean sanctionEvidenceEligible(Check check) {
+        String key = check.getStableKey();
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+
+        return switch (key) {
+            case "grim.timer.timer" -> true;
+            case "grim.velocity.anti_knockback" ->
+                    "velocity.normal".equals(check.getLastComponent())
+                            && sensitiveLegacyEvidenceAllowed();
+            case "grim.combat.reach", "grim.combat.hitboxes" ->
+                    sensitiveLegacyEvidenceAllowed();
+            default -> key.startsWith("grim.crash.");
+        };
+    }
+
+    private boolean sensitiveLegacyEvidenceAllowed() {
+        if (!legacyOneEightNativeSensitiveSanctionsOnly) {
+            return true;
+        }
+
+        ServerVersion serverVersion =
+                PacketEvents.getAPI().getServerManager().getVersion();
+
+        if (serverVersion.isNewerThan(ServerVersion.V_1_8_8)) {
+            return true;
+        }
+
+        // 1.8.8 and 1.8.9 share protocol 47 and are represented as V_1_8.
+        // ViaVersion/ViaRewind clients remain fully detected/prevented, but
+        // translated combat geometry/movement cannot create autonomous sanctions.
+        return player.getClientVersion() == ClientVersion.V_1_8;
+    }
+
     private boolean sanctionableNow() {
         var lag = GrimAPI.INSTANCE.getLagProtectionManager();
         double serverConfidence = lag.heuristicConfidence();
@@ -1203,7 +1246,8 @@ public class PunishmentManager implements ConfigReloadable {
                 TimeUnit.NANOSECONDS.toMillis(
                         System.nanoTime()
                 );
-        boolean sanctionable = sanctionableNow();
+        boolean sanctionable = sanctionableNow()
+                && sanctionEvidenceEligible(check);
 
         for (PunishGroup group : groups) {
             if (!group.checks.contains(check)) {
