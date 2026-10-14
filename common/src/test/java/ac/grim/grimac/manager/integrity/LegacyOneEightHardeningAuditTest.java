@@ -93,4 +93,19 @@ class LegacyOneEightHardeningAuditTest {
         ));
     }
 
+
+    @Test
+    void antiKbPreventionCannotLoopOrUseUncertainLegacyPhysics() throws IOException {
+        String knockback = source("checks/impl/velocity/KnockbackHandler.java");
+
+        assertTrue(knockback.contains("sendingInternalEnforcementVelocity"));
+        assertTrue(knockback.contains("data != null && data.isSetback"));
+        assertTrue(knockback.contains("enforcementNativeOneEightOnly"));
+        assertTrue(knockback.contains("enforcementMinimumServerConfidence"));
+        assertTrue(knockback.contains("normalEnforcementStreak"));
+        assertTrue(knockback.contains(
+                "normalEnforcementStreak >= enforcementStrongConsecutiveTicks"
+        ));
+    }
+
 }

@@ -72,6 +72,9 @@ class StaffAlertResourceAuditTest {
                 assertFalse(text.contains("\n    consume:\n"), path.toString());
                 assertTrue(text.contains("context-policy:"), path.toString());
                 assertTrue(text.contains("special-environment:"), path.toString());
+                assertTrue(text.contains("native-1_8-only: true"), path.toString());
+                assertTrue(text.contains("strong-consecutive-ticks: 3"), path.toString());
+                assertTrue(text.contains("max-retries: 1"), path.toString());
                 assertTrue(text.contains("flag-episode-window-ms: 1500"), path.toString());
                 assertTrue(text.contains("evidence-episodes:"), path.toString());
                 assertTrue(text.contains("max-total-flags: 2"), path.toString());
