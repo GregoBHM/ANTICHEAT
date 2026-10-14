@@ -143,4 +143,49 @@ class StaffAlertResourceAuditTest {
                 path + " " + group
         );
     }
+
+    @Test
+    void heuristicChecksCannotAutoKickOnTheirOwn() throws IOException {
+        Path dir = Path.of("src/main/resources/punishments");
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path path : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
+                String text = Files.readString(path);
+
+                assertGroupHasNoKick(text, "Simulation", path);
+                assertGroupHasNoKick(text, "NetworkIntegrity", path);
+                assertGroupHasNoKick(text, "GroundIntegrity", path);
+                assertGroupHasNoKick(text, "Misc", path);
+                assertGroupHasNoKick(text, "Combat", path);
+                assertGroupHasNoKick(text, "Regen", path);
+
+                String timer = groupBlock(text, "Timer");
+                assertTrue(timer.contains("\"Timer\""), path.toString());
+                assertTrue(timer.contains("\"TimerLimit\""), path.toString());
+                assertTrue(timer.contains("sanction_vl>=100"), path.toString());
+
+                String knockback = groupBlock(text, "Knockback");
+                assertTrue(knockback.contains("sanction_vl>=50"), path.toString());
+                assertTrue(knockback.contains("integrity_score>=4.0"), path.toString());
+            }
+        }
+    }
+
+    private static void assertGroupHasNoKick(
+            String text,
+            String group,
+            Path path
+    ) {
+        String block = groupBlock(text, group);
+        assertFalse(block.contains(" do kick "), path + " " + group);
+    }
+
+    private static String groupBlock(String text, String group) {
+        String marker = "  " + group + ":";
+        int start = text.indexOf(marker);
+        assertTrue(start >= 0, "missing group " + group);
+
+        int next = text.indexOf("\n  ", start + marker.length());
+        return text.substring(start, next < 0 ? text.length() : next);
+    }
+
 }
