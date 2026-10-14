@@ -154,6 +154,9 @@ class StaffAlertResourceAuditTest {
                 assertGroupHasNoKick(text, "Simulation", path);
                 assertGroupHasNoKick(text, "NetworkIntegrity", path);
                 assertGroupHasNoKick(text, "GroundIntegrity", path);
+                assertGroupHasNoKick(text, "PacketOrder", path);
+                assertGroupHasNoKick(text, "Explosion", path);
+                assertGroupHasNoKick(text, "Post", path);
                 assertGroupHasNoKick(text, "Misc", path);
                 assertGroupHasNoKick(text, "Combat", path);
                 assertGroupHasNoKick(text, "Regen", path);
@@ -166,6 +169,16 @@ class StaffAlertResourceAuditTest {
                 String knockback = groupBlock(text, "Knockback");
                 assertTrue(knockback.contains("sanction_vl>=50"), path.toString());
                 assertTrue(knockback.contains("integrity_score>=4.0"), path.toString());
+
+                String badPackets = groupBlock(text, "BadPackets");
+                assertTrue(badPackets.contains("threshold-scope: check"), path.toString());
+                assertTrue(badPackets.contains("sanction_vl>=100"), path.toString());
+                assertFalse(badPackets.contains("\"PacketOrder\""), path.toString());
+
+                String packetOrder = groupBlock(text, "PacketOrder");
+                assertTrue(packetOrder.contains("\"PacketOrder\""), path.toString());
+                assertTrue(packetOrder.contains("\"Post\""), path.toString());
+                assertTrue(packetOrder.contains("\"TransactionOrder\""), path.toString());
             }
         }
     }
