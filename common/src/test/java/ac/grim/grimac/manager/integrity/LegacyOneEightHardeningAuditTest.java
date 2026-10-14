@@ -72,4 +72,25 @@ class LegacyOneEightHardeningAuditTest {
                 "isOlderThanOrEquals(ClientVersion.V_1_8)"
         ));
     }
+
+    @Test
+    void serverLagCannotCreateDestructiveSimulationOrPacketSpamKicks() throws IOException {
+        String offset = source("checks/impl/prediction/OffsetHandler.java");
+        String player = source("player/GrimPlayer.java");
+
+        assertTrue(offset.contains("enforcementMinimumServerConfidence"));
+        assertTrue(offset.contains("enforcementServerHealthy"));
+        assertTrue(offset.contains(
+                "getLagProtectionManager().heuristicConfidence()"
+        ));
+
+        assertTrue(player.contains("packetSpamMinimumServerConfidence"));
+        assertTrue(player.contains(
+                "serverConfidence < packetSpamMinimumServerConfidence"
+        ));
+        assertTrue(player.contains(
+                "Keep cancelling invalid/excess packets"
+        ));
+    }
+
 }

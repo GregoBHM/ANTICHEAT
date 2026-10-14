@@ -65,6 +65,9 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("reach: 3.0"), path.toString());
                 assertTrue(text.contains("TimerA:"), path.toString());
                 assertTrue(text.contains("minimum-server-confidence: 0.50"), path.toString());
+                assertTrue(text.contains("movement-enforcement:"), path.toString());
+                assertTrue(text.contains("minimum-server-confidence: 0.55"), path.toString());
+                assertTrue(text.contains("packet-spam-minimum-server-confidence: 0.55"), path.toString());
                 assertFalse(text.contains("fast-consume:"), path.toString());
                 assertFalse(text.contains("\n    consume:\n"), path.toString());
                 assertTrue(text.contains("context-policy:"), path.toString());
@@ -207,7 +210,26 @@ class StaffAlertResourceAuditTest {
         int start = text.indexOf(marker);
         assertTrue(start >= 0, "missing group " + group);
 
-        int next = text.indexOf("\n  ", start + marker.length());
+        int cursor = start + marker.length();
+        int next = -1;
+
+        while (cursor < text.length()) {
+            int candidate = text.indexOf("\n  ", cursor);
+            if (candidate < 0) {
+                break;
+            }
+
+            int content = candidate + 3;
+            if (content < text.length()
+                    && text.charAt(content) != ' '
+                    && text.charAt(content) != '\t') {
+                next = candidate;
+                break;
+            }
+
+            cursor = candidate + 3;
+        }
+
         return text.substring(start, next < 0 ? text.length() : next);
     }
 
