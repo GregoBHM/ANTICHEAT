@@ -18,35 +18,53 @@ sanctions:
 
 Punishments:
   Simulation:
-    # Au bout de combien de secondes une violation doit-elle être supprimée ?
     remove-violations-after: 300
     threshold-scope: check
-    # Cette section correspondra à toutes les vérifications portant le nom indiqué,
-    # Pour exclure une vérification qui serait sinon correspondante, placez un point d'exclamation devant le nom.
-    # Par exemple, !BadPacketsN
     checks:
       - "stable:grim.prediction.simulation"
-      - "GroundSpoof"
-      - "Timer"
-      - "TimerLimit"
-      - "ConnectionStall"
-      - "PacketBurst"
-      - "NoFall"
-    # Limite : Intervale entre chaque Commande
-    #
-    # Par exemple, pour exclure le joueur avec le message "Mouvement incorrect !" après 100 violations, sans intervale
-    # commands:
-    # - "100:0 kick %player% Mouvement incorrect !"
-    # 0 pour exécuter qu'une seule fois
-    # - "100:50 say %player% est en train de tricher !"
-    # Exécuter lorsque l'utilisateur atteint 100 violations, puis toutes les 50 violations suivantes après les 100 violations.
-    #
     commands:
       - "5:20 [alert]"
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
-      - "1:0 if sanction_vl>=50 do kick %player% Unfair movement detected by SparkGrim."
+
+  Timer:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "Timer"
+      - "TimerLimit"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "25:25 [webhook]"
+      - "25:25 [proxy]"
+      - "1:0 if sanction_vl>=100 do kick %player% Timer abuse detected by SparkGrim."
+
+  NetworkIntegrity:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "ConnectionStall"
+      - "PacketBurst"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+
+  GroundIntegrity:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "GroundSpoof"
+      - "NoFall"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+
   Knockback:
     remove-violations-after: 300
     threshold-scope: check
@@ -58,7 +76,7 @@ Punishments:
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
-      - "1:0 if sanction_vl>=25 do kick %player% Invalid knockback detected by SparkGrim."
+      - "1:0 if sanction_vl>=50 & integrity_score>=4.0 do kick %player% Invalid knockback detected by SparkGrim."
   Post:
     remove-violations-after: 300
     checks:
@@ -90,7 +108,7 @@ Punishments:
       - "1:1 [log]"
       - "3:3 [webhook]"
       - "3:3 [proxy]"
-      - "1:0 if sanction_vl>=12 do kick %player% Invalid reach detected by SparkGrim."
+      - "1:0 if sanction_vl>=20 do kick %player% Invalid reach detected by SparkGrim."
   Hitboxes:
     remove-violations-after: 300
     checks:
@@ -100,7 +118,7 @@ Punishments:
       - "1:1 [log]"
       - "5:3 [webhook]"
       - "5:3 [proxy]"
-      - "1:0 if sanction_vl>=20 do kick %player% Invalid hitbox interaction detected by SparkGrim."
+      - "1:0 if sanction_vl>=30 do kick %player% Invalid hitbox interaction detected by SparkGrim."
   Misc:
     remove-violations-after: 300
     threshold-scope: check
@@ -123,7 +141,6 @@ Punishments:
       - "1:1 [log]"
       - "20:10 [webhook]"
       - "20:10 [proxy]"
-      - "1:0 if sanction_vl>=30 do kick %player% Invalid gameplay behavior detected by SparkGrim."
   Combat:
     remove-violations-after: 300
     checks:
@@ -133,7 +150,6 @@ Punishments:
     commands:
       - "20:20 [alert]"
       - "1:1 [log]"
-      - "1:0 if sanction_vl>=40 do kick %player% Invalid combat behavior detected by SparkGrim."
   # A partir de la version 2.2.10, il n'y a plus de vérifications pour AutoClicker et c'est un placeholder. Grim inclura des vérifications AutoClicker dans le futur.
   Autoclicker:
     remove-violations-after: 300
@@ -152,4 +168,3 @@ Punishments:
       - "1:1 [log]"
       - "10:10 [webhook]"
       - "10:10 [proxy]"
-      - "1:0 if sanction_vl>=12 do kick %player% Invalid regeneration detected by SparkGrim."

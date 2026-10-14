@@ -22,18 +22,49 @@ Punishments:
     threshold-scope: check
     checks:
       - "stable:grim.prediction.simulation"
-      - "GroundSpoof"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+
+  Timer:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
       - "Timer"
       - "TimerLimit"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "25:25 [webhook]"
+      - "25:25 [proxy]"
+      - "1:0 if sanction_vl>=100 do kick %player% Timer abuse detected by SparkGrim."
+
+  NetworkIntegrity:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
       - "ConnectionStall"
       - "PacketBurst"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+
+  GroundIntegrity:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "GroundSpoof"
       - "NoFall"
     commands:
       - "5:20 [alert]"
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
-      - "1:0 if sanction_vl>=50 do kick %player% Unfair movement detected by SparkGrim."
+
   Knockback:
     remove-violations-after: 300
     threshold-scope: check
@@ -45,7 +76,7 @@ Punishments:
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
-      - "1:0 if sanction_vl>=25 do kick %player% Invalid knockback detected by SparkGrim."
+      - "1:0 if sanction_vl>=50 & integrity_score>=4.0 do kick %player% Invalid knockback detected by SparkGrim."
   Post:
     remove-violations-after: 300
     checks:
@@ -77,7 +108,7 @@ Punishments:
       - "1:1 [log]"
       - "3:3 [webhook]"
       - "3:3 [proxy]"
-      - "1:0 if sanction_vl>=12 do kick %player% Invalid reach detected by SparkGrim."
+      - "1:0 if sanction_vl>=20 do kick %player% Invalid reach detected by SparkGrim."
   Hitboxes:
     remove-violations-after: 300
     checks:
@@ -87,7 +118,7 @@ Punishments:
       - "1:1 [log]"
       - "5:3 [webhook]"
       - "5:3 [proxy]"
-      - "1:0 if sanction_vl>=20 do kick %player% Invalid hitbox interaction detected by SparkGrim."
+      - "1:0 if sanction_vl>=30 do kick %player% Invalid hitbox interaction detected by SparkGrim."
   Misc:
     remove-violations-after: 300
     threshold-scope: check
@@ -110,7 +141,6 @@ Punishments:
       - "1:1 [log]"
       - "20:10 [webhook]"
       - "20:10 [proxy]"
-      - "1:0 if sanction_vl>=30 do kick %player% Invalid gameplay behavior detected by SparkGrim."
   Combat:
     remove-violations-after: 300
     checks:
@@ -120,7 +150,6 @@ Punishments:
     commands:
       - "20:20 [alert]"
       - "1:1 [log]"
-      - "1:0 if sanction_vl>=40 do kick %player% Invalid combat behavior detected by SparkGrim."
   Autoclicker:
     remove-violations-after: 300
     checks:
@@ -138,4 +167,3 @@ Punishments:
       - "1:1 [log]"
       - "10:10 [webhook]"
       - "10:10 [proxy]"
-      - "1:0 if sanction_vl>=12 do kick %player% Invalid regeneration detected by SparkGrim."

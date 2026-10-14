@@ -18,35 +18,53 @@ sanctions:
 
 Punishments:
   Simulation:
-    # 多少秒后重置VL
     remove-violations-after: 300
     threshold-scope: check
-    # 这个部分将会匹配检查的名字
-    # 要关闭掉一个检查就在检查前面加感叹号
-    # 例如, !BadPacketsN
     checks:
       - "stable:grim.prediction.simulation"
-      - "GroundSpoof"
-      - "Timer"
-      - "TimerLimit"
-      - "ConnectionStall"
-      - "PacketBurst"
-      - "NoFall"
-    # 最大vl:下一次执行需要的vl
-    #
-    # 这是个例子, 当到达100VL时为了以 "incorrect movement!" 为理由踢出玩家
-    # commands:
-    # - "100:0 kick %player% incorrect movement!"
-    # 后面的数如果使用0就代表只执行一次
-    # - "100:50 say %player% is cheating"
-    # 在100vl后执行say %player% is cheating,之后的每50vl都执行一次say %player% is cheating
-    #
     commands:
       - "5:20 [alert]"
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
-      - "1:0 if sanction_vl>=50 do kick %player% Unfair movement detected by SparkGrim."
+
+  Timer:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "Timer"
+      - "TimerLimit"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "25:25 [webhook]"
+      - "25:25 [proxy]"
+      - "1:0 if sanction_vl>=100 do kick %player% Timer abuse detected by SparkGrim."
+
+  NetworkIntegrity:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "ConnectionStall"
+      - "PacketBurst"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+
+  GroundIntegrity:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "GroundSpoof"
+      - "NoFall"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "20:20 [webhook]"
+      - "20:20 [proxy]"
+
   Knockback:
     remove-violations-after: 300
     threshold-scope: check
@@ -58,7 +76,7 @@ Punishments:
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
-      - "1:0 if sanction_vl>=25 do kick %player% Invalid knockback detected by SparkGrim."
+      - "1:0 if sanction_vl>=50 & integrity_score>=4.0 do kick %player% Invalid knockback detected by SparkGrim."
   Post:
     remove-violations-after: 300
     checks:
@@ -90,7 +108,7 @@ Punishments:
       - "1:1 [log]"
       - "3:3 [webhook]"
       - "3:3 [proxy]"
-      - "1:0 if sanction_vl>=12 do kick %player% Invalid reach detected by SparkGrim."
+      - "1:0 if sanction_vl>=20 do kick %player% Invalid reach detected by SparkGrim."
   Hitboxes:
     remove-violations-after: 300
     checks:
@@ -100,7 +118,7 @@ Punishments:
       - "1:1 [log]"
       - "5:3 [webhook]"
       - "5:3 [proxy]"
-      - "1:0 if sanction_vl>=20 do kick %player% Invalid hitbox interaction detected by SparkGrim."
+      - "1:0 if sanction_vl>=30 do kick %player% Invalid hitbox interaction detected by SparkGrim."
   Misc:
     remove-violations-after: 300
     threshold-scope: check
@@ -123,7 +141,6 @@ Punishments:
       - "1:1 [log]"
       - "20:10 [webhook]"
       - "20:10 [proxy]"
-      - "1:0 if sanction_vl>=30 do kick %player% Invalid gameplay behavior detected by SparkGrim."
   Combat:
     remove-violations-after: 300
     checks:
@@ -133,7 +150,6 @@ Punishments:
     commands:
       - "20:20 [alert]"
       - "1:1 [log]"
-      - "1:0 if sanction_vl>=40 do kick %player% Invalid combat behavior detected by SparkGrim."
   # Grim2.0.10版本 没有连点器检查，Grim将在未来添加
   Autoclicker:
     remove-violations-after: 300
@@ -152,4 +168,3 @@ Punishments:
       - "1:1 [log]"
       - "10:10 [webhook]"
       - "10:10 [proxy]"
-      - "1:0 if sanction_vl>=12 do kick %player% Invalid regeneration detected by SparkGrim."
