@@ -198,11 +198,16 @@ Knockback:
         max-flags-per-episode: 1
 
     enforcement:
-        enabled: false
+        # Base profile: prevent strong AntiKB advantage only for native protocol-47
+        # clients. Via-translated clients remain detected but are not force-pushed.
+        enabled: true
+        native-1_8-only: true
+        minimum-server-confidence: 0.55
+        strong-consecutive-ticks: 3
         cooldown-ms: 120
         recovery-ms: 350
         episode-reset-ms: 1200
-        max-retries: 2
+        max-retries: 1
         minimum-reapply-scale: 0.35
         suppress-in-special-environments: true
 
