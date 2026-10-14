@@ -126,7 +126,7 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                         1.0D,
                         config.getDoubleElse(
                                 getConfigName() + ".prevention.minimum-server-confidence",
-                                0.30D
+                                0.50D
                         )
                 )
         );

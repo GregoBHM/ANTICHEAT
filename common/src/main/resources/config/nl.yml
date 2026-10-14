@@ -674,6 +674,9 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    # Destructive Simulation correction pauses only when the SERVER is unhealthy.
+    # Player ping/jitter alone never becomes a movement bypass.
+    minimum-server-confidence: 0.55
 
     environment:
         # Prevent a special movement state from leaving the player trapped by a stale safe position.
