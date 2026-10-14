@@ -16,6 +16,10 @@ sanctions:
   minimum-server-confidence: 0.80
   minimum-player-confidence: 0.80
   minimum-tps: 18.0
+  legacy-1_8:
+    # On a 1.8.8 backend, translated modern clients still get prevention and
+    # alerts, but combat geometry/velocity cannot create autonomous sanctions.
+    native-sensitive-sanctions-only: true
 
 Punishments:
   Simulation:
@@ -34,13 +38,23 @@ Punishments:
     threshold-scope: check
     checks:
       - "Timer"
-      - "TimerLimit"
     commands:
       - "5:20 [alert]"
       - "1:1 [log]"
       - "25:25 [webhook]"
       - "25:25 [proxy]"
       - "1:0 if sanction_vl>=100 do kick %player% Timer abuse detected by SparkGrim."
+
+  TimerLimit:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "TimerLimit"
+    commands:
+      - "5:20 [alert]"
+      - "1:1 [log]"
+      - "25:25 [webhook]"
+      - "25:25 [proxy]"
 
   NetworkIntegrity:
     remove-violations-after: 300
@@ -53,6 +67,17 @@ Punishments:
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
+
+  Phase:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "Phase"
+    commands:
+      - "3:10 [alert]"
+      - "1:1 [log]"
+      - "10:10 [webhook]"
+      - "10:10 [proxy]"
 
   GroundIntegrity:
     remove-violations-after: 300
@@ -91,6 +116,7 @@ Punishments:
 
   Post:
     remove-violations-after: 300
+    threshold-scope: check
     checks:
       - "Post"
     commands:
@@ -98,18 +124,29 @@ Punishments:
       - "1:1 [log]"
       - "40:40 [webhook]"
       - "40:40 [proxy]"
+
   BadPackets:
     remove-violations-after: 300
     threshold-scope: check
     checks:
       - "BadPackets"
-      - "Crash"
     commands:
       - "20:20 [alert]"
       - "1:1 [log]"
       - "40:40 [webhook]"
       - "40:40 [proxy]"
-      - "1:0 if sanction_vl>=100 do kick %player% Invalid packet behavior detected by SparkGrim."
+
+  Crash:
+    remove-violations-after: 300
+    threshold-scope: check
+    checks:
+      - "Crash"
+    commands:
+      - "1:5 [alert]"
+      - "1:1 [log]"
+      - "5:5 [webhook]"
+      - "5:5 [proxy]"
+      - "1:0 if sanction_vl>=10 do kick %player% Malformed crash packet detected by SparkGrim."
 
   PacketOrder:
     remove-violations-after: 300
@@ -117,6 +154,7 @@ Punishments:
     checks:
       - "PacketOrder"
       - "Post"
+      - "TransactionOrder"
     commands:
       - "10:20 [alert]"
       - "1:1 [log]"
