@@ -99,6 +99,7 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("minimum-server-confidence: 0.80"), path.toString());
                 assertTrue(text.contains("minimum-player-confidence: 0.80"), path.toString());
                 assertTrue(text.contains("minimum-tps: 18.0"), path.toString());
+                assertTrue(text.contains("native-sensitive-sanctions-only: true"), path.toString());
                 assertTrue(text.contains("do kick %player%"), path.toString());
                 assertTrue(text.contains("sanction_vl>="), path.toString());
             }
@@ -152,19 +153,25 @@ class StaffAlertResourceAuditTest {
                 String text = Files.readString(path);
 
                 assertGroupHasNoKick(text, "Simulation", path);
+                assertGroupHasNoKick(text, "TimerLimit", path);
                 assertGroupHasNoKick(text, "NetworkIntegrity", path);
+                assertGroupHasNoKick(text, "Phase", path);
                 assertGroupHasNoKick(text, "GroundIntegrity", path);
                 assertGroupHasNoKick(text, "PacketOrder", path);
                 assertGroupHasNoKick(text, "Explosion", path);
                 assertGroupHasNoKick(text, "Post", path);
+                assertGroupHasNoKick(text, "BadPackets", path);
                 assertGroupHasNoKick(text, "Misc", path);
                 assertGroupHasNoKick(text, "Combat", path);
                 assertGroupHasNoKick(text, "Regen", path);
 
                 String timer = groupBlock(text, "Timer");
                 assertTrue(timer.contains("\"Timer\""), path.toString());
-                assertTrue(timer.contains("\"TimerLimit\""), path.toString());
+                assertFalse(timer.contains("\"TimerLimit\""), path.toString());
                 assertTrue(timer.contains("sanction_vl>=100"), path.toString());
+
+                String timerLimit = groupBlock(text, "TimerLimit");
+                assertTrue(timerLimit.contains("\"TimerLimit\""), path.toString());
 
                 String knockback = groupBlock(text, "Knockback");
                 assertTrue(knockback.contains("sanction_vl>=50"), path.toString());
@@ -172,8 +179,11 @@ class StaffAlertResourceAuditTest {
 
                 String badPackets = groupBlock(text, "BadPackets");
                 assertTrue(badPackets.contains("threshold-scope: check"), path.toString());
-                assertTrue(badPackets.contains("sanction_vl>=100"), path.toString());
+                assertFalse(badPackets.contains(" do kick "), path.toString());
                 assertFalse(badPackets.contains("\"PacketOrder\""), path.toString());
+
+                String crash = groupBlock(text, "Crash");
+                assertTrue(crash.contains("sanction_vl>=10"), path.toString());
 
                 String packetOrder = groupBlock(text, "PacketOrder");
                 assertTrue(packetOrder.contains("\"PacketOrder\""), path.toString());
