@@ -429,6 +429,9 @@ reset-item-usage-on-slot-change: true
 # Grim uneori anulează pachete ilegale precum timer, după X pachete anulate într-o secundă, când să
 # deconectăm jucătorul? Este necesar deoarece unele limitatoare de pachete nu numără pachetele anulate de Grim.
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # Activează pentru a afișa stacktrace când un jucător e deconectat din cauza packet-spam-threshold
 debug-packet-cancel: false
 

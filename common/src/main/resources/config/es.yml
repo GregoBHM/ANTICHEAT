@@ -436,6 +436,9 @@ reset-item-usage-on-item-use: true
 # cuando deberíamos simplemente expulsar al jugador? Esto es obligatorio ya que algunos limitadores de paquetes
 # no cuentan los paquetes cancelados por Grim.
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # Activa esto para imprimir un stacktrace cuando un jugador sea expulsado por packet-spam-threshold
 debug-packet-cancel: false
 

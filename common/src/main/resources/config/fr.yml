@@ -427,6 +427,9 @@ reset-item-usage-on-item-use: true
 # à partir de combien de paquets annulés devrions-nous simplement expulser le joueur ?
 # Cela est nécessaire car certains limiteurs de paquets ne comptent pas les paquets annulés par Grim.
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # Activez ceci pour afficher une trace de pile lorsqu’un joueur est expulsé à cause du packet-spam-threshold
 debug-packet-cancel: false
 

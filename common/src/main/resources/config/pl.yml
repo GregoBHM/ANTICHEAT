@@ -430,6 +430,9 @@ reset-item-usage-on-item-use: true
 # Grim czasami anuluje nielegalne pakiety, np. przy użyciu timera. Po anulowaniu X pakietów na sekundę, kiedy powinniśmy
 # po prostu wyrzucić gracza? Jest to wymagane, ponieważ niektóre limitery pakietów nie liczą pakietów anulowanych przez Grima.
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # Włącz to, aby wydrukować stack trace, gdy gracz zostanie wyrzucony z powodu przekroczenia packet-spam-threshold.
 debug-packet-cancel: false
 

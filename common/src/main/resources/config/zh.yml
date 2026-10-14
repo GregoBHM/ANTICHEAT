@@ -452,6 +452,9 @@ reset-item-usage-on-item-use: true
 # 在一秒钟内取消了多少个数据包后，我们应该踢掉这个玩家？
 # 我们认为你应该启用此项，因为有些数据包限制器并不记录被Grim取消的数据包。
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # 启用此项可在玩家因 packet-spam-threshold 被踢时打印堆栈追踪
 debug-packet-cancel: false
 

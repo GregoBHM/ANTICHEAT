@@ -426,6 +426,9 @@ reset-item-usage-on-item-use: true
 # Грим иногда отменяет незаконные пакеты, например, с таймером, после X пакетов в секунду отмененных, когда следует
 # нам просто кикнуть игрока? Это необходимо, так как некоторые ограничители пакетов не учитывают пакеты, отмененные Гримом.
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # Включите, чтобы вывести stacktrace, когда игрок кикается из-за packet-spam-threshold
 debug-packet-cancel: false
 
