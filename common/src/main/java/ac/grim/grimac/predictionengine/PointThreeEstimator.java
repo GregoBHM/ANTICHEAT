@@ -430,7 +430,11 @@ public class PointThreeEstimator {
 
         // This should likely be refactored, but it works well.
         double yVel = vector.vector.getY();
-        double maxYTraveled = 0;
+        double maxYTraveled = legacySkippedTickInitialCorrection(
+                yVel,
+                minMovement,
+                player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)
+        );
         boolean first = true;
         do {
             // If less than minimum movement, then set to 0
@@ -464,6 +468,21 @@ public class PointThreeEstimator {
 
         // Negate the current vector and replace it with the one we just simulated
         return maxYTraveled;
+    }
+
+    static double legacySkippedTickInitialCorrection(
+            double initialY,
+            double minimumMovement,
+            boolean legacyOneEight
+    ) {
+        if (!legacyOneEight || Math.abs(initialY) >= minimumMovement) {
+            return 0.0D;
+        }
+
+        // 1.8 discards sub-0.005 velocity before the hidden tick advances.
+        // The current vector has already been counted by the caller, so remove
+        // that stale apex value before accumulating the skipped tick displacement.
+        return -initialY;
     }
 
     private double iterateGravity(GrimPlayer player, double y) {

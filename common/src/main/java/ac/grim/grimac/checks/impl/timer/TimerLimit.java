@@ -56,7 +56,7 @@ public class TimerLimit extends Timer {
                     // TimerLimit no longer owns Blink rollback. ConnectionStall's
                     // one-shot hard release barrier does. Outside such an episode,
                     // preserve Grim's original TimerLimit setback behavior.
-                    if (!suppressSetback && shouldSetback()) {
+                    if (hardPrevention && !suppressSetback && shouldSetback()) {
                         GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true, this);
                     }
                 }

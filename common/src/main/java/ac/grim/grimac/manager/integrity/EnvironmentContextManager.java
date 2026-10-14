@@ -316,7 +316,8 @@ public final class EnvironmentContextManager {
     public boolean isVelocityUncertainEnvironment(@NotNull GrimPlayer player) {
         for (EnvironmentContext context : classify(player)) {
             switch (context) {
-                case COBWEB, STUCK_MOVEMENT, WATER, LAVA, PISTON, RECENT_BLOCK_CHANGE -> {
+                case COBWEB, STUCK_MOVEMENT, CLIMBABLE, WATER, LAVA,
+                        COMPLEX_COLLISION, PISTON, RECENT_BLOCK_CHANGE -> {
                     return true;
                 }
                 default -> {
