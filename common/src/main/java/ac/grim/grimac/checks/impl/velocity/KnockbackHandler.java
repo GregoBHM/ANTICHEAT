@@ -59,6 +59,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
     private double enforcementMinimumServerConfidence;
     private int enforcementStrongConsecutiveTicks;
     private int normalEnforcementStreak;
+    private boolean sendingInternalEnforcementVelocity;
 
     private boolean specialEvidenceEnabled;
     private double specialMinimumOffset;
@@ -103,8 +104,16 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             playerVelocity = VectorPrecisionConverter.convert(player.getClientVersion(), playerVelocity);
 
             player.sendTransaction();
-            addPlayerKnockback(entityId, player.lastTransactionSent.get(),
-                    new Vector3dm(playerVelocity.getX(), playerVelocity.getY(), playerVelocity.getZ()));
+            addPlayerKnockback(
+                    entityId,
+                    player.lastTransactionSent.get(),
+                    new Vector3dm(
+                            playerVelocity.getX(),
+                            playerVelocity.getY(),
+                            playerVelocity.getZ()
+                    ),
+                    sendingInternalEnforcementVelocity
+            );
             event.getTasksAfterSend().add(player::sendTransaction);
         }
     }
@@ -131,9 +140,19 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         return new Pair<>(null, null);
     }
 
-    private void addPlayerKnockback(int entityID, int breadOne, @NotNull Vector3dm knockback) {
-        firstBreadMap.add(new VelocityData(entityID, breadOne,
-                player.getSetbackTeleportUtil().isSendingSetback, knockback));
+    private void addPlayerKnockback(
+            int entityID,
+            int breadOne,
+            @NotNull Vector3dm knockback,
+            boolean internalEnforcement
+    ) {
+        firstBreadMap.add(new VelocityData(
+                entityID,
+                breadOne,
+                player.getSetbackTeleportUtil().isSendingSetback
+                        || internalEnforcement,
+                knockback
+        ));
     }
 
     public VelocityData calculateRequiredKB(int entityID, int transaction, boolean isJustTesting) {
@@ -365,10 +384,19 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 enforcementMinimumScale, 1.0D);
 
         Vector3dm enforced = data.vector.clone().multiply(scale);
-        player.user.sendPacket(new WrapperPlayServerEntityVelocity(
-                player.entityID,
-                new Vector3d(enforced.getX(), enforced.getY(), enforced.getZ())
-        ));
+        sendingInternalEnforcementVelocity = true;
+        try {
+            player.user.sendPacket(new WrapperPlayServerEntityVelocity(
+                    player.entityID,
+                    new Vector3d(
+                            enforced.getX(),
+                            enforced.getY(),
+                            enforced.getZ()
+                    )
+            ));
+        } finally {
+            sendingInternalEnforcementVelocity = false;
+        }
 
         lastEnforcementNanos = now;
         suppressCompetingUntilNanos = now + enforcementRecoveryNanos;
