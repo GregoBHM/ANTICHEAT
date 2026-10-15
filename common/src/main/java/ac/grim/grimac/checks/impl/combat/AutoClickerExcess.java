@@ -66,7 +66,7 @@ public final class AutoClickerExcess extends Check implements PacketReceiveListe
 
         long now = System.nanoTime();
         if (networkUncertain()) {
-            resetEvidence();
+            neutralizeUncertainWindow();
             return;
         }
 
@@ -78,7 +78,7 @@ public final class AutoClickerExcess extends Check implements PacketReceiveListe
 
     private void evaluateCompletedTick(long now) {
         if (networkUncertain()) {
-            resetEvidence();
+            neutralizeUncertainWindow();
             return;
         }
 
@@ -161,6 +161,16 @@ public final class AutoClickerExcess extends Check implements PacketReceiveListe
             result++;
         }
         return result;
+    }
+
+    private void neutralizeUncertainWindow() {
+        // Do not let withheld/released packets participate in cadence
+        // statistics, but do not let a lag window erase prior suspicious
+        // persistence either.
+        ringIndex = 0;
+        ringCount = 0;
+        swingsThisTick = 0;
+        excessiveTickStreak = Math.max(0, excessiveTickStreak - 1);
     }
 
     private void resetEvidence() {
