@@ -135,6 +135,27 @@ class IntegrationTrustPolicyAuditTest {
         ));
     }
 
+    @Test
+    void antiKbUsesScopedVelocityAssessmentInsteadOfGlobalTrustedBypass()
+            throws Exception {
+        String knockback = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        ));
+        String listener = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
+        ));
+        String facade = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
+        ));
+
+        assertTrue(knockback.contains(".assessVelocity("));
+        assertFalse(knockback.contains(
+                "getMovementContextManager().hasTrustedVelocityContext(player.uuid)"
+        ));
+        assertTrue(listener.contains("beginObservedVelocity("));
+        assertTrue(facade.contains("beginTrustedVelocity("));
+    }
+
     private void assertTokenOnlyIn(
             Path root,
             String token,
