@@ -36,6 +36,28 @@ class VelocityIntegrityAuditTest {
     }
 
     @Test
+    void explosionUsesNeutralDiscardAndScopedOverlapPolicy() throws Exception {
+        String source = src(
+                "checks/impl/velocity/ExplosionHandler.java"
+        );
+
+        int discarded = source.indexOf(
+                "if (!predictionComplete.isChecked())"
+        );
+        int teleport = source.indexOf(
+                "if (predictionComplete.getData().isTeleport())",
+                discarded
+        );
+        int forceExempt = source.indexOf("forceExempt();", discarded);
+
+        assertTrue(discarded >= 0);
+        assertTrue(teleport > discarded);
+        assertTrue(forceExempt >= teleport);
+        assertTrue(source.contains(".assessVelocity("));
+        assertTrue(source.contains("if (context.isAmbiguous())"));
+    }
+
+    @Test
     void simulationTreatsTrustedVelocityAsBoundedSpecialPhysicsEvidence()
             throws Exception {
         String source = src(
