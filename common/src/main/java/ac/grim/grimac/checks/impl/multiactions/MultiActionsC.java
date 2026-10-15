@@ -4,6 +4,7 @@ import ac.grim.grimac.api.storage.verbose.Verbose;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
+import ac.grim.grimac.manager.integrity.InventoryClickPreventionPolicy;
 import ac.grim.grimac.player.GrimPlayer;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
@@ -44,7 +45,14 @@ public class MultiActionsC extends Check implements PacketReceiveListener {
         boolean input = isVerboseInput(player);
         if (!sprinting && !sneaking && !input) return;
 
-        if (flag(V.write(verbose()).bool(sprinting).bool(sneaking).bool(input)) && shouldModifyPackets()) {
+        boolean accepted = flag(
+                V.write(verbose()).bool(sprinting).bool(sneaking).bool(input)
+        );
+
+        if (accepted
+                && shouldModifyPackets()
+                && InventoryClickPreventionPolicy
+                .allowDestructiveHeuristicPrevention(player.getClientVersion())) {
             event.setCancelled(true);
             player.onPacketCancel();
         }

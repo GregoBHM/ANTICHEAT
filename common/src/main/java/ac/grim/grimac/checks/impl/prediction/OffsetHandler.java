@@ -43,6 +43,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
     private boolean enforcementEnabled;
     private boolean enforcementImmediateSetback;
+    private double enforcementMinimumServerConfidence;
     private double enforcementQuarantineOffset;
     private double enforcementStrongOffset;
     private double enforcementSevereOffset;
@@ -152,7 +153,12 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             }
         }
 
+        final boolean enforcementServerHealthy =
+                GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence()
+                        >= enforcementMinimumServerConfidence;
+
         final boolean enforcementEligible = enforcementEnabled
+                && enforcementServerHealthy
                 && !predictionComplete.getData().isTeleport()
                 && !player.canFly
                 && !player.isFlying
@@ -730,6 +736,12 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
             enforcementImmediateSetback =
                     requireBoolean(config, "movement-enforcement.immediate-setback");
+
+            enforcementMinimumServerConfidence =
+                    requireUnitDouble(
+                            config,
+                            "movement-enforcement.minimum-server-confidence"
+                    );
 
             enforcementQuarantineOffset =
                     requirePositiveDouble(config, "movement-enforcement.quarantine-offset");

@@ -65,10 +65,16 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("reach: 3.0"), path.toString());
                 assertTrue(text.contains("TimerA:"), path.toString());
                 assertTrue(text.contains("minimum-server-confidence: 0.50"), path.toString());
+                assertTrue(text.contains("movement-enforcement:"), path.toString());
+                assertTrue(text.contains("minimum-server-confidence: 0.55"), path.toString());
+                assertTrue(text.contains("packet-spam-minimum-server-confidence: 0.55"), path.toString());
                 assertFalse(text.contains("fast-consume:"), path.toString());
                 assertFalse(text.contains("\n    consume:\n"), path.toString());
                 assertTrue(text.contains("context-policy:"), path.toString());
                 assertTrue(text.contains("special-environment:"), path.toString());
+                assertTrue(text.contains("native-1_8-only: true"), path.toString());
+                assertTrue(text.contains("strong-consecutive-ticks: 3"), path.toString());
+                assertTrue(text.contains("max-retries: 1"), path.toString());
                 assertTrue(text.contains("flag-episode-window-ms: 1500"), path.toString());
                 assertTrue(text.contains("evidence-episodes:"), path.toString());
                 assertTrue(text.contains("max-total-flags: 2"), path.toString());
@@ -99,6 +105,7 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("minimum-server-confidence: 0.80"), path.toString());
                 assertTrue(text.contains("minimum-player-confidence: 0.80"), path.toString());
                 assertTrue(text.contains("minimum-tps: 18.0"), path.toString());
+                assertTrue(text.contains("native-sensitive-sanctions-only: true"), path.toString());
                 assertTrue(text.contains("do kick %player%"), path.toString());
                 assertTrue(text.contains("sanction_vl>="), path.toString());
             }
@@ -143,4 +150,90 @@ class StaffAlertResourceAuditTest {
                 path + " " + group
         );
     }
+
+    @Test
+    void heuristicChecksCannotAutoKickOnTheirOwn() throws IOException {
+        Path dir = Path.of("src/main/resources/punishments");
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path path : files.filter(p -> p.toString().endsWith(".yml")).toList()) {
+                String text = Files.readString(path);
+
+                assertGroupHasNoKick(text, "Simulation", path);
+                assertGroupHasNoKick(text, "TimerLimit", path);
+                assertGroupHasNoKick(text, "NetworkIntegrity", path);
+                assertGroupHasNoKick(text, "Phase", path);
+                assertGroupHasNoKick(text, "GroundIntegrity", path);
+                assertGroupHasNoKick(text, "PacketOrder", path);
+                assertGroupHasNoKick(text, "Explosion", path);
+                assertGroupHasNoKick(text, "Post", path);
+                assertGroupHasNoKick(text, "BadPackets", path);
+                assertGroupHasNoKick(text, "Misc", path);
+                assertGroupHasNoKick(text, "Combat", path);
+                assertGroupHasNoKick(text, "Regen", path);
+
+                String timer = groupBlock(text, "Timer");
+                assertTrue(timer.contains("\"Timer\""), path.toString());
+                assertFalse(timer.contains("\"TimerLimit\""), path.toString());
+                assertTrue(timer.contains("sanction_vl>=100"), path.toString());
+
+                String timerLimit = groupBlock(text, "TimerLimit");
+                assertTrue(timerLimit.contains("\"TimerLimit\""), path.toString());
+
+                String knockback = groupBlock(text, "Knockback");
+                assertTrue(knockback.contains("sanction_vl>=50"), path.toString());
+                assertTrue(knockback.contains("integrity_score>=4.0"), path.toString());
+
+                String badPackets = groupBlock(text, "BadPackets");
+                assertTrue(badPackets.contains("threshold-scope: check"), path.toString());
+                assertFalse(badPackets.contains(" do kick "), path.toString());
+                assertFalse(badPackets.contains("\"PacketOrder\""), path.toString());
+
+                String crash = groupBlock(text, "Crash");
+                assertTrue(crash.contains("sanction_vl>=10"), path.toString());
+
+                String packetOrder = groupBlock(text, "PacketOrder");
+                assertTrue(packetOrder.contains("\"PacketOrder\""), path.toString());
+                assertFalse(packetOrder.contains("\"Post\""), path.toString());
+                assertTrue(packetOrder.contains("\"TransactionOrder\""), path.toString());
+            }
+        }
+    }
+
+    private static void assertGroupHasNoKick(
+            String text,
+            String group,
+            Path path
+    ) {
+        String block = groupBlock(text, group);
+        assertFalse(block.contains(" do kick "), path + " " + group);
+    }
+
+    private static String groupBlock(String text, String group) {
+        String marker = "  " + group + ":";
+        int start = text.indexOf(marker);
+        assertTrue(start >= 0, "missing group " + group);
+
+        int cursor = start + marker.length();
+        int next = -1;
+
+        while (cursor < text.length()) {
+            int candidate = text.indexOf("\n  ", cursor);
+            if (candidate < 0) {
+                break;
+            }
+
+            int content = candidate + 3;
+            if (content < text.length()
+                    && text.charAt(content) != ' '
+                    && text.charAt(content) != '\t') {
+                next = candidate;
+                break;
+            }
+
+            cursor = candidate + 3;
+        }
+
+        return text.substring(start, next < 0 ? text.length() : next);
+    }
+
 }

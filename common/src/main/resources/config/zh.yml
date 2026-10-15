@@ -198,11 +198,16 @@ Knockback:
         max-flags-per-episode: 1
 
     enforcement:
-        enabled: false
+        # Base profile: prevent strong AntiKB advantage only for native protocol-47
+        # clients. Via-translated clients remain detected but are not force-pushed.
+        enabled: true
+        native-1_8-only: true
+        minimum-server-confidence: 0.55
+        strong-consecutive-ticks: 3
         cooldown-ms: 120
         recovery-ms: 350
         episode-reset-ms: 1200
-        max-retries: 2
+        max-retries: 1
         minimum-reapply-scale: 0.35
         suppress-in-special-environments: true
 
@@ -452,6 +457,9 @@ reset-item-usage-on-item-use: true
 # 在一秒钟内取消了多少个数据包后，我们应该踢掉这个玩家？
 # 我们认为你应该启用此项，因为有些数据包限制器并不记录被Grim取消的数据包。
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # 启用此项可在玩家因 packet-spam-threshold 被踢时打印堆栈追踪
 debug-packet-cancel: false
 
@@ -691,6 +699,9 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    # Destructive Simulation correction pauses only when the SERVER is unhealthy.
+    # Player ping/jitter alone never becomes a movement bypass.
+    minimum-server-confidence: 0.55
 
     environment:
         # Prevent a special movement state from leaving the player trapped by a stale safe position.

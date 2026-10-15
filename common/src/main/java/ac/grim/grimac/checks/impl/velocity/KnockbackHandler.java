@@ -18,6 +18,7 @@ import ac.grim.grimac.utils.data.VelocityData;
 import ac.grim.grimac.utils.math.Vector3dm;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity;
 import org.jetbrains.annotations.NotNull;
@@ -54,6 +55,11 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
     private long enforcementEpisodeResetNanos;
     private int enforcementMaxRetries;
     private double enforcementMinimumScale;
+    private boolean enforcementNativeOneEightOnly;
+    private double enforcementMinimumServerConfidence;
+    private int enforcementStrongConsecutiveTicks;
+    private int normalEnforcementStreak;
+    private boolean sendingInternalEnforcementVelocity;
 
     private boolean specialEvidenceEnabled;
     private double specialMinimumOffset;
@@ -98,8 +104,16 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             playerVelocity = VectorPrecisionConverter.convert(player.getClientVersion(), playerVelocity);
 
             player.sendTransaction();
-            addPlayerKnockback(entityId, player.lastTransactionSent.get(),
-                    new Vector3dm(playerVelocity.getX(), playerVelocity.getY(), playerVelocity.getZ()));
+            addPlayerKnockback(
+                    entityId,
+                    player.lastTransactionSent.get(),
+                    new Vector3dm(
+                            playerVelocity.getX(),
+                            playerVelocity.getY(),
+                            playerVelocity.getZ()
+                    ),
+                    sendingInternalEnforcementVelocity
+            );
             event.getTasksAfterSend().add(player::sendTransaction);
         }
     }
@@ -126,9 +140,19 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         return new Pair<>(null, null);
     }
 
-    private void addPlayerKnockback(int entityID, int breadOne, @NotNull Vector3dm knockback) {
-        firstBreadMap.add(new VelocityData(entityID, breadOne,
-                player.getSetbackTeleportUtil().isSendingSetback, knockback));
+    private void addPlayerKnockback(
+            int entityID,
+            int breadOne,
+            @NotNull Vector3dm knockback,
+            boolean internalEnforcement
+    ) {
+        firstBreadMap.add(new VelocityData(
+                entityID,
+                breadOne,
+                player.getSetbackTeleportUtil().isSendingSetback
+                        || internalEnforcement,
+                knockback
+        ));
     }
 
     public VelocityData calculateRequiredKB(int entityID, int transaction, boolean isJustTesting) {
@@ -196,6 +220,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             forceExempt();
             specialEvidenceStreak = 0;
             specialEvidenceKey = "";
+            normalEnforcementStreak = 0;
             return;
         }
 
@@ -204,6 +229,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             knockbackPointThree = false;
             specialEvidenceStreak = 0;
             specialEvidenceKey = "";
+            normalEnforcementStreak = 0;
             enforcementEpisodeStartedNanos = 0L;
             enforcementRetries = 0;
             suppressCompetingUntilNanos = 0L;
@@ -216,6 +242,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         if (player.likelyKB == null && player.firstBreadKB == null) {
             specialEvidenceStreak = 0;
             specialEvidenceKey = "";
+            normalEnforcementStreak = 0;
             return;
         }
 
@@ -246,6 +273,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         || observedVelocityContext);
 
                 if (uncertainVelocity) {
+                    normalEnforcementStreak = 0;
                     handleUncertainVelocityEvidence(
                             player.likelyKB,
                             contexts,
@@ -254,8 +282,18 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                     return;
                 }
 
+                if (player.likelyKB.isSetback) {
+                    // Grim-authored correction velocity must never feed back into
+                    // AntiKB enforcement or create a resend loop.
+                    normalEnforcementStreak = 0;
+                    specialEvidenceStreak = 0;
+                    specialEvidenceKey = "";
+                    return;
+                }
+
                 specialEvidenceStreak = 0;
                 specialEvidenceKey = "";
+                normalEnforcementStreak++;
                 threshold = Math.min(
                         threshold + player.likelyKB.offset,
                         ceiling
@@ -263,9 +301,10 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
 
                 boolean ignored =
                         player.likelyKB.offset == Integer.MAX_VALUE;
-                boolean shouldEnforce = player.likelyKB.isSetback
-                        || player.likelyKB.offset >= immediate
-                        || threshold >= maxAdv;
+                boolean shouldEnforce =
+                        normalEnforcementStreak >= enforcementStrongConsecutiveTicks
+                                && (player.likelyKB.offset >= immediate
+                                || threshold >= maxAdv);
 
                 boolean enforced = false;
                 if (shouldEnforce) {
@@ -284,8 +323,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         )
                                 + " enforced=" + enforced;
 
-                if (!player.likelyKB.isSetback) {
-                    if (!flagComponent(
+                if (!flagComponent(
                             "velocity.normal",
                             V.write(verbose())
                                     .bool(ignored)
@@ -294,12 +332,12 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                     )) {
                         reward();
                     }
-                }
             } else {
                 // A clean/non-flagging velocity sample breaks the requirement
                 // for consecutive strong special-environment evidence.
                 specialEvidenceStreak = 0;
                 specialEvidenceKey = "";
+                normalEnforcementStreak = 0;
                 if (threshold > 0.05) {
                     threshold *= multiplier;
                     if (System.nanoTime() - lastEnforcementNanos
@@ -314,6 +352,11 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
 
     private boolean enforceVelocity(VelocityData data, boolean ignored) {
         if (!enforcementEnabled || !shouldModifyPackets()) return false;
+        if (data != null && data.isSetback) return false;
+        if (GrimAPI.INSTANCE.getLagProtectionManager().heuristicConfidence()
+                < enforcementMinimumServerConfidence) return false;
+        if (enforcementNativeOneEightOnly
+                && player.getClientVersion() != ClientVersion.V_1_8) return false;
         if (GrimAPI.INSTANCE.getMovementContextManager().hasTrustedVelocityContext(player.uuid)) return false;
         if (data == null || data.vector == null || data.vector.lengthSquared() <= 1.0E-8D) return false;
 
@@ -341,10 +384,19 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 enforcementMinimumScale, 1.0D);
 
         Vector3dm enforced = data.vector.clone().multiply(scale);
-        player.user.sendPacket(new WrapperPlayServerEntityVelocity(
-                player.entityID,
-                new Vector3d(enforced.getX(), enforced.getY(), enforced.getZ())
-        ));
+        sendingInternalEnforcementVelocity = true;
+        try {
+            player.user.sendPacket(new WrapperPlayServerEntityVelocity(
+                    player.entityID,
+                    new Vector3d(
+                            enforced.getX(),
+                            enforced.getY(),
+                            enforced.getZ()
+                    )
+            ));
+        } finally {
+            sendingInternalEnforcementVelocity = false;
+        }
 
         lastEnforcementNanos = now;
         suppressCompetingUntilNanos = now + enforcementRecoveryNanos;
@@ -529,6 +581,26 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 config.getLongElse("Knockback.enforcement.max-retries", 2L), 1L, 8L);
         enforcementMinimumScale = clamp(
                 config.getDoubleElse("Knockback.enforcement.minimum-reapply-scale", 0.35D), 0.05D, 1.0D);
+        enforcementNativeOneEightOnly = config.getBooleanElse(
+                "Knockback.enforcement.native-1_8-only",
+                true
+        );
+        enforcementMinimumServerConfidence = clamp(
+                config.getDoubleElse(
+                        "Knockback.enforcement.minimum-server-confidence",
+                        0.55D
+                ),
+                0.0D,
+                1.0D
+        );
+        enforcementStrongConsecutiveTicks = (int) clamp(
+                config.getLongElse(
+                        "Knockback.enforcement.strong-consecutive-ticks",
+                        3L
+                ),
+                2L,
+                10L
+        );
         specialEvidenceEnabled = config.getBooleanElse(
                 "Knockback.special-environment.enabled",
                 true
@@ -574,6 +646,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         );
         specialEvidenceStreak = 0;
         specialEvidenceKey = "";
+        normalEnforcementStreak = 0;
 
         if (!enforcementEnabled) {
             suppressCompetingUntilNanos = 0L;

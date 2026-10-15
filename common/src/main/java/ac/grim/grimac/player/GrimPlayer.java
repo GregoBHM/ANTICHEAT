@@ -265,6 +265,7 @@ public class GrimPlayer implements GrimUser {
     // start config
     private boolean debugPacketCancel;
     private int spamThreshold = 100;
+    private double packetSpamMinimumServerConfidence = 0.55D;
     private int maxTransactionTime = 60;
     @Getter private boolean ignoreDuplicatePacketRotation;
     @Getter @Setter private boolean experimentalChecks;
@@ -336,6 +337,17 @@ public class GrimPlayer implements GrimUser {
 
     public void onPacketCancel() {
         if (spamThreshold != -1 && cancelledPackets.incrementAndGet() > spamThreshold) {
+            double serverConfidence = GrimAPI.INSTANCE
+                    .getLagProtectionManager()
+                    .heuristicConfidence();
+
+            if (serverConfidence < packetSpamMinimumServerConfidence) {
+                // Keep cancelling invalid/excess packets, but never turn a real
+                // server spike or post-spike release into an automatic disconnect.
+                cancelledPackets.set(0);
+                return;
+            }
+
             LogUtil.info("Disconnecting " + getName() + " for spamming invalid packets, packets cancelled within a second " + cancelledPackets);
             disconnect(MessageUtil.miniMessage(MessageUtil.replacePlaceholders(this, GrimAPI.INSTANCE.getConfigManager().getDisconnectClosed())));
             cancelledPackets.set(0);
@@ -986,6 +998,14 @@ public class GrimPlayer implements GrimUser {
         featureManager.onReload(config);
         debugPacketCancel = config.getBooleanElse("debug-packet-cancel", false);
         spamThreshold = config.getIntElse("packet-spam-threshold", 100);
+        packetSpamMinimumServerConfidence = GrimMath.clamp(
+                config.getDoubleElse(
+                        "packet-spam-minimum-server-confidence",
+                        0.55D
+                ),
+                0.0D,
+                1.0D
+        );
         maxTransactionTime = GrimMath.clamp(config.getIntElse("max-transaction-time", 60), 1, 180);
         ignoreDuplicatePacketRotation = config.getBooleanElse("ignore-duplicate-packet-rotation", false);
         cancelDuplicatePacket = config.getBooleanElse("cancel-duplicate-packet", true);

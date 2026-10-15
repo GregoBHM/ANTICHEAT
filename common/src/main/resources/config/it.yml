@@ -172,11 +172,16 @@ Knockback:
         max-flags-per-episode: 1
 
     enforcement:
-        enabled: false
+        # Base profile: prevent strong AntiKB advantage only for native protocol-47
+        # clients. Via-translated clients remain detected but are not force-pushed.
+        enabled: true
+        native-1_8-only: true
+        minimum-server-confidence: 0.55
+        strong-consecutive-ticks: 3
         cooldown-ms: 120
         recovery-ms: 350
         episode-reset-ms: 1200
-        max-retries: 2
+        max-retries: 1
         minimum-reapply-scale: 0.35
         suppress-in-special-environments: true
 
@@ -408,6 +413,9 @@ reset-item-usage-on-item-use: true
 # Grim sometimes cancels illegal packets such as with timer, after X packets in a second cancelled, when should
 # we simply kick the player? This is required as some packet limiters don't count packets cancelled by grim.
 packet-spam-threshold: 100
+# Keep packet cancellation active during lag, but do not disconnect from the
+# cancellation counter while the server itself is in a severe/recovery spike.
+packet-spam-minimum-server-confidence: 0.55
 # Abilita questa opzione per stampare uno stacktrace quando un giocatore viene espulso a causa del packet-spam-threshold
 debug-packet-cancel: false
 
@@ -653,6 +661,9 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    # Destructive Simulation correction pauses only when the SERVER is unhealthy.
+    # Player ping/jitter alone never becomes a movement bypass.
+    minimum-server-confidence: 0.55
 
     environment:
         # Prevent a special movement state from leaving the player trapped by a stale safe position.

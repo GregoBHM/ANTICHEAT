@@ -29,6 +29,7 @@ public class RotationPlace extends BlockPlaceCheck implements BlockPlaceListener
 
     private double flagBuffer = 0; // If the player flags once, force them to play legit, or we will cancel the tick before.
     private boolean ignorePost = false;
+    private int legacyInvalidPostStreak = 0;
 
     public RotationPlace(GrimPlayer player) {
         super(player);
@@ -40,6 +41,13 @@ public class RotationPlace extends BlockPlaceCheck implements BlockPlaceListener
         if (!player.cameraEntity.isSelf())
             return; // you don't send flying packets when spectating entities
         if (player.inVehicle()) return;
+
+        // Protocol 47 may deliver block placement before the look update from the
+        // same tick. Pre-flying denial is therefore not authoritative on 1.8.
+        if (player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)) {
+            return;
+        }
+
         if (flagBuffer > 0 && !didRayTraceHit(place)) {
             ignorePost = true;
             // If the player hit and has flagged this check recently
@@ -68,10 +76,23 @@ public class RotationPlace extends BlockPlaceCheck implements BlockPlaceListener
         // This can false with rapidly moving yaw in 1.8+ clients
         if (!hit) {
             flagBuffer = 1;
-            if (!ignorePost) { // Don't flag twice
+
+            if (player.getClientVersion().isOlderThanOrEquals(ClientVersion.V_1_8)) {
+                legacyInvalidPostStreak++;
+
+                // One invalid post-placement ray trace can be packet-order noise
+                // on 1.8. Require persistence before creating VL or resyncing.
+                if (legacyInvalidPostStreak >= 2
+                        && flag(V.write(verbose()).bool(false))
+                        && shouldModifyPackets()
+                        && shouldCancel()) {
+                    place.resync();
+                }
+            } else if (!ignorePost) { // Don't flag twice
                 flag(V.write(verbose()).bool(false));
             }
         } else {
+            legacyInvalidPostStreak = 0;
             flagBuffer = Math.max(0, flagBuffer - 0.1);
         }
 
