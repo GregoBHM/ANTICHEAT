@@ -13,6 +13,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MovementDetectionPolicyAuditTest {
 
     @Test
+    void trustedVelocityIsContextualEvidenceNotSimulationBypass()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        ));
+
+        assertTrue(source.contains(
+                "boolean anyVelocityContext ="
+        ));
+        assertTrue(source.contains(
+                "trustedVelocityContext || observedVelocityContext"
+        ));
+        assertFalse(source.contains(
+                "Trusted plugin-authored velocity is explicitly incompatible"
+        ));
+        assertTrue(source.contains(
+                "environment.isSpecialMovementEnvironment(environmentContexts)"
+        ));
+    }
+
+    @Test
     void noSlowUsesPhysicalSessionAndSharedSpecialEpisode() throws IOException {
         String source = read(
                 "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
