@@ -28,6 +28,8 @@ class AdversarialInputHardeningAuditTest {
         assertTrue(source.contains("IntegritySignal.SELECTIVE_STALL"));
         assertFalse(source.contains("event.setCancelled"));
         assertFalse(source.contains("player.onPacketCancel"));
+        assertTrue(source.indexOf("boolean accepted = flagComponent(")
+                < source.indexOf(".record(player, IntegritySignal.AUTOCLICKER_EXCESS)"));
     }
 
     @Test
@@ -41,6 +43,8 @@ class AdversarialInputHardeningAuditTest {
         assertTrue(source.contains("IntegritySignal.SELECTIVE_STALL"));
         assertFalse(source.contains("place.resync()"));
         assertFalse(source.contains("shouldCancel()"));
+        assertTrue(source.indexOf("boolean accepted = flagComponent(")
+                < source.indexOf(".record(player, IntegritySignal.FAST_PLACE)"));
     }
 
     @Test
@@ -66,6 +70,7 @@ class AdversarialInputHardeningAuditTest {
         assertTrue(source.contains("minimum-step-residual"));
         assertFalse(source.contains("event.setCancelled"));
         assertFalse(source.contains("executeViolationSetback"));
+        assertFalse(source.contains("IntegritySignal"));
     }
 
     @Test
