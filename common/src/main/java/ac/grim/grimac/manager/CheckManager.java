@@ -7,6 +7,7 @@ import ac.grim.grimac.api.common.BasicReloadable;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.impl.aim.AimDuplicateLook;
 import ac.grim.grimac.checks.impl.aim.AimModulo360;
+import ac.grim.grimac.checks.impl.aim.AimSensitivityConsistency;
 import ac.grim.grimac.checks.impl.aim.processor.AimProcessor;
 import ac.grim.grimac.checks.impl.badpackets.*;
 import ac.grim.grimac.checks.impl.breaking.*;
