@@ -54,7 +54,7 @@ public final class FastPlace extends BlockPlaceCheck implements BlockPlaceListen
 
         long now = System.nanoTime();
         if (networkUncertain()) {
-            resetEvidence();
+            neutralizeUncertainWindow();
             return;
         }
 
@@ -127,6 +127,15 @@ public final class FastPlace extends BlockPlaceCheck implements BlockPlaceListen
             result++;
         }
         return result;
+    }
+
+    private void neutralizeUncertainWindow() {
+        // Timing inside a network burst is unusable, so drop only the bounded
+        // cadence window. Preserve prior persistence with gentle decay so lag
+        // cannot be used as an evidence eraser.
+        ringIndex = 0;
+        ringCount = 0;
+        strongWindows = Math.max(0, strongWindows - 1);
     }
 
     private void resetEvidence() {
