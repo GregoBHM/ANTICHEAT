@@ -209,7 +209,7 @@ Punishments:
     commands:
       - "20:20 [alert]"
       - "1:1 [log]"
-  # バージョン2.2.10時点では、AutoClickerのチェックはまだなく、これはプレースホルダーです。Grimは将来的にAutoClickerのチェックを追加予定です。
+  # Conservative excessive-swing evidence; alert/log only by default.
   Autoclicker:
     remove-violations-after: 300
     checks:
