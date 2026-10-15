@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyOneEightHardeningAuditTest {
@@ -106,6 +107,29 @@ class LegacyOneEightHardeningAuditTest {
         assertTrue(knockback.contains(
                 "normalEnforcementStreak >= enforcementStrongConsecutiveTicks"
         ));
+    }
+
+
+    @Test
+    void nativeOneEightInventoryHeuristicsNeverCancelClicks() throws IOException {
+        assertFalse(
+                InventoryClickPreventionPolicy
+                        .allowDestructiveHeuristicPrevention(
+                                com.github.retrooper.packetevents.protocol.player.ClientVersion.V_1_8
+                        )
+        );
+
+        String multi = source("checks/impl/multiactions/MultiActionsC.java");
+        String orderA = source("checks/impl/packetorder/PacketOrderA.java");
+        String orderK = source("checks/impl/packetorder/PacketOrderK.java");
+        String badPackets = source("checks/impl/badpackets/BadPacketsP.java");
+        String stallActions = source("checks/impl/exploit/StallActions.java");
+
+        assertTrue(multi.contains("InventoryClickPreventionPolicy"));
+        assertTrue(orderA.contains("InventoryClickPreventionPolicy"));
+        assertTrue(orderK.contains("InventoryClickPreventionPolicy"));
+        assertTrue(badPackets.contains("InventoryClickPreventionPolicy"));
+        assertTrue(stallActions.contains("InventoryClickPreventionPolicy"));
     }
 
 }
