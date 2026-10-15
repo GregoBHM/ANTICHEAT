@@ -24,10 +24,10 @@ class VelocityIntegrityAuditTest {
         assertTrue(source.contains(
                 "getBooleanElse(\"Knockback.enforcement.enabled\", false)"
         ));
-        assertTrue(source.contains(
-                "hasTrustedVelocityContext(player.uuid)"
-        ));
-        assertTrue(source.contains("hasObservedVelocityContext(player.uuid)"));
+        assertTrue(source.contains(".assessVelocity("));
+        assertTrue(source.contains("velocityContext.isUncertain()"));
+        assertTrue(source.contains("velocityContextUncertain"));
+        assertTrue(source.contains("beginPlayerKnockback") || source.contains("addPlayerKnockback"));
         assertTrue(source.contains("flagComponent("));
         assertTrue(source.contains("\"velocity.normal\""));
         assertTrue(source.contains("\"velocity.cobweb\""));
@@ -36,13 +36,14 @@ class VelocityIntegrityAuditTest {
     }
 
     @Test
-    void simulationStillFlagsOutsideTrustedVelocityAndBoundsSpecialPhysics()
+    void simulationTreatsTrustedVelocityAsBoundedSpecialPhysicsEvidence()
             throws Exception {
         String source = src(
                 "checks/impl/prediction/OffsetHandler.java"
         );
 
         assertTrue(source.contains("trustedVelocityContext"));
+        assertTrue(source.contains("boolean anyVelocityContext ="));
         assertTrue(source.contains("boolean accepted = flagComponent("));
         assertTrue(source.contains("\"simulation.cobweb\""));
         assertTrue(source.contains("resolveMovementEvidenceEpisode"));
