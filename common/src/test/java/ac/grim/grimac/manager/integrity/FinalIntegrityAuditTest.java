@@ -113,6 +113,18 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void reachUsesAttackTimeCompensatedTargetSnapshot() throws IOException {
+        String reach = source("checks/impl/combat/Reach.java");
+
+        assertTrue(reach.contains("SimpleCollisionBox attackTargetBox = getTargetBox(entity).copy()"));
+        assertTrue(reach.contains("interactionData.targetBoxSnapshot"));
+        assertTrue(reach.contains("interactionData.attackTransaction"));
+        assertTrue(reach.contains("interactionData.attackNanos"));
+        assertTrue(reach.contains("attackAge="));
+        assertTrue(reach.contains("txAdvance="));
+    }
+
+    @Test
     void punishmentConditionsExposeSeparateServerAndPlayerConfidence() throws IOException {
         String punishment = source("manager/PunishmentManager.java");
         String lag = source("manager/integrity/LagProtectionManager.java");
