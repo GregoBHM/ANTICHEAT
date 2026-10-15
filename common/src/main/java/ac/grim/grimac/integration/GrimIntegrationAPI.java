@@ -22,11 +22,22 @@ public final class GrimIntegrationAPI {
     private GrimIntegrationAPI() {
     }
 
+    /**
+     * Backward-compatible generic movement context.
+     *
+     * <p>Velocity-capable types without a concrete vector are OBSERVED only.
+     * This preserves older RPGItems/MagicSpells/CombatPlus integrations while
+     * preventing an unscoped legacy call from creating Trusted velocity.
+     * Non-velocity state such as TELEPORT/FREEZE/ROOT/FLIGHT remains trusted
+     * because the type itself fully scopes the exceptional state.</p>
+     */
     public static MovementContextManager.Context beginMovementContext(@NotNull UUID playerId,
                                                                       @NotNull MovementContextType type,
                                                                       @NotNull String sourcePlugin,
                                                                       long durationMillis) {
-        return GrimAPI.INSTANCE.getMovementContextManager().beginTrusted(playerId, type, sourcePlugin, durationMillis);
+        return beginMovementContext(
+                playerId, type, sourcePlugin, durationMillis, null
+        );
     }
 
     public static MovementContextManager.Context beginMovementContext(@NotNull UUID playerId,
@@ -34,7 +45,26 @@ public final class GrimIntegrationAPI {
                                                                       @NotNull String sourcePlugin,
                                                                       long durationMillis,
                                                                       String detail) {
-        return GrimAPI.INSTANCE.getMovementContextManager().beginTrusted(playerId, type, sourcePlugin, durationMillis, detail);
+        MovementContextManager manager =
+                GrimAPI.INSTANCE.getMovementContextManager();
+
+        if (type.allowsTrustedVelocityOverride()) {
+            return manager.beginObserved(
+                    playerId,
+                    type,
+                    sourcePlugin,
+                    durationMillis,
+                    detail
+            );
+        }
+
+        return manager.beginTrusted(
+                playerId,
+                type,
+                sourcePlugin,
+                durationMillis,
+                detail
+        );
     }
 
     /**
@@ -52,12 +82,41 @@ public final class GrimIntegrationAPI {
             double z,
             String detail
     ) {
+        return beginVelocityContext(
+                playerId,
+                type,
+                sourcePlugin,
+                durationMillis,
+                -1,
+                x,
+                y,
+                z,
+                detail
+        );
+    }
+
+    /**
+     * Transaction-aware velocity scope for integrations that can observe the
+     * transaction associated with the server-authored impulse.
+     */
+    public static MovementContextManager.Context beginVelocityContext(
+            @NotNull UUID playerId,
+            @NotNull MovementContextType type,
+            @NotNull String sourcePlugin,
+            long durationMillis,
+            int transaction,
+            double x,
+            double y,
+            double z,
+            String detail
+    ) {
         return GrimAPI.INSTANCE.getMovementContextManager().beginTrustedVelocity(
                 playerId,
                 type,
                 sourcePlugin,
                 durationMillis,
                 new Vector3dm(x, y, z),
+                transaction,
                 detail
         );
     }
