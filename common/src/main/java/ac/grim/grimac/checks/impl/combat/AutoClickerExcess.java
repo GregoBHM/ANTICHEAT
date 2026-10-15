@@ -99,16 +99,21 @@ public final class AutoClickerExcess extends Check implements PacketReceiveListe
         }
 
         lastFlagNanos = now;
-        double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
-                .record(player, IntegritySignal.AUTOCLICKER_EXCESS);
+        double correlationBefore = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                .getScore(player.uuid);
 
-        flagComponent(
+        boolean accepted = flagComponent(
                 "autoclicker.excess",
                 "swingsTick=" + swingsThisTick
                         + " swings1s=" + oneSecond
                         + " streak=" + excessiveTickStreak
-                        + " corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation)
+                        + " corrBefore=" + String.format(java.util.Locale.ROOT, "%.2f", correlationBefore)
         );
+
+        if (accepted) {
+            GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                    .record(player, IntegritySignal.AUTOCLICKER_EXCESS);
+        }
 
         // Preserve observation history, but require fresh repeated evidence
         // before another flag.
