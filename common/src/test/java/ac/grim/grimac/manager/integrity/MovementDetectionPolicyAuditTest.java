@@ -31,6 +31,54 @@ class MovementDetectionPolicyAuditTest {
         assertTrue(source.contains(
                 "environment.isSpecialMovementEnvironment(environmentContexts)"
         ));
+
+        String eligibility = between(
+                source,
+                "final boolean enforcementEligible =",
+                "EnvironmentContextManager environment ="
+        );
+        assertFalse(eligibility.contains("!trustedVelocityContext"));
+    }
+
+
+    @Test
+    void discardedSimulationPredictionIsNeutralUntilEpisodeWindowExpires()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        int discarded = source.indexOf(
+                "if (!predictionComplete.isChecked())"
+        );
+        int checked = source.indexOf(
+                "lastCheckedPredictionNanos = now",
+                discarded
+        );
+        String block = source.substring(discarded, checked);
+
+        assertTrue(block.contains("resetEnforcementState()"));
+        assertTrue(block.contains("resetShortBlinkState()"));
+        assertTrue(block.contains("lastCheckedPredictionNanos"));
+        assertTrue(block.contains("specialEnvironmentFlagEpisodeWindowMillis"));
+        assertFalse(block.contains("flagComponent("));
+    }
+
+    @Test
+    void trustedVelocityCannotGloballySuppressPersistentSimulationCorrection()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        String correction = between(
+                source,
+                "if (!specialFlagAllowed)",
+                "removeOffsetLenience();\n                return;"
+        );
+
+        assertTrue(correction.contains("persistentCorrection"));
+        assertFalse(correction.contains("&& !trustedVelocityContext"));
     }
 
     @Test
