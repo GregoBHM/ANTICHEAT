@@ -766,3 +766,25 @@ StallActions:
 # Multiple distinct placements without an intervening client tick are not vanilla behavior.
 MultiPlace:
     cancelVL: 2
+
+# Conservative excessive-input coverage. These checks observe only; they do not
+# cancel swings or block placements, and network release bursts are neutral.
+autoclicker-excess:
+    enabled: true
+    per-tick-threshold: 2
+    required-excessive-ticks: 3
+    emergency-per-tick-threshold: 4
+    sustained-one-second-limit: 24
+    flag-cooldown-ms: 2500
+    network-causal-window-ms: 1500
+    minimum-confidence: 0.80
+
+fast-place-integrity:
+    enabled: true
+    short-window-ms: 350
+    short-window-limit: 5
+    one-second-limit: 10
+    required-strong-windows: 3
+    flag-cooldown-ms: 2500
+    network-causal-window-ms: 1500
+    minimum-confidence: 0.80
