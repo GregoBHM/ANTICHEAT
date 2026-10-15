@@ -792,3 +792,13 @@ fast-place-integrity:
     flag-cooldown-ms: 2500
     network-causal-window-ms: 1500
     minimum-confidence: 0.80
+
+# Native protocol-47 inventory movement is detection-only. Isolated clicks are
+# neutral; repeated moving clicks become evidence, faster when independent
+# inventory/order evidence already exists.
+legacy-inventory-move:
+    window-ms: 1500
+    flag-cooldown-ms: 1500
+    correlation-window-ms: 1500
+    standalone-clicks: 4
+    correlated-clicks: 2
