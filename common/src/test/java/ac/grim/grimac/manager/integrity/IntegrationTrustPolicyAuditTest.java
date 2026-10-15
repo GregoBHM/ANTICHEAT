@@ -40,11 +40,44 @@ class IntegrationTrustPolicyAuditTest {
                 "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
         ));
         assertTrue(facade.contains(
-                "getMovementContextManager().beginTrusted("
+                "if (type.allowsTrustedVelocityOverride())"
+        ));
+        assertTrue(facade.contains(
+                "return manager.beginObserved("
+        ));
+        assertTrue(facade.contains(
+                "return manager.beginTrusted("
+        ));
+        assertTrue(facade.contains(
+                "new Vector3dm(x, y, z),\n                transaction,"
         ));
         assertTrue(facade.contains("\"MagicSpells:\" + spellName"));
         assertTrue(facade.contains("\"RPGItems:\" + powerName"));
         assertTrue(facade.contains("\"CombatPlus:\" + mechanicName"));
+    }
+
+    @Test
+    void legacyVelocityIntegrationCannotCreateUnscopedTrustedOverride()
+            throws Exception {
+        String facade = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
+        ));
+
+        int generic = facade.indexOf(
+                "public static MovementContextManager.Context beginMovementContext"
+        );
+        int vector = facade.indexOf(
+                "public static MovementContextManager.Context beginVelocityContext",
+                generic
+        );
+        String legacyBlock = facade.substring(generic, vector);
+
+        assertTrue(legacyBlock.contains(
+                "type.allowsTrustedVelocityOverride()"
+        ));
+        assertTrue(legacyBlock.contains("manager.beginObserved("));
+        assertTrue(legacyBlock.contains("manager.beginTrusted("));
+        assertFalse(legacyBlock.contains("beginTrustedVelocity("));
     }
 
     @Test
