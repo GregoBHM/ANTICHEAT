@@ -78,16 +78,21 @@ public final class FastPlace extends BlockPlaceCheck implements BlockPlaceListen
         }
 
         lastFlagNanos = now;
-        double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
-                .record(player, IntegritySignal.FAST_PLACE);
+        double correlationBefore = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                .getScore(player.uuid);
 
-        flagComponent(
+        boolean accepted = flagComponent(
                 "fastplace.sustained",
                 "short=" + shortCount
                         + " oneSecond=" + oneSecondCount
                         + " strong=" + strongWindows
-                        + " corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation)
+                        + " corrBefore=" + String.format(java.util.Locale.ROOT, "%.2f", correlationBefore)
         );
+
+        if (accepted) {
+            GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                    .record(player, IntegritySignal.FAST_PLACE);
+        }
 
         // Require a new sustained episode for the next flag. Placements remain
         // untouched so normal building is never resynced by this heuristic.
