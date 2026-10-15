@@ -119,18 +119,14 @@ public final class AimSensitivityConsistency extends Check
         }
 
         lastFlagNanos = now;
-        double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
-                .record(player, IntegritySignal.AIM_PATTERN);
 
+        // Experimental evidence is intentionally excluded from IntegrityScore:
+        // enabling it for observation must not indirectly unlock a sanction in
+        // an unrelated check.
         flagComponent(
                 "aim.sensitivity",
                 "invalidRotations=" + recentInvalidRotations
                         + " combatConfirmations=" + combatConfirmations
-                        + " corr=" + String.format(
-                                java.util.Locale.ROOT,
-                                "%.2f",
-                                correlation
-                        )
         );
 
         // Do not create a flag loop from one rotation sequence.
