@@ -262,18 +262,34 @@ public class Reach extends Check implements PacketReceiveListener {
                     interactionData.targetBoxSnapshot,
                     false
             );
+
+            long attackAgeMillis = Math.max(
+                    0L,
+                    (System.nanoTime() - interactionData.attackNanos)
+                            / 1_000_000L
+            );
+            int transactionAdvance = Math.max(
+                    0,
+                    player.lastTransactionReceived.get()
+                            - interactionData.attackTransaction
+            );
+
             switch (result.type()) {
                 case REACH -> flag(
                         V.write(verbose()).f64(result.minDistance()).uint(Math.max(0, reachEntity.getType().getId(PacketEvents.getAPI().getServerManager().getVersion().toClientVersion()))),
                         () -> {
-                            String added = ", type=" + reachEntity.getType().getName().getKey();
+                            String added = ", type=" + reachEntity.getType().getName().getKey()
+                                    + ", attackAge=" + attackAgeMillis + "ms"
+                                    + ", txAdvance=" + transactionAdvance;
                             if (reachEntity instanceof PacketEntitySizeable sizeable) {
                                 added += ", size=" + sizeable.size;
                             }
                             return result.verbose() + added;
                         });
                 case HITBOX -> {
-                    String added = "type=" + reachEntity.getType().getName().getKey();
+                    String added = "type=" + reachEntity.getType().getName().getKey()
+                            + ", attackAge=" + attackAgeMillis + "ms"
+                            + ", txAdvance=" + transactionAdvance;
                     if (reachEntity instanceof PacketEntitySizeable sizeable) {
                         added += ", size=" + sizeable.size;
                     }
