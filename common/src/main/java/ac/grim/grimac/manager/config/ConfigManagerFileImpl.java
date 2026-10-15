@@ -207,11 +207,12 @@ public class ConfigManagerFileImpl implements ConfigManager, BasicReloadable {
                     configString += "  Combat:\n" +
                             "    remove-violations-after: 300\n" +
                             "    checks:\n" +
-                            "      - \"Killaura\"\n" +
+                            "      - \"Interact\"\n" +
                             "      - \"Aim\"\n" +
+                            "      - \"AttackBurst\"\n" +
                             "    commands:\n" +
                             "      - \"20:40 [alert]\"\n" +
-                            "  # As of 2.2.10, there are no AutoClicker checks and this is a placeholder. 2.3 will include AutoClicker checks.\n" +
+                            "  # Conservative excessive-swing evidence; alert/log only by default.\n" +
                             "  Autoclicker:\n" +
                             "    remove-violations-after: 300\n" +
                             "    checks:\n" +
