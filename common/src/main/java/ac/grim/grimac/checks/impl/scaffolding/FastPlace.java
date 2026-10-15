@@ -134,22 +134,22 @@ public final class FastPlace extends BlockPlaceCheck implements BlockPlaceListen
     public void onReload(@NotNull ConfigManager config) {
         enabled = config.getBooleanElse("fast-place-integrity.enabled", true);
         shortWindowNanos = TimeUnit.MILLISECONDS.toNanos(clamp(
-                config.getLongElse("fast-place-integrity.short-window-ms", 350L),
+                config.getLongElse("fast-place-integrity.short-window-ms", 300L),
                 150L,
                 1000L
         ));
         shortWindowLimit = (int) clamp(
-                config.getLongElse("fast-place-integrity.short-window-limit", 5L),
+                config.getLongElse("fast-place-integrity.short-window-limit", 7L),
                 3L,
                 20L
         );
         oneSecondLimit = (int) clamp(
-                config.getLongElse("fast-place-integrity.one-second-limit", 10L),
+                config.getLongElse("fast-place-integrity.one-second-limit", 22L),
                 6L,
                 40L
         );
         requiredStrongWindows = (int) clamp(
-                config.getLongElse("fast-place-integrity.required-strong-windows", 3L),
+                config.getLongElse("fast-place-integrity.required-strong-windows", 4L),
                 2L,
                 20L
         );
