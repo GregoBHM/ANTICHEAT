@@ -152,7 +152,6 @@ Punishments:
     threshold-scope: check
     checks:
       - "PacketOrder"
-      - "Post"
       - "TransactionOrder"
     commands:
       - "10:20 [alert]"
