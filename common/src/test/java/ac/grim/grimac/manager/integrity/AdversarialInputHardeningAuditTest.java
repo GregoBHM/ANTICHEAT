@@ -28,6 +28,8 @@ class AdversarialInputHardeningAuditTest {
         assertTrue(source.contains("IntegritySignal.SELECTIVE_STALL"));
         assertFalse(source.contains("event.setCancelled"));
         assertFalse(source.contains("player.onPacketCancel"));
+        assertTrue(source.contains("neutralizeUncertainWindow()"));
+        assertTrue(source.contains("excessiveTickStreak = Math.max(0, excessiveTickStreak - 1)"));
         assertTrue(source.indexOf("boolean accepted = flagComponent(")
                 < source.indexOf(".record(player, IntegritySignal.AUTOCLICKER_EXCESS)"));
     }
@@ -43,6 +45,8 @@ class AdversarialInputHardeningAuditTest {
         assertTrue(source.contains("IntegritySignal.SELECTIVE_STALL"));
         assertFalse(source.contains("place.resync()"));
         assertFalse(source.contains("shouldCancel()"));
+        assertTrue(source.contains("neutralizeUncertainWindow()"));
+        assertTrue(source.contains("strongWindows = Math.max(0, strongWindows - 1)"));
         assertTrue(source.indexOf("boolean accepted = flagComponent(")
                 < source.indexOf(".record(player, IntegritySignal.FAST_PLACE)"));
     }
