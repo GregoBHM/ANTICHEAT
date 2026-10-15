@@ -4,6 +4,7 @@ import ac.grim.grimac.api.storage.verbose.Verbose;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.impl.verbose.VerboseCodecs;
+import ac.grim.grimac.manager.integrity.InventoryClickPreventionPolicy;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
 import ac.grim.grimac.checks.type.PacketSendListener;
 import ac.grim.grimac.player.GrimPlayer;
@@ -56,7 +57,9 @@ public class BadPacketsP extends Check implements PacketReceiveListener, PacketS
             if (flag) {
                 boolean hasContainer = wrapper.getWindowId() == containerId;
                 if (flag(V.write(verbose()).uint(VerboseCodecs.enumId(clickType)).sint(button).bool(hasContainer).sint(containerType))
-                        && shouldModifyPackets()) {
+                        && shouldModifyPackets()
+                        && InventoryClickPreventionPolicy
+                        .allowDestructiveHeuristicPrevention(player.getClientVersion())) {
                     event.setCancelled(true);
                     player.onPacketCancel();
                 }
