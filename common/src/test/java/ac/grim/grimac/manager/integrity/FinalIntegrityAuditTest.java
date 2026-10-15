@@ -67,6 +67,17 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void packetBurstTrustedUncertaintyDoesNotWipePriorBuffer() throws IOException {
+        String burst = source("checks/impl/integrity/PacketBurst.java");
+
+        assertTrue(burst.contains("MovementContextType.TELEPORT"));
+        assertTrue(burst.contains("resetTimingWindow(now)"));
+        assertTrue(burst.contains(
+                "buffer = Math.max(0.0D, buffer - 0.08D)"
+        ));
+    }
+
+    @Test
     void timerPreventionIsIndependentFromSanctionConfidence() throws IOException {
         String timer = source("checks/impl/timer/Timer.java");
 
