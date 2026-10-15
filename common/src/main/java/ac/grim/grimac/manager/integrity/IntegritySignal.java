@@ -22,7 +22,6 @@ public enum IntegritySignal {
     MULTI_ACTION(1.5D, false),
     ATTACK_BURST(2.0D, true),
     AUTOCLICKER_EXCESS(2.0D, true),
-    AIM_PATTERN(1.5D, true),
     FAST_PLACE(1.5D, true),
     BLOCK_PLACE_BURST(1.5D, true);
 
