@@ -88,6 +88,15 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void timerLimitAlsoYieldsToConnectionStallOwnership() throws IOException {
+        String timerLimit = source("checks/impl/timer/TimerLimit.java");
+
+        assertTrue(timerLimit.contains("stall.isHardReleaseCandidateActive()"));
+        assertTrue(timerLimit.contains("stall.shouldSuppressMovementSetbacks()"));
+        assertTrue(timerLimit.contains("do not cancel the observation packet"));
+    }
+
+    @Test
     void timerAndReachFeedIntegritySeverity() throws IOException {
         String correlation = source("manager/integrity/IntegrityCorrelationManager.java");
         String signals = source("manager/integrity/IntegritySignal.java");
