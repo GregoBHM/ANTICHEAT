@@ -78,6 +78,16 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void timerDoesNotDuplicateConnectionStallCandidateEvidence() throws IOException {
+        String timer = source("checks/impl/timer/Timer.java");
+
+        assertTrue(timer.contains("stall.isHardReleaseCandidateActive()"));
+        assertTrue(timer.contains("stall.shouldSuppressMovementSetbacks()"));
+        assertTrue(timer.contains("ConnectionStall owns the first-release/correction decision"));
+        assertTrue(timer.contains("timerBalanceRealTime -= 50e6"));
+    }
+
+    @Test
     void timerAndReachFeedIntegritySeverity() throws IOException {
         String correlation = source("manager/integrity/IntegrityCorrelationManager.java");
         String signals = source("manager/integrity/IntegritySignal.java");
