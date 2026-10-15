@@ -101,6 +101,28 @@ class MovementDetectionPolicyAuditTest {
     }
 
     @Test
+    void discardedNoSlowPredictionDoesNotEraseLiveContextEpisode()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
+        );
+
+        int discarded = source.indexOf(
+                "if (!predictionComplete.isChecked())"
+        );
+        int checked = source.indexOf(
+                "lastCheckedPredictionNanos = now",
+                discarded
+        );
+        String block = source.substring(discarded, checked);
+
+        assertTrue(block.contains("resetTickState()"));
+        assertTrue(block.contains("lastCheckedPredictionNanos"));
+        assertTrue(block.contains("episodeWindowMillis"));
+        assertFalse(block.contains("flagComponent("));
+    }
+
+    @Test
     void antiKbScopesVelocityContextsToTheConcreteSample() throws IOException {
         String source = read(
                 "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
