@@ -6,6 +6,7 @@ import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
+import ac.grim.grimac.manager.integrity.MovementContextType;
 import ac.grim.grimac.player.GrimPlayer;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import org.jetbrains.annotations.NotNull;
@@ -53,11 +54,26 @@ public final class PacketBurst extends Check implements PacketReceiveListener {
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
         if (!enabled || !isFlying(event.getPacketType())) return;
-        if (GrimAPI.INSTANCE.getMovementContextManager().suppressesConnectionStall(player.uuid)) {
-            reset();
+
+        long now = System.nanoTime();
+        var movementContexts = GrimAPI.INSTANCE.getMovementContextManager();
+        if (movementContexts.suppressesConnectionStall(player.uuid)) {
+            if (movementContexts.hasActive(
+                    player.uuid,
+                    MovementContextType.TELEPORT
+            )) {
+                // Real teleport is a hard continuity boundary.
+                reset();
+            } else {
+                // Freeze/root/flight are legitimate uncertainty windows. Start
+                // packet timing fresh without erasing prior accumulated burst
+                // confidence, otherwise repeatedly entering a trusted context
+                // could wash earlier evidence.
+                resetTimingWindow(now);
+                buffer = Math.max(0.0D, buffer - 0.08D);
+            }
             return;
         }
-        long now = System.nanoTime();
         long gapMillis = lastMovementNanos == 0L ? 0L : TimeUnit.NANOSECONDS.toMillis(now - lastMovementNanos);
         long gapThreshold = player.canSkipTicks() ? modernGapMs : legacyGapMs;
 
@@ -128,16 +144,20 @@ public final class PacketBurst extends Check implements PacketReceiveListener {
         return count;
     }
 
-    public void reset() {
+    private void resetTimingWindow(long now) {
         ringIndex = 0;
         ringCount = 0;
-        lastMovementNanos = 0L;
+        lastMovementNanos = now;
         transactionAtLastMovement = player.lastTransactionReceived.get();
         recoveryUntilNanos = 0L;
         recoveryGapMillis = 0L;
         transactionAdvanceAtGap = 0;
         recoveryPackets = 0;
         recoveryEvidenceRecorded = false;
+    }
+
+    public void reset() {
+        resetTimingWindow(0L);
         buffer = 0.0D;
     }
 
