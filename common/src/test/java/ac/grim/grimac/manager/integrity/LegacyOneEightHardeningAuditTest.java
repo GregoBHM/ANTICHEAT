@@ -111,6 +111,31 @@ class LegacyOneEightHardeningAuditTest {
 
 
     @Test
+    void discardedAntiKbPredictionIsNeutralNotAForcedExemption()
+            throws IOException {
+        String knockback = source(
+                "checks/impl/velocity/KnockbackHandler.java"
+        );
+
+        int discarded = knockback.indexOf(
+                "if (!predictionComplete.isChecked())"
+        );
+        int teleport = knockback.indexOf(
+                "if (predictionComplete.getData().isTeleport())",
+                discarded
+        );
+        int forceExempt = knockback.indexOf(
+                "forceExempt();",
+                discarded
+        );
+
+        assertTrue(discarded >= 0);
+        assertTrue(teleport > discarded);
+        assertTrue(forceExempt >= teleport);
+    }
+
+
+    @Test
     void nativeOneEightInventoryHeuristicsNeverCancelClicks() throws IOException {
         assertFalse(
                 InventoryClickPreventionPolicy
