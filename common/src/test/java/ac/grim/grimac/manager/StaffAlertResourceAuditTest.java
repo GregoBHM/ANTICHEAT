@@ -193,7 +193,7 @@ class StaffAlertResourceAuditTest {
 
                 String packetOrder = groupBlock(text, "PacketOrder");
                 assertTrue(packetOrder.contains("\"PacketOrder\""), path.toString());
-                assertTrue(packetOrder.contains("\"Post\""), path.toString());
+                assertFalse(packetOrder.contains("\"Post\""), path.toString());
                 assertTrue(packetOrder.contains("\"TransactionOrder\""), path.toString());
             }
         }
