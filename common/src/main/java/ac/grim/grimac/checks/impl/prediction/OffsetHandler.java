@@ -85,6 +85,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
     private long lastPredictionNanos;
     private int lastPredictionTransaction;
+    private long lastCheckedPredictionNanos;
 
     private long shortBlinkUntilNanos;
     private long shortBlinkLastPacketNanos;
@@ -118,11 +119,24 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 : Math.max(0, currentTransaction - previousTransaction);
 
         if (!predictionComplete.isChecked()) {
+            // A discarded prediction is neutral evidence. It must not add VL,
+            // trigger correction, or wipe a still-live special-physics episode.
+            // Enforcement/quarantine is unsafe to carry through an unchecked
+            // sample, so only destructive state is cleared immediately.
             resetEnforcementState();
             resetShortBlinkState();
-            resetEnvironmentState();
+
+            long episodeWindowNanos = TimeUnit.MILLISECONDS.toNanos(
+                    Math.max(1L, specialEnvironmentFlagEpisodeWindowMillis)
+            );
+            if (lastCheckedPredictionNanos != 0L
+                    && now - lastCheckedPredictionNanos > episodeWindowNanos) {
+                resetEnvironmentState();
+            }
             return;
         }
+
+        lastCheckedPredictionNanos = now;
 
         final double offset = predictionComplete.getOffset();
 
@@ -165,7 +179,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 && !player.inVehicle()
                 && !player.getSetbackTeleportUtil().shouldBlockMovement()
                 && !blinkRecovery
-                && !trustedVelocityContext
                 && !GrimAPI.INSTANCE.getMovementContextManager()
                 .suppressesConnectionStall(player.uuid);
 
@@ -408,7 +421,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
                 if (!blinkRecovery
                         && !velocityRecovery
-                        && !trustedVelocityContext
                         && persistentCorrection
                         && enforcementImmediateSetback
                         && !isNoSetbackPermission()) {
@@ -474,7 +486,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
                     if (!blinkRecovery
                             && !velocityRecovery
-                            && !trustedVelocityContext
                             && severeMovement
                             && enforcementImmediateSetback
                             && !isNoSetbackPermission()
@@ -488,7 +499,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         }
                     } else if (!blinkRecovery
                             && !velocityRecovery
-                            && !trustedVelocityContext
                             && !environmentProtectedWindow
                             && (advantageGained >= maxAdvantage
                             || setbackEvidenceOffset >= immediateSetbackThreshold)
