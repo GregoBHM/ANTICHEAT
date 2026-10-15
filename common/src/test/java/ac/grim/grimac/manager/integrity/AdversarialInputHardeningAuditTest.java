@@ -56,6 +56,19 @@ class AdversarialInputHardeningAuditTest {
     }
 
     @Test
+    void aimAssistEvidenceIsExperimentalAndNonDestructive() throws Exception {
+        String source = source(
+                "checks/impl/aim/AimSensitivityConsistency.java"
+        );
+
+        assertTrue(source.contains("experimental = true"));
+        assertTrue(source.contains("AimProcessor.class"));
+        assertTrue(source.contains("minimum-step-residual"));
+        assertFalse(source.contains("event.setCancelled"));
+        assertFalse(source.contains("executeViolationSetback"));
+    }
+
+    @Test
     void checkManagerRegistersBothHardeningChecks() throws Exception {
         String manager = source("manager/CheckManager.java");
 
@@ -64,6 +77,9 @@ class AdversarialInputHardeningAuditTest {
         ));
         assertTrue(manager.contains(
                 ".put(FastPlace.class, new FastPlace(player))"
+        ));
+        assertTrue(manager.contains(
+                ".put(AimSensitivityConsistency.class, new AimSensitivityConsistency(player))"
         ));
     }
 }
