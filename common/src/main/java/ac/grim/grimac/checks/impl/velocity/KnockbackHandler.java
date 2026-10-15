@@ -217,11 +217,26 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
         double offset = predictionComplete.getOffset();
-        if (!predictionComplete.isChecked() || predictionComplete.getData().isTeleport()) {
+        if (!predictionComplete.isChecked()) {
+            // A discarded prediction is neutral: it must neither create
+            // AntiKB evidence nor erase the authoritative velocity by forcing
+            // its minimum offset to zero. Clear only tick-local prediction
+            // state and wait for the next usable sample.
+            knockbackPointThree = false;
+            return;
+        }
+
+        if (predictionComplete.getData().isTeleport()) {
+            // Teleport is a real continuity boundary. Velocities from the old
+            // position cannot be judged against the post-teleport state.
             forceExempt();
+            knockbackPointThree = false;
             specialEvidenceStreak = 0;
             specialEvidenceKey = "";
             normalEnforcementStreak = 0;
+            enforcementEpisodeStartedNanos = 0L;
+            enforcementRetries = 0;
+            suppressCompetingUntilNanos = 0L;
             return;
         }
 
