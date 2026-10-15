@@ -5,6 +5,7 @@ import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
 import ac.grim.grimac.checks.type.PostPredictionListener;
+import ac.grim.grimac.manager.integrity.InventoryClickPreventionPolicy;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
@@ -64,7 +65,10 @@ public class PacketOrderK extends Check implements PacketReceiveListener, PostPr
                 int kind = event.getPacketType() == PacketType.Play.Client.CLICK_WINDOW ? KIND_CLICK : KIND_CLOSE;
                 if (!player.canSkipTicks()) {
                     if (flag(write(kind, false, false))
-                            && shouldModifyPackets() && event.getPacketType() == PacketType.Play.Client.CLICK_WINDOW) {
+                            && shouldModifyPackets()
+                            && event.getPacketType() == PacketType.Play.Client.CLICK_WINDOW
+                            && InventoryClickPreventionPolicy
+                            .allowDestructiveHeuristicPrevention(player.getClientVersion())) {
                         event.setCancelled(true);
                         player.onPacketCancel();
                     }
