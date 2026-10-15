@@ -182,9 +182,17 @@ public class Reach extends Check implements PacketReceiveListener {
 
         boolean tooManyAttacks = playerAttackQueue.size() > 10;
         if (!tooManyAttacks) {
+            // Freeze the viewer-compensated target box at the exact attack
+            // packet. The queued post-look raytrace must not accidentally use
+            // a target interpolation state that advanced after the attack.
+            SimpleCollisionBox attackTargetBox = getTargetBox(entity).copy();
+
             playerAttackQueue.put(entityId, new InteractionData(
                     player.x, player.y, player.z,
-                    hasRange, maxReach, hitboxMargin, attackRangeMovement
+                    hasRange, maxReach, hitboxMargin, attackRangeMovement,
+                    attackTargetBox,
+                    player.lastTransactionReceived.get(),
+                    System.nanoTime()
             )); // Queue for next tick for very precise check
         }
 
@@ -215,7 +223,18 @@ public class Reach extends Check implements PacketReceiveListener {
 
         // Filter out what we assume to be cheats
         if (cancelBuffer != 0) {
-            CheckResult result = checkReach(reachEntity, player.x, player.y, player.z, hasAttackRange, itemMaxReach, itemHitboxMargin, null, true);
+            CheckResult result = checkReach(
+                    reachEntity,
+                    player.x,
+                    player.y,
+                    player.z,
+                    hasAttackRange,
+                    itemMaxReach,
+                    itemHitboxMargin,
+                    null,
+                    null,
+                    true
+            );
             return result.isFlag();
         } else {
             SimpleCollisionBox targetBox = getTargetBox(reachEntity);
@@ -231,7 +250,18 @@ public class Reach extends Check implements PacketReceiveListener {
             if (reachEntity == null) continue;
 
             InteractionData interactionData = attack.getValue();
-            CheckResult result = checkReach(reachEntity, interactionData.x, interactionData.y, interactionData.z, interactionData.hasAttackRange, interactionData.maxReach, interactionData.hitboxMargin, interactionData.attackRangeMovement, false);
+            CheckResult result = checkReach(
+                    reachEntity,
+                    interactionData.x,
+                    interactionData.y,
+                    interactionData.z,
+                    interactionData.hasAttackRange,
+                    interactionData.maxReach,
+                    interactionData.hitboxMargin,
+                    interactionData.attackRangeMovement,
+                    interactionData.targetBoxSnapshot,
+                    false
+            );
             switch (result.type()) {
                 case REACH -> flag(
                         V.write(verbose()).f64(result.minDistance()).uint(Math.max(0, reachEntity.getType().getId(PacketEvents.getAPI().getServerManager().getVersion().toClientVersion()))),
@@ -256,8 +286,21 @@ public class Reach extends Check implements PacketReceiveListener {
     }
 
     @NotNull
-    private CheckResult checkReach(PacketEntity reachEntity, double x, double y, double z, boolean hasAttackRange, float itemMaxReach, float itemHitboxMargin, Vector3dm attackRangeMovement, boolean isPrediction) {
-        SimpleCollisionBox targetBox = getTargetBox(reachEntity);
+    private CheckResult checkReach(
+            PacketEntity reachEntity,
+            double x,
+            double y,
+            double z,
+            boolean hasAttackRange,
+            float itemMaxReach,
+            float itemHitboxMargin,
+            Vector3dm attackRangeMovement,
+            SimpleCollisionBox targetBoxSnapshot,
+            boolean isPrediction
+    ) {
+        SimpleCollisionBox targetBox = targetBoxSnapshot == null
+                ? getTargetBox(reachEntity)
+                : targetBoxSnapshot.copy();
 
         double movementAllowance = attackRangeMovement == null ? 0 : getAttackRangeMovementAllowance(attackRangeMovement);
         double maxReach = applyReachModifiers(targetBox, hasAttackRange, itemMaxReach, itemHitboxMargin, !player.packetStateData.didLastLastMovementIncludePosition) + movementAllowance;
@@ -399,6 +442,16 @@ public class Reach extends Check implements PacketReceiveListener {
         }
     }
 
-    private record InteractionData(double x, double y, double z, boolean hasAttackRange,
-                                   float maxReach, float hitboxMargin, Vector3dm attackRangeMovement) {}
+    private record InteractionData(
+            double x,
+            double y,
+            double z,
+            boolean hasAttackRange,
+            float maxReach,
+            float hitboxMargin,
+            Vector3dm attackRangeMovement,
+            SimpleCollisionBox targetBoxSnapshot,
+            int attackTransaction,
+            long attackNanos
+    ) {}
 }
