@@ -765,20 +765,20 @@ MultiPlace:
 # cancel swings or block placements, and network release bursts are neutral.
 autoclicker-excess:
     enabled: true
-    per-tick-threshold: 2
-    required-excessive-ticks: 3
-    emergency-per-tick-threshold: 4
-    sustained-one-second-limit: 24
+    per-tick-threshold: 3
+    required-excessive-ticks: 4
+    emergency-per-tick-threshold: 6
+    sustained-one-second-limit: 32
     flag-cooldown-ms: 2500
     network-causal-window-ms: 1500
     minimum-confidence: 0.80
 
 fast-place-integrity:
     enabled: true
-    short-window-ms: 350
-    short-window-limit: 5
-    one-second-limit: 10
-    required-strong-windows: 3
+    short-window-ms: 300
+    short-window-limit: 7
+    one-second-limit: 22
+    required-strong-windows: 4
     flag-cooldown-ms: 2500
     network-causal-window-ms: 1500
     minimum-confidence: 0.80
