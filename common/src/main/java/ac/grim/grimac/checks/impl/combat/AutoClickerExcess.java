@@ -172,22 +172,22 @@ public final class AutoClickerExcess extends Check implements PacketReceiveListe
                 true
         );
         perTickThreshold = (int) clamp(
-                config.getLongElse("autoclicker-excess.per-tick-threshold", 2L),
+                config.getLongElse("autoclicker-excess.per-tick-threshold", 3L),
                 2L,
                 10L
         );
         requiredExcessiveTicks = (int) clamp(
-                config.getLongElse("autoclicker-excess.required-excessive-ticks", 3L),
+                config.getLongElse("autoclicker-excess.required-excessive-ticks", 4L),
                 2L,
                 20L
         );
         emergencyPerTickThreshold = (int) clamp(
-                config.getLongElse("autoclicker-excess.emergency-per-tick-threshold", 4L),
+                config.getLongElse("autoclicker-excess.emergency-per-tick-threshold", 6L),
                 perTickThreshold + 1L,
                 20L
         );
         sustainedOneSecondLimit = (int) clamp(
-                config.getLongElse("autoclicker-excess.sustained-one-second-limit", 24L),
+                config.getLongElse("autoclicker-excess.sustained-one-second-limit", 32L),
                 21L,
                 80L
         );
