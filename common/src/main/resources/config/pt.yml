@@ -800,3 +800,15 @@ legacy-inventory-move:
     correlation-window-ms: 1500
     standalone-clicks: 4
     correlated-clicks: 2
+
+# Experimental: evidence only. Never cancels attacks/rotations and is not
+# eligible for autonomous sanctions. Validate with native 1.8.9 players first.
+aim-assist-evidence:
+    enabled: true
+    minimum-yaw: 0.20
+    maximum-yaw: 45.0
+    minimum-step-residual: 0.18
+    required-invalid-rotations: 5
+    required-combat-confirmations: 4
+    attack-correlation-ms: 250
+    flag-cooldown-ms: 3000
