@@ -7,7 +7,6 @@ import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.impl.aim.processor.AimProcessor;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
 import ac.grim.grimac.checks.type.RotationListener;
-import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.RotationUpdate;
 import ac.grim.grimac.utils.math.GrimMath;
