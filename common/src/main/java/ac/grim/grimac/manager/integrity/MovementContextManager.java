@@ -1,5 +1,6 @@
 package ac.grim.grimac.manager.integrity;
 
+import ac.grim.grimac.utils.math.Vector3dm;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,6 +25,8 @@ public final class MovementContextManager {
     private static final long MAX_CONTEXT_MILLIS = 15_000L;
     private static final long MAX_TRUSTED_VELOCITY_MILLIS = 1_500L;
     private static final int MAX_CONTEXTS_PER_PLAYER = 64;
+    private static final double DEFAULT_VECTOR_ABSOLUTE_TOLERANCE = 0.035D;
+    private static final double DEFAULT_VECTOR_RELATIVE_TOLERANCE = 0.12D;
 
     private final Map<UUID, CopyOnWriteArrayList<Context>> contexts = new ConcurrentHashMap<>();
 
@@ -63,13 +66,134 @@ public final class MovementContextManager {
         return beginInternal(uuid, type, source, durationMillis, detail, false);
     }
 
-    private Context beginInternal(@NotNull UUID uuid, @NotNull MovementContextType type, @NotNull String source, long durationMillis, @Nullable String detail, boolean trusted) {
+    /**
+     * Registers an explicitly trusted velocity context tied to the expected vector.
+     *
+     * <p>A scoped context never globally exempts the player. Consumers may only
+     * treat the matching velocity sample as plugin-authored/ambiguous; unrelated
+     * combat velocities continue through normal AntiKB analysis.</p>
+     */
+    public Context beginTrustedVelocity(
+            @NotNull UUID uuid,
+            @NotNull MovementContextType type,
+            @NotNull String source,
+            long durationMillis,
+            @NotNull Vector3dm expectedVelocity,
+            int transaction,
+            @Nullable String detail
+    ) {
+        if (!type.allowsTrustedVelocityOverride()) {
+            throw new IllegalArgumentException(
+                    "Movement context " + type + " cannot describe velocity"
+            );
+        }
+        return beginInternal(
+                uuid,
+                type,
+                source,
+                durationMillis,
+                detail,
+                true,
+                expectedVelocity,
+                transaction
+        );
+    }
+
+    public Context beginTrustedVelocity(
+            @NotNull UUID uuid,
+            @NotNull MovementContextType type,
+            @NotNull String source,
+            long durationMillis,
+            @NotNull Vector3dm expectedVelocity,
+            @Nullable String detail
+    ) {
+        return beginTrustedVelocity(
+                uuid, type, source, durationMillis, expectedVelocity, -1, detail
+        );
+    }
+
+    /**
+     * Records a concrete observed velocity without making it a bypass. This is
+     * used by the generic Bukkit bridge so the same vanilla velocity packet does
+     * not make itself "uncertain" merely because PlayerVelocityEvent observed it.
+     */
+    public Context beginObservedVelocity(
+            @NotNull UUID uuid,
+            @NotNull MovementContextType type,
+            @NotNull String source,
+            long durationMillis,
+            @NotNull Vector3dm expectedVelocity,
+            int transaction,
+            @Nullable String detail
+    ) {
+        if (!type.allowsTrustedVelocityOverride()) {
+            throw new IllegalArgumentException(
+                    "Movement context " + type + " cannot describe velocity"
+            );
+        }
+        return beginInternal(
+                uuid,
+                type,
+                source,
+                durationMillis,
+                detail,
+                false,
+                expectedVelocity,
+                transaction
+        );
+    }
+
+    public Context beginObservedVelocity(
+            @NotNull UUID uuid,
+            @NotNull MovementContextType type,
+            @NotNull String source,
+            long durationMillis,
+            @NotNull Vector3dm expectedVelocity,
+            @Nullable String detail
+    ) {
+        return beginObservedVelocity(
+                uuid, type, source, durationMillis, expectedVelocity, -1, detail
+        );
+    }
+
+    private Context beginInternal(
+            @NotNull UUID uuid,
+            @NotNull MovementContextType type,
+            @NotNull String source,
+            long durationMillis,
+            @Nullable String detail,
+            boolean trusted
+    ) {
+        return beginInternal(
+                uuid, type, source, durationMillis, detail, trusted, null, -1
+        );
+    }
+
+    private Context beginInternal(
+            @NotNull UUID uuid,
+            @NotNull MovementContextType type,
+            @NotNull String source,
+            long durationMillis,
+            @Nullable String detail,
+            boolean trusted,
+            @Nullable Vector3dm expectedVelocity,
+            int transaction
+    ) {
         long maximum = trusted && type.allowsTrustedVelocityOverride() ? MAX_TRUSTED_VELOCITY_MILLIS : MAX_CONTEXT_MILLIS;
         long duration = Math.max(1L, Math.min(maximum, durationMillis));
         long now = System.nanoTime();
         long expiresAtNanos = now + TimeUnit.MILLISECONDS.toNanos(duration);
         String normalizedSource = sanitizeSource(source);
-        Context context = new Context(type, normalizedSource, sanitizeDetail(detail), trusted, now, expiresAtNanos);
+        Context context = new Context(
+                type,
+                normalizedSource,
+                sanitizeDetail(detail),
+                trusted,
+                now,
+                expiresAtNanos,
+                expectedVelocity == null ? null : expectedVelocity.clone(),
+                transaction
+        );
         CopyOnWriteArrayList<Context> list = contexts.computeIfAbsent(uuid, ignored -> new CopyOnWriteArrayList<>());
         synchronized (list) {
             list.removeIf(existing ->
@@ -134,6 +258,64 @@ public final class MovementContextManager {
 
     public boolean hasAnyVelocityContext(@NotNull UUID uuid) {
         return hasVelocityContext(uuid, true, true);
+    }
+
+    /**
+     * Classifies active velocity contexts against one concrete server velocity.
+     *
+     * <p>Matched observed contexts are informational only: observing the same
+     * Bukkit velocity must not weaken AntiKB. Trusted matches and any mismatched
+     * or unscoped concurrent velocity context make the sample ambiguous, but do
+     * not erase evidence or globally exempt subsequent velocities.</p>
+     */
+    public @NotNull VelocityContextAssessment assessVelocity(
+            @NotNull UUID uuid,
+            int transaction,
+            @NotNull Vector3dm velocity
+    ) {
+        long now = System.nanoTime();
+        CopyOnWriteArrayList<Context> list = contexts.get(uuid);
+        if (list == null) return VelocityContextAssessment.NONE;
+        cleanup(uuid, list, now);
+
+        boolean trustedMatch = false;
+        boolean ambiguous = false;
+        Context matchedTrusted = null;
+
+        for (Context context : list) {
+            if (context.expiresAtNanos <= now
+                    || !context.type.allowsTrustedVelocityOverride()) {
+                continue;
+            }
+
+            if (!context.isVelocityScoped()) {
+                // Legacy/unscoped integration context is never a bypass. Keep
+                // enforcement conservative while still allowing evidence.
+                ambiguous = true;
+                continue;
+            }
+
+            if (context.matchesVelocity(transaction, velocity)) {
+                if (context.trusted) {
+                    trustedMatch = true;
+                    matchedTrusted = context;
+                }
+                // A matching observed context is just a second observation of
+                // this exact server velocity, not uncertainty.
+            } else {
+                // A different active velocity may be composed with this one.
+                ambiguous = true;
+            }
+        }
+
+        if (!trustedMatch && !ambiguous) {
+            return VelocityContextAssessment.NONE;
+        }
+        return new VelocityContextAssessment(
+                trustedMatch,
+                ambiguous,
+                matchedTrusted
+        );
     }
 
     private boolean hasVelocityContext(
@@ -251,14 +433,27 @@ public final class MovementContextManager {
         private final boolean trusted;
         private final long createdAtNanos;
         private final long expiresAtNanos;
+        private final @Nullable Vector3dm expectedVelocity;
+        private final int transaction;
 
-        private Context(MovementContextType type, String source, @Nullable String detail, boolean trusted, long createdAtNanos, long expiresAtNanos) {
+        private Context(
+                MovementContextType type,
+                String source,
+                @Nullable String detail,
+                boolean trusted,
+                long createdAtNanos,
+                long expiresAtNanos,
+                @Nullable Vector3dm expectedVelocity,
+                int transaction
+        ) {
             this.type = type;
             this.source = source;
             this.detail = detail;
             this.trusted = trusted;
             this.createdAtNanos = createdAtNanos;
             this.expiresAtNanos = expiresAtNanos;
+            this.expectedVelocity = expectedVelocity;
+            this.transaction = transaction;
         }
 
         public MovementContextType getType() {
@@ -277,12 +472,88 @@ public final class MovementContextManager {
             return trusted;
         }
 
+        public boolean isVelocityScoped() {
+            return expectedVelocity != null;
+        }
+
+        public @Nullable Vector3dm getExpectedVelocity() {
+            return expectedVelocity == null ? null : expectedVelocity.clone();
+        }
+
+        public int getTransaction() {
+            return transaction;
+        }
+
+        private boolean matchesVelocity(
+                int actualTransaction,
+                @NotNull Vector3dm actualVelocity
+        ) {
+            if (expectedVelocity == null) return false;
+
+            if (transaction >= 0
+                    && actualTransaction >= 0
+                    && Math.abs(actualTransaction - transaction) > 1) {
+                return false;
+            }
+
+            return componentMatches(expectedVelocity.getX(), actualVelocity.getX())
+                    && componentMatches(expectedVelocity.getY(), actualVelocity.getY())
+                    && componentMatches(expectedVelocity.getZ(), actualVelocity.getZ());
+        }
+
+        private static boolean componentMatches(
+                double expected,
+                double actual
+        ) {
+            double tolerance = DEFAULT_VECTOR_ABSOLUTE_TOLERANCE
+                    + DEFAULT_VECTOR_RELATIVE_TOLERANCE
+                    * Math.max(Math.abs(expected), Math.abs(actual));
+            return Math.abs(expected - actual) <= tolerance;
+        }
+
         public long getAgeMillis() {
             return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - createdAtNanos));
         }
 
         public long getRemainingMillis() {
             return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(expiresAtNanos - System.nanoTime()));
+        }
+    }
+
+    public static final class VelocityContextAssessment {
+        private static final VelocityContextAssessment NONE =
+                new VelocityContextAssessment(false, false, null);
+
+        private final boolean trustedMatch;
+        private final boolean ambiguous;
+        private final @Nullable Context matchedTrustedContext;
+
+        private VelocityContextAssessment(
+                boolean trustedMatch,
+                boolean ambiguous,
+                @Nullable Context matchedTrustedContext
+        ) {
+            this.trustedMatch = trustedMatch;
+            this.ambiguous = ambiguous;
+            this.matchedTrustedContext = matchedTrustedContext;
+        }
+
+        /** Exact trusted plugin velocity; evidence remains possible but destructive enforcement is suppressed. */
+        public boolean hasTrustedMatch() {
+            return trustedMatch;
+        }
+
+        /** Another/unscoped velocity context overlaps this sample. */
+        public boolean isAmbiguous() {
+            return ambiguous;
+        }
+
+        public boolean isUncertain() {
+            return trustedMatch || ambiguous;
+        }
+
+        public @Nullable Context getMatchedTrustedContext() {
+            return matchedTrustedContext;
         }
     }
 }
