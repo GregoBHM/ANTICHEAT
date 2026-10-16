@@ -71,6 +71,16 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void cancelledBlockClimbTreatsUncheckedMovementAsNeutral() throws IOException {
+        String source = source("checks/impl/exploit/CancelledBlockClimb.java");
+
+        assertTrue(source.contains("!predictionComplete.isChecked()"));
+        assertTrue(source.contains("buffer = 0;"));
+        assertTrue(source.contains("predictionComplete.getData().isTeleport()"));
+        assertTrue(source.contains("resetsFallLedger(player.uuid)"));
+    }
+
+    @Test
     void noFallDoesNotCreateEvidenceOnTeleportTransitionPacket() throws IOException {
         String noFall = source("checks/impl/groundspoof/NoFall.java");
 
