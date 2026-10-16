@@ -155,7 +155,6 @@ public final class AutoClickerPattern extends Check implements PacketReceiveList
             int occurrences = 0;
             for (int i = 0; i < count; i++) {
                 int sample = recent(i);
-                sum += value == 1 ? 0.0D : 0.0D;
                 if (sample == value) occurrences++;
             }
             if (occurrences > modeCount) {
