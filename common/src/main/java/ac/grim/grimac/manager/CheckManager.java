@@ -140,6 +140,7 @@ public class CheckManager implements BasicReloadable {
                 .put(InventoryFrequency.class, new InventoryFrequency(player))
                 .put(AttackFrequency.class, new AttackFrequency(player))
                 .put(AutoClickerExcess.class, new AutoClickerExcess(player))
+                .put(AutoClickerPattern.class, new AutoClickerPattern(player))
                 .put(BadPacketsD.class, new BadPacketsD(player))
                 .put(BadPacketsE.class, new BadPacketsE(player))
                 .put(BadPacketsJ.class, new BadPacketsJ(player))
