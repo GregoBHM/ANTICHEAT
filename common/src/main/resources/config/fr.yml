@@ -804,3 +804,21 @@ aim-assist-evidence:
     required-combat-confirmations: 4
     attack-correlation-ms: 250
     flag-cooldown-ms: 3000
+
+# Experimental long-window combat click cadence. High CPS alone is not enough:
+# the pattern must remain extremely low-variance and periodic across several
+# healthy-network windows. This check never cancels clicks.
+autoclicker-pattern:
+    enabled: true
+    samples: 32
+    evaluation-stride-ticks: 8
+    required-windows: 3
+    maximum-interval-ticks: 6
+    combat-recency-ticks: 40
+    network-causal-window-ms: 2000
+    flag-cooldown-ms: 5000
+    minimum-confidence: 0.85
+    minimum-cps: 8.0
+    maximum-variance: 0.10
+    minimum-periodicity: 0.95
+    minimum-mode-ratio: 0.85
