@@ -139,6 +139,19 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void multiInteractDoesNotDuplicateStallOwnedCombatEvidence() throws IOException {
+        for (String relative : new String[]{
+                "checks/impl/combat/MultiInteractA.java",
+                "checks/impl/combat/MultiInteractB.java"
+        }) {
+            String source = source(relative);
+            assertTrue(source.contains("ConnectionStall.class"));
+            assertTrue(source.contains("stall.shouldBlockQueuedActions()"));
+            assertTrue(source.contains("flags.clear()"));
+        }
+    }
+
+    @Test
     void reachYieldsToConnectionStallOwnedQueuedAttacks() throws IOException {
         String reach = source("checks/impl/combat/Reach.java");
 
