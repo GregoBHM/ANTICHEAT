@@ -71,6 +71,18 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void noFallDoesNotCreateEvidenceOnTeleportTransitionPacket() throws IOException {
+        String noFall = source("checks/impl/groundspoof/NoFall.java");
+
+        assertTrue(noFall.contains(
+                "!player.packetStateData.lastPacketWasTeleport"
+        ));
+        assertTrue(noFall.contains(
+                "wrapper.setOnGround(false)"
+        ));
+    }
+
+    @Test
     void simulationReusesOneEnvironmentClassification() throws IOException {
         String offset = source("checks/impl/prediction/OffsetHandler.java");
         String correlation = source("manager/integrity/IntegrityCorrelationManager.java");
