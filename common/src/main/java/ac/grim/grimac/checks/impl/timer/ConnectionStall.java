@@ -989,14 +989,36 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
     private void acceptTrustedContext(long now) {
         boolean release;
         boolean releaseMicro;
+        boolean hardBoundary = GrimAPI.INSTANCE
+                .getMovementContextManager()
+                .hasActive(player.uuid, ac.grim.grimac.manager.integrity.MovementContextType.TELEPORT);
+
         synchronized (lock) {
             release = stallActive;
             releaseMicro = microCombatHold && !stallActive;
             microCombatHold = false;
             lastMovementNanos = now;
             transactionAtLastMovement = player.lastTransactionReceived.get();
-            resetStallLocked();
-            resetHardReleaseLocked();
+
+            if (stallActive) {
+                // The current gap is explained by server-authored movement.
+                // Close that episode, but do not erase older repeat evidence.
+                finishStallLocked(now);
+            } else {
+                resetStallLocked();
+            }
+
+            if (hardBoundary) {
+                // Teleport is a genuine continuity break.
+                resetHardReleaseLocked();
+                repeatedStalls = 0;
+                lastStallEndedNanos = 0L;
+            } else {
+                // FREEZE/ROOT/FLIGHT make the current timing window unusable,
+                // not the player's earlier confirmed history.
+                clearHardReleaseCandidateLocked();
+                finishHardReleaseEpisodeLocked();
+            }
         }
         if (releaseMicro) {
             GrimAPI.INSTANCE.getCombatIntegrityManager().releaseStall(player.uuid, false);
