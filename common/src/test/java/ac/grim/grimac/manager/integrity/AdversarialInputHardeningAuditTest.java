@@ -35,6 +35,24 @@ class AdversarialInputHardeningAuditTest {
     }
 
     @Test
+    void autoclickerPatternIsExperimentalLongWindowEvidenceOnly() throws Exception {
+        String source = source(
+                "checks/impl/combat/AutoClickerPattern.java"
+        );
+
+        assertTrue(source.contains("experimental = true"));
+        assertTrue(source.contains("maximumVariance"));
+        assertTrue(source.contains("minimumPeriodicity"));
+        assertTrue(source.contains("minimumModeRatio"));
+        assertTrue(source.contains("requiredWindows"));
+        assertTrue(source.contains("IntegritySignal.PACKET_BURST"));
+        assertTrue(source.contains("IntegritySignal.SELECTIVE_STALL"));
+        assertFalse(source.contains("event.setCancelled"));
+        assertFalse(source.contains("executeViolationSetback"));
+        assertFalse(source.contains(".record(player, IntegritySignal."));
+    }
+
+    @Test
     void fastPlaceCoverageNeverResyncsOrCancelsBlocks() throws Exception {
         String source = source(
                 "checks/impl/scaffolding/FastPlace.java"
@@ -83,6 +101,9 @@ class AdversarialInputHardeningAuditTest {
 
         assertTrue(manager.contains(
                 ".put(AutoClickerExcess.class, new AutoClickerExcess(player))"
+        ));
+        assertTrue(manager.contains(
+                ".put(AutoClickerPattern.class, new AutoClickerPattern(player))"
         ));
         assertTrue(manager.contains(
                 ".put(FastPlace.class, new FastPlace(player))"
