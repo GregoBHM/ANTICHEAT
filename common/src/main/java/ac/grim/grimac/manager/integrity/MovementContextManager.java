@@ -32,8 +32,7 @@ public final class MovementContextManager {
 
     /**
      * Safe default for generic/internal observations. Trusted velocity must
-     * always be opted into explicitly through beginTrusted(...) or the
-     * integration facade.
+     * always be opted into explicitly through beginTrustedVelocity(...).
      */
     public Context begin(@NotNull UUID uuid,
                          @NotNull MovementContextType type,
@@ -55,7 +54,18 @@ public final class MovementContextManager {
     }
 
     public Context beginTrusted(@NotNull UUID uuid, @NotNull MovementContextType type, @NotNull String source, long durationMillis, @Nullable String detail) {
-        return beginInternal(uuid, type, source, durationMillis, detail, true);
+        if (type.allowsTrustedVelocityOverride()) {
+            // Backward-compatible safety rule: an old caller that requests
+            // "trusted" velocity without supplying the concrete vector gets
+            // observation context only. Exact velocity trust is available
+            // exclusively through beginTrustedVelocity(...).
+            return beginInternal(
+                    uuid, type, source, durationMillis, detail, false
+            );
+        }
+        return beginInternal(
+                uuid, type, source, durationMillis, detail, true
+        );
     }
 
     public Context beginObserved(@NotNull UUID uuid, @NotNull MovementContextType type, @NotNull String source, long durationMillis) {
