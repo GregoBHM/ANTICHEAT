@@ -7,6 +7,7 @@ import ac.grim.grimac.api.common.BasicReloadable;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.impl.aim.AimDuplicateLook;
 import ac.grim.grimac.checks.impl.aim.AimModulo360;
+import ac.grim.grimac.checks.impl.aim.AimSensitivityConsistency;
 import ac.grim.grimac.checks.impl.aim.processor.AimProcessor;
 import ac.grim.grimac.checks.impl.badpackets.*;
 import ac.grim.grimac.checks.impl.breaking.*;
@@ -138,6 +139,8 @@ public class CheckManager implements BasicReloadable {
                 .put(PacketBurst.class, new PacketBurst(player))
                 .put(InventoryFrequency.class, new InventoryFrequency(player))
                 .put(AttackFrequency.class, new AttackFrequency(player))
+                .put(AutoClickerExcess.class, new AutoClickerExcess(player))
+                .put(AutoClickerPattern.class, new AutoClickerPattern(player))
                 .put(BadPacketsD.class, new BadPacketsD(player))
                 .put(BadPacketsE.class, new BadPacketsE(player))
                 .put(BadPacketsJ.class, new BadPacketsJ(player))
@@ -170,6 +173,7 @@ public class CheckManager implements BasicReloadable {
                 .put(AimProcessor.class, new AimProcessor(player))
                 .put(AimModulo360.class, new AimModulo360(player))
                 .put(AimDuplicateLook.class, new AimDuplicateLook(player))
+                .put(AimSensitivityConsistency.class, new AimSensitivityConsistency(player))
                 .put(VehiclePredictionRunner.class, new VehiclePredictionRunner(player))
 
                 .put(NegativeTimer.class, new NegativeTimer(player))
@@ -226,6 +230,7 @@ public class CheckManager implements BasicReloadable {
                 .put(BadPacketsH.class, new BadPacketsH(player))
                 .put(CrashG.class, new CrashG(player))
                 .put(FarPlace.class, new FarPlace(player))
+                .put(FastPlace.class, new FastPlace(player))
                 .put(FabricatedPlace.class, new FabricatedPlace(player))
                 .put(PositionPlace.class, new PositionPlace(player))
                 .put(RotationPlace.class, new RotationPlace(player))

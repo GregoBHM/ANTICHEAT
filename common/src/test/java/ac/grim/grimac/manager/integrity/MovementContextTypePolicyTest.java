@@ -13,6 +13,7 @@ class MovementContextTypePolicyTest {
     void capabilityMatrixStaysNarrowAndExplicit() {
         Set<MovementContextType> velocityOverride = EnumSet.of(
                 MovementContextType.KNOCKBACK,
+                MovementContextType.EXPLOSION,
                 MovementContextType.LAUNCH,
                 MovementContextType.DASH,
                 MovementContextType.PULL

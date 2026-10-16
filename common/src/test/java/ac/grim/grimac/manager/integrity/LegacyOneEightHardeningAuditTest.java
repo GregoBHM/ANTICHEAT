@@ -28,8 +28,13 @@ class LegacyOneEightHardeningAuditTest {
     void timerLimitRollbackRequiresCausalBurstEvidence() throws IOException {
         String limit = source("checks/impl/timer/TimerLimit.java");
         assertTrue(limit.contains(
-                "if (hardPrevention && !suppressSetback && shouldSetback())"
+                "boolean hardPrevention = shouldPreventBurstRelease()"
         ));
+        assertTrue(limit.contains(
+                "if (hardPrevention && shouldSetback())"
+        ));
+        assertTrue(limit.contains("stall.isHardReleaseCandidateActive()"));
+        assertTrue(limit.contains("stall.shouldSuppressMovementSetbacks()"));
     }
 
     @Test
@@ -107,6 +112,47 @@ class LegacyOneEightHardeningAuditTest {
         assertTrue(knockback.contains(
                 "normalEnforcementStreak >= enforcementStrongConsecutiveTicks"
         ));
+    }
+
+
+    @Test
+    void discardedAntiKbPredictionIsNeutralNotAForcedExemption()
+            throws IOException {
+        String knockback = source(
+                "checks/impl/velocity/KnockbackHandler.java"
+        );
+
+        int discarded = knockback.indexOf(
+                "if (!predictionComplete.isChecked())"
+        );
+        int teleport = knockback.indexOf(
+                "if (predictionComplete.getData().isTeleport())",
+                discarded
+        );
+        int forceExempt = knockback.indexOf(
+                "forceExempt();",
+                discarded
+        );
+
+        assertTrue(discarded >= 0);
+        assertTrue(teleport > discarded);
+        assertTrue(forceExempt >= teleport);
+    }
+
+
+    @Test
+    void discardedPhasePredictionIsNeutralInsteadOfRewarding() throws IOException {
+        String phase = source("checks/impl/prediction/Phase.java");
+
+        int guard = phase.indexOf("!predictionComplete.isChecked()");
+        int next = phase.indexOf(
+                "final SimpleCollisionBox newBB",
+                guard
+        );
+        String block = phase.substring(guard, next);
+
+        assertFalse(block.contains("reward()"));
+        assertFalse(block.contains("flag("));
     }
 
 

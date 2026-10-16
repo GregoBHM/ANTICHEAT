@@ -1,11 +1,13 @@
 package ac.grim.grimac.checks.impl.velocity;
 
+import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.api.storage.verbose.Verbose;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketSendListener;
 import ac.grim.grimac.checks.type.PostPredictionListener;
+import ac.grim.grimac.manager.integrity.MovementContextManager;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import ac.grim.grimac.utils.data.VectorData;
@@ -167,6 +169,22 @@ public class ExplosionHandler extends Check implements PacketSendListener, PostP
 
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
+        if (!predictionComplete.isChecked()) {
+            // Discarded prediction is neutral. Do not lower explosion offset,
+            // reward, flag, or create a setback from a sample Grim did not
+            // actually validate.
+            explosionPointThree = false;
+            return;
+        }
+
+        if (predictionComplete.getData().isTeleport()) {
+            // Teleport is a real continuity boundary for the pending impulse.
+            forceExempt();
+            explosionPointThree = false;
+            firstBreadAddedExplosion = null;
+            return;
+        }
+
         double offset = predictionComplete.getOffset();
 
         boolean wasZero = explosionPointThree;
@@ -206,9 +224,25 @@ public class ExplosionHandler extends Check implements PacketSendListener, PostP
             }
         }
 
-        // 100% known kb was taken
+        // 100% known explosion impulse was taken.
         if (player.likelyExplosions != null && !player.compensatedEntities.self.isDead) {
             if (player.likelyExplosions.offset > offsetToFlag) {
+                MovementContextManager.VelocityContextAssessment context =
+                        GrimAPI.INSTANCE.getMovementContextManager()
+                                .assessVelocity(
+                                        player.uuid,
+                                        player.likelyExplosions.transaction,
+                                        player.likelyExplosions.vector
+                                );
+
+                if (context.isAmbiguous()) {
+                    // A different server/plugin velocity overlaps this exact
+                    // explosion sample. Keep it neutral rather than blaming the
+                    // player or erasing the explosion history. Exact matching
+                    // EXPLOSION context is still checked normally.
+                    return;
+                }
+
                 boolean ignored = player.likelyExplosions.offset == Integer.MAX_VALUE;
                 flagWithSetback(V.write(verbose()).bool(ignored).f64(offset));
             } else {

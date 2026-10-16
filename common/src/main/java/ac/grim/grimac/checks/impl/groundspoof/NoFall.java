@@ -39,7 +39,9 @@ public class NoFall extends Check implements PacketReceiveListener {
 
             WrapperPlayClientPlayerFlying wrapper = new WrapperPlayClientPlayerFlying(event);
 
-            if (wrapper.isOnGround() && !wrapper.hasPositionChanged()) {
+            if (!player.packetStateData.lastPacketWasTeleport
+                    && wrapper.isOnGround()
+                    && !wrapper.hasPositionChanged()) {
                 if (!isNearGround(true)) {
                     if (!GhostBlockDetector.isGhostBlock(player)) {
                         double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()

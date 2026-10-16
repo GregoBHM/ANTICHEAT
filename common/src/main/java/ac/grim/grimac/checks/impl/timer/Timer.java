@@ -51,6 +51,24 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
         lastAheadNanos = Math.max(0L, timerBalanceRealTime - now);
 
         if (timerBalanceRealTime > now) {
+            ConnectionStall stall =
+                    player.checkManager.get(ConnectionStall.class);
+            boolean blinkOwned = stall != null
+                    && (stall.isHardReleaseCandidateActive()
+                    || stall.shouldSuppressMovementSetbacks());
+
+            if (blinkOwned) {
+                // ConnectionStall owns the first-release/correction decision.
+                // Treat this one Timer sample as neutral so a legitimate stall
+                // cannot be turned into both Blink and Timer evidence, and so
+                // Timer does not cancel the observation packet needed to decide
+                // whether a real compressed release follows.
+                timerBalanceRealTime -= 50e6;
+                lastAheadNanos = Math.max(0L, timerBalanceRealTime - now);
+                limitFallBehind();
+                return;
+            }
+
             boolean acceptedViolation = flag();
 
             // Prevention is deliberately independent from punishment confidence.
@@ -68,15 +86,8 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                 player.onPacketCancel();
             }
 
-            if (acceptedViolation) {
-                ConnectionStall stall = player.checkManager.get(ConnectionStall.class);
-                boolean blinkOwned = stall != null
-                        && (stall.shouldSuppressMovementSetbacks()
-                        || stall.isHardReleaseCandidateActive());
-
-                if (!blinkOwned && shouldSetback()) {
-                    player.getSetbackTeleportUtil().executeNonSimulatingSetback(this);
-                }
+            if (acceptedViolation && shouldSetback()) {
+                player.getSetbackTeleportUtil().executeNonSimulatingSetback(this);
             }
 
             timerBalanceRealTime -= 50e6;

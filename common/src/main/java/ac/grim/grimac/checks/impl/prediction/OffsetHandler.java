@@ -85,6 +85,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
     private long lastPredictionNanos;
     private int lastPredictionTransaction;
+    private long lastCheckedPredictionNanos;
 
     private long shortBlinkUntilNanos;
     private long shortBlinkLastPacketNanos;
@@ -118,11 +119,24 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 : Math.max(0, currentTransaction - previousTransaction);
 
         if (!predictionComplete.isChecked()) {
+            // A discarded prediction is neutral evidence. It must not add VL,
+            // trigger correction, or wipe a still-live special-physics episode.
+            // Enforcement/quarantine is unsafe to carry through an unchecked
+            // sample, so only destructive state is cleared immediately.
             resetEnforcementState();
             resetShortBlinkState();
-            resetEnvironmentState();
+
+            long episodeWindowNanos = TimeUnit.MILLISECONDS.toNanos(
+                    Math.max(1L, specialEnvironmentFlagEpisodeWindowMillis)
+            );
+            if (lastCheckedPredictionNanos != 0L
+                    && now - lastCheckedPredictionNanos > episodeWindowNanos) {
+                resetEnvironmentState();
+            }
             return;
         }
+
+        lastCheckedPredictionNanos = now;
 
         final double offset = predictionComplete.getOffset();
 
@@ -165,7 +179,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 && !player.inVehicle()
                 && !player.getSetbackTeleportUtil().shouldBlockMovement()
                 && !blinkRecovery
-                && !trustedVelocityContext
                 && !GrimAPI.INSTANCE.getMovementContextManager()
                 .suppressesConnectionStall(player.uuid);
 
@@ -176,12 +189,14 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         boolean observedVelocityContext = GrimAPI.INSTANCE
                 .getMovementContextManager()
                 .hasObservedVelocityContext(player.uuid);
+        boolean anyVelocityContext =
+                trustedVelocityContext || observedVelocityContext;
         boolean specialEnvironment =
                 environment.isSpecialMovementEnvironment(environmentContexts)
-                        || observedVelocityContext;
+                        || anyVelocityContext;
         double specialEnvironmentCorrectionMinRawOffset =
                 environment.minimumCorrectionRawOffset(environmentContexts);
-        if (observedVelocityContext) {
+        if (anyVelocityContext) {
             specialEnvironmentCorrectionMinRawOffset = Math.max(
                     specialEnvironmentCorrectionMinRawOffset,
                     observedVelocityMinRawOffset
@@ -287,23 +302,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             return;
         }
 
-        if (trustedVelocityContext) {
-            // Trusted plugin-authored velocity is explicitly incompatible with
-            // vanilla Simulation for a short bounded window. Keep the predictor
-            // running, but do not turn the authorized dash/launch/pull into
-            // Simulation VL or movement debt. Other checks remain untouched.
-            advantageGained = 0.0D;
-            specialEnvironmentFlagStreak = 0;
-            specialEnvironmentFlagKey = "";
-            specialEnvironmentCorrectionStreak = 0;
-            specialEnvironmentEpisodeFlagAccepted = false;
-            specialEnvironmentEpisodeCorrectionApplied = false;
-            resetEnforcementState();
-            resetShortBlinkState();
-            removeOffsetLenience();
-            return;
-        }
-
         // Buffered movement that v20 already cancelled must not also become
         // Simulation VL. The one-shot Blink owner has already removed that
         // advantage and records the release as ConnectionStall evidence.
@@ -329,7 +327,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
             String simulationComponent = simulationComponent(
                     environmentContexts,
-                    observedVelocityContext,
+                    anyVelocityContext,
                     environmentRecoveryActive
             );
             final String specialEpisodeDebug;
@@ -343,7 +341,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         environment.resolveMovementEvidenceEpisode(
                                 player,
                                 environmentContexts,
-                                observedVelocityContext,
+                                anyVelocityContext,
                                 false,
                                 environmentRecoveryActive
                         );
@@ -423,7 +421,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
                 if (!blinkRecovery
                         && !velocityRecovery
-                        && !trustedVelocityContext
                         && persistentCorrection
                         && enforcementImmediateSetback
                         && !isNoSetbackPermission()) {
@@ -489,7 +486,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
                     if (!blinkRecovery
                             && !velocityRecovery
-                            && !trustedVelocityContext
                             && severeMovement
                             && enforcementImmediateSetback
                             && !isNoSetbackPermission()
@@ -503,7 +499,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         }
                     } else if (!blinkRecovery
                             && !velocityRecovery
-                            && !trustedVelocityContext
                             && !environmentProtectedWindow
                             && (advantageGained >= maxAdvantage
                             || setbackEvidenceOffset >= immediateSetbackThreshold)

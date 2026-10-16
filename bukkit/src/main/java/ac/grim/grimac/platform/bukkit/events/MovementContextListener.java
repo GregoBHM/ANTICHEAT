@@ -3,6 +3,7 @@ package ac.grim.grimac.platform.bukkit.events;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.manager.integrity.MovementContextType;
+import ac.grim.grimac.utils.math.Vector3dm;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -48,7 +49,18 @@ public final class MovementContextListener implements Listener {
 
         long duration = config().getLongElse("movement-context-auto.velocity-duration-ms", 900L);
         String detail = String.format(Locale.ROOT, "v=%.3f,%.3f,%.3f", velocity.getX(), velocity.getY(), velocity.getZ());
-        GrimAPI.INSTANCE.getMovementContextManager().beginObserved(player.getUniqueId(), type, "Bukkit:Velocity", duration, detail);
+        GrimAPI.INSTANCE.getMovementContextManager().beginObservedVelocity(
+                player.getUniqueId(),
+                type,
+                "Bukkit:Velocity",
+                duration,
+                new Vector3dm(
+                        velocity.getX(),
+                        velocity.getY(),
+                        velocity.getZ()
+                ),
+                detail
+        );
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

@@ -40,11 +40,44 @@ class IntegrationTrustPolicyAuditTest {
                 "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
         ));
         assertTrue(facade.contains(
-                "getMovementContextManager().beginTrusted("
+                "if (type.allowsTrustedVelocityOverride())"
+        ));
+        assertTrue(facade.contains(
+                "return manager.beginObserved("
+        ));
+        assertTrue(facade.contains(
+                "return manager.beginTrusted("
+        ));
+        assertTrue(facade.contains(
+                "new Vector3dm(x, y, z),\n                transaction,"
         ));
         assertTrue(facade.contains("\"MagicSpells:\" + spellName"));
         assertTrue(facade.contains("\"RPGItems:\" + powerName"));
         assertTrue(facade.contains("\"CombatPlus:\" + mechanicName"));
+    }
+
+    @Test
+    void legacyVelocityIntegrationCannotCreateUnscopedTrustedOverride()
+            throws Exception {
+        String facade = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
+        ));
+
+        int generic = facade.indexOf(
+                "public static MovementContextManager.Context beginMovementContext"
+        );
+        int vector = facade.indexOf(
+                "public static MovementContextManager.Context beginVelocityContext",
+                generic
+        );
+        String legacyBlock = facade.substring(generic, vector);
+
+        assertTrue(legacyBlock.contains(
+                "type.allowsTrustedVelocityOverride()"
+        ));
+        assertTrue(legacyBlock.contains("manager.beginObserved("));
+        assertTrue(legacyBlock.contains("manager.beginTrusted("));
+        assertFalse(legacyBlock.contains("beginTrustedVelocity("));
     }
 
     @Test
@@ -133,6 +166,27 @@ class IntegrationTrustPolicyAuditTest {
         assertTrue(facade.contains(
                 "getInteractionContextManager()\n                .clearSourcePrefix(playerId, sourcePlugin)"
         ));
+    }
+
+    @Test
+    void antiKbUsesScopedVelocityAssessmentInsteadOfGlobalTrustedBypass()
+            throws Exception {
+        String knockback = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
+        ));
+        String listener = Files.readString(Path.of(
+                "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
+        ));
+        String facade = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/integration/GrimIntegrationAPI.java"
+        ));
+
+        assertTrue(knockback.contains(".assessVelocity("));
+        assertFalse(knockback.contains(
+                "getMovementContextManager().hasTrustedVelocityContext(player.uuid)"
+        ));
+        assertTrue(listener.contains("beginObservedVelocity("));
+        assertTrue(facade.contains("beginTrustedVelocity("));
     }
 
     private void assertTokenOnlyIn(

@@ -27,6 +27,21 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void trustedStallWindowsDoNotEraseHistoricalBlinkEvidence() throws IOException {
+        String stall = source("checks/impl/timer/ConnectionStall.java");
+
+        int method = stall.indexOf("private void acceptTrustedContext(long now)");
+        int next = stall.indexOf("private boolean hasTrustedFallReset()", method);
+        String block = stall.substring(method, next);
+
+        assertTrue(block.contains("MovementContextType.TELEPORT"));
+        assertTrue(block.contains("finishStallLocked(now)"));
+        assertTrue(block.contains("clearHardReleaseCandidateLocked()"));
+        assertTrue(block.contains("finishHardReleaseEpisodeLocked()"));
+        assertTrue(block.contains("if (hardBoundary)"));
+    }
+
+    @Test
     void combatDisconnectRequiresSanctionableEvidence() throws IOException {
         String combat = source("manager/integrity/CombatIntegrityManager.java");
         String stall = source("checks/impl/timer/ConnectionStall.java");
@@ -56,6 +71,28 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void cancelledBlockClimbTreatsUncheckedMovementAsNeutral() throws IOException {
+        String source = source("checks/impl/exploit/CancelledBlockClimb.java");
+
+        assertTrue(source.contains("!predictionComplete.isChecked()"));
+        assertTrue(source.contains("buffer = 0;"));
+        assertTrue(source.contains("predictionComplete.getData().isTeleport()"));
+        assertTrue(source.contains("resetsFallLedger(player.uuid)"));
+    }
+
+    @Test
+    void noFallDoesNotCreateEvidenceOnTeleportTransitionPacket() throws IOException {
+        String noFall = source("checks/impl/groundspoof/NoFall.java");
+
+        assertTrue(noFall.contains(
+                "!player.packetStateData.lastPacketWasTeleport"
+        ));
+        assertTrue(noFall.contains(
+                "wrapper.setOnGround(false)"
+        ));
+    }
+
+    @Test
     void simulationReusesOneEnvironmentClassification() throws IOException {
         String offset = source("checks/impl/prediction/OffsetHandler.java");
         String correlation = source("manager/integrity/IntegrityCorrelationManager.java");
@@ -67,6 +104,17 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void packetBurstTrustedUncertaintyDoesNotWipePriorBuffer() throws IOException {
+        String burst = source("checks/impl/integrity/PacketBurst.java");
+
+        assertTrue(burst.contains("MovementContextType.TELEPORT"));
+        assertTrue(burst.contains("resetTimingWindow(now)"));
+        assertTrue(burst.contains(
+                "buffer = Math.max(0.0D, buffer - 0.08D)"
+        ));
+    }
+
+    @Test
     void timerPreventionIsIndependentFromSanctionConfidence() throws IOException {
         String timer = source("checks/impl/timer/Timer.java");
 
@@ -75,6 +123,25 @@ class FinalIntegrityAuditTest {
         assertTrue(timer.contains("preventionMinimumServerConfidence"));
         assertTrue(timer.contains("heuristicConfidence() >= preventionMinimumServerConfidence"));
         assertTrue(timer.contains("if (prevent && !event.isCancelled())"));
+    }
+
+    @Test
+    void timerDoesNotDuplicateConnectionStallCandidateEvidence() throws IOException {
+        String timer = source("checks/impl/timer/Timer.java");
+
+        assertTrue(timer.contains("stall.isHardReleaseCandidateActive()"));
+        assertTrue(timer.contains("stall.shouldSuppressMovementSetbacks()"));
+        assertTrue(timer.contains("ConnectionStall owns the first-release/correction decision"));
+        assertTrue(timer.contains("timerBalanceRealTime -= 50e6"));
+    }
+
+    @Test
+    void timerLimitAlsoYieldsToConnectionStallOwnership() throws IOException {
+        String timerLimit = source("checks/impl/timer/TimerLimit.java");
+
+        assertTrue(timerLimit.contains("stall.isHardReleaseCandidateActive()"));
+        assertTrue(timerLimit.contains("stall.shouldSuppressMovementSetbacks()"));
+        assertTrue(timerLimit.contains("do not cancel the observation packet"));
     }
 
     @Test
@@ -91,6 +158,47 @@ class FinalIntegrityAuditTest {
         assertTrue(signals.contains("TIMER(3.0D, false)"));
         assertTrue(signals.contains("TIMER_LIMIT(2.0D, true)"));
         assertTrue(signals.contains("REACH(3.0D, false)"));
+    }
+
+    @Test
+    void multiInteractDoesNotDuplicateStallOwnedCombatEvidence() throws IOException {
+        for (String relative : new String[]{
+                "checks/impl/combat/MultiInteractA.java",
+                "checks/impl/combat/MultiInteractB.java"
+        }) {
+            String source = source(relative);
+            assertTrue(source.contains("ConnectionStall.class"));
+            assertTrue(source.contains("stall.shouldBlockQueuedActions()"));
+            assertTrue(source.contains("flags.clear()"));
+        }
+    }
+
+    @Test
+    void reachYieldsToConnectionStallOwnedQueuedAttacks() throws IOException {
+        String reach = source("checks/impl/combat/Reach.java");
+
+        int method = reach.indexOf("private void onInteract(");
+        int teleportGuard = reach.indexOf(
+                "// Don't let the player teleport to bypass reach",
+                method
+        );
+        String prefix = reach.substring(method, teleportGuard);
+
+        assertTrue(prefix.contains("ConnectionStall.class"));
+        assertTrue(prefix.contains("stall.shouldBlockQueuedActions()"));
+        assertTrue(prefix.contains("return;"));
+    }
+
+    @Test
+    void reachUsesAttackTimeCompensatedTargetSnapshot() throws IOException {
+        String reach = source("checks/impl/combat/Reach.java");
+
+        assertTrue(reach.contains("SimpleCollisionBox attackTargetBox = getTargetBox(entity).copy()"));
+        assertTrue(reach.contains("interactionData.targetBoxSnapshot"));
+        assertTrue(reach.contains("interactionData.attackTransaction"));
+        assertTrue(reach.contains("interactionData.attackNanos"));
+        assertTrue(reach.contains("attackAge="));
+        assertTrue(reach.contains("txAdvance="));
     }
 
     @Test

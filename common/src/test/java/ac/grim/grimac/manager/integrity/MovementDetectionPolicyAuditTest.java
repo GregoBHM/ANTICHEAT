@@ -13,6 +13,75 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MovementDetectionPolicyAuditTest {
 
     @Test
+    void trustedVelocityIsContextualEvidenceNotSimulationBypass()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        ));
+
+        assertTrue(source.contains(
+                "boolean anyVelocityContext ="
+        ));
+        assertTrue(source.contains(
+                "trustedVelocityContext || observedVelocityContext"
+        ));
+        assertFalse(source.contains(
+                "Trusted plugin-authored velocity is explicitly incompatible"
+        ));
+        assertTrue(source.contains(
+                "environment.isSpecialMovementEnvironment(environmentContexts)"
+        ));
+
+        String eligibility = between(
+                source,
+                "final boolean enforcementEligible =",
+                "EnvironmentContextManager environment ="
+        );
+        assertFalse(eligibility.contains("!trustedVelocityContext"));
+    }
+
+
+    @Test
+    void discardedSimulationPredictionIsNeutralUntilEpisodeWindowExpires()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        int discarded = source.indexOf(
+                "if (!predictionComplete.isChecked())"
+        );
+        int checked = source.indexOf(
+                "lastCheckedPredictionNanos = now",
+                discarded
+        );
+        String block = source.substring(discarded, checked);
+
+        assertTrue(block.contains("resetEnforcementState()"));
+        assertTrue(block.contains("resetShortBlinkState()"));
+        assertTrue(block.contains("lastCheckedPredictionNanos"));
+        assertTrue(block.contains("specialEnvironmentFlagEpisodeWindowMillis"));
+        assertFalse(block.contains("flagComponent("));
+    }
+
+    @Test
+    void trustedVelocityCannotGloballySuppressPersistentSimulationCorrection()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
+        );
+
+        String correction = between(
+                source,
+                "if (!specialFlagAllowed)",
+                "removeOffsetLenience();\n                return;"
+        );
+
+        assertTrue(correction.contains("persistentCorrection"));
+        assertFalse(correction.contains("&& !trustedVelocityContext"));
+    }
+
+    @Test
     void noSlowUsesPhysicalSessionAndSharedSpecialEpisode() throws IOException {
         String source = read(
                 "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
@@ -32,13 +101,41 @@ class MovementDetectionPolicyAuditTest {
     }
 
     @Test
-    void antiKbTreatsObservedAndTrustedVelocityDifferently() throws IOException {
+    void discardedNoSlowPredictionDoesNotEraseLiveContextEpisode()
+            throws IOException {
+        String source = read(
+                "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
+        );
+
+        int discarded = source.indexOf(
+                "if (!predictionComplete.isChecked())"
+        );
+        int checked = source.indexOf(
+                "lastCheckedPredictionNanos = now",
+                discarded
+        );
+        String block = source.substring(discarded, checked);
+
+        assertTrue(block.contains("resetTickState()"));
+        assertTrue(block.contains("lastCheckedPredictionNanos"));
+        assertTrue(block.contains("episodeWindowMillis"));
+        assertFalse(block.contains("flagComponent("));
+    }
+
+    @Test
+    void antiKbScopesVelocityContextsToTheConcreteSample() throws IOException {
         String source = read(
                 "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
         );
 
-        assertTrue(source.contains("hasTrustedVelocityContext"));
-        assertTrue(source.contains("hasObservedVelocityContext"));
+        assertTrue(source.contains(".assessVelocity("));
+        assertTrue(source.contains("velocityContext.isUncertain()"));
+        assertFalse(source.contains(
+                "getMovementContextManager().hasTrustedVelocityContext(player.uuid)"
+        ));
+        assertFalse(source.contains(
+                "getMovementContextManager().hasObservedVelocityContext(player.uuid)"
+        ));
         assertTrue(source.contains("resolveMovementEvidenceEpisode"));
 
         String uncertain = between(
@@ -47,10 +144,11 @@ class MovementDetectionPolicyAuditTest {
                 "private static @NotNull String velocityComponent("
         );
         assertFalse(uncertain.contains("reward()"));
+        assertFalse(uncertain.contains("threshold *= multiplier"));
     }
 
     @Test
-    void simulationSuppressesOnlyTrustedVelocityIncompatibleEvidence() throws IOException {
+    void simulationMakesPluginVelocityContextualWithoutGivingOtherChecksABrowser() throws IOException {
         String simulation = read(
                 "src/main/java/ac/grim/grimac/checks/impl/prediction/OffsetHandler.java"
         );
@@ -65,8 +163,12 @@ class MovementDetectionPolicyAuditTest {
         );
 
         assertTrue(simulation.contains("hasTrustedVelocityContext"));
+        assertTrue(simulation.contains("boolean anyVelocityContext ="));
         assertTrue(simulation.contains("resolveMovementEvidenceEpisode"));
         assertTrue(simulation.contains("specialEnvironmentEpisodeFlagAccepted"));
+        assertFalse(simulation.contains(
+                "Trusted plugin-authored velocity is explicitly incompatible"
+        ));
         assertFalse(phase.contains("hasTrustedVelocityContext"));
         assertFalse(timer.contains("hasTrustedVelocityContext"));
         assertFalse(reach.contains("hasTrustedVelocityContext"));
@@ -112,7 +214,7 @@ class MovementDetectionPolicyAuditTest {
                 "final boolean environmentProtectedWindow = specialEnvironment\n                || environmentRecoveryActive"
         ));
         assertTrue(source.contains(
-                "simulationComponent(\n                    environmentContexts,\n                    observedVelocityContext,\n                    environmentRecoveryActive"
+                "simulationComponent(\n                    environmentContexts,\n                    anyVelocityContext,\n                    environmentRecoveryActive"
         ));
         assertTrue(source.contains(
                 "|| (!specialEnvironment && !environmentRecoveryActive)"
@@ -171,7 +273,7 @@ class MovementDetectionPolicyAuditTest {
 
 
     @Test
-    void skippedPredictionBreaksSpecialEvidenceConsecutiveness()
+    void skippedAntiKbPredictionIsNeutralWhileExplicitEventCancellationBreaksSimulationEpisode()
             throws IOException {
         String antiKb = read(
                 "src/main/java/ac/grim/grimac/checks/impl/velocity/KnockbackHandler.java"
@@ -181,13 +283,14 @@ class MovementDetectionPolicyAuditTest {
         );
 
         int kbSkip = antiKb.indexOf(
-                "if (!predictionComplete.isChecked() || predictionComplete.getData().isTeleport())"
+                "if (!predictionComplete.isChecked())"
         );
         int kbReturn = antiKb.indexOf("return;", kbSkip);
         String kbBlock = antiKb.substring(kbSkip, kbReturn);
 
-        assertTrue(kbBlock.contains("specialEvidenceStreak = 0"));
-        assertTrue(kbBlock.contains("specialEvidenceKey = \"\""));
+        assertFalse(kbBlock.contains("forceExempt()"));
+        assertFalse(kbBlock.contains("normalEnforcementStreak = 0"));
+        assertTrue(kbBlock.contains("knockbackPointThree = false"));
 
         int eventCancel = simulation.indexOf(
                 "if (COMPLETE_CHANNEL.fire(player, this, offset))"
@@ -224,17 +327,24 @@ class MovementDetectionPolicyAuditTest {
 
 
     @Test
-    void explicitTrustedNoSlowContextDoesNotDependOnHeuristicPolicyToggle()
+    void pluginVelocityNoSlowContextUsesTheSameBoundedPolicyAsObservedVelocity()
             throws IOException {
         String source = read(
                 "src/main/java/ac/grim/grimac/checks/impl/movement/NoSlow.java"
         );
 
-        int trusted = source.indexOf("if (trustedVelocityContext)");
+        int anyVelocity = source.indexOf(
+                "boolean anyVelocityContext ="
+        );
         int policy = source.indexOf("if (!contextPolicyEnabled)");
+        int contextual = source.indexOf(
+                "if (specialEnvironment || anyVelocityContext)"
+        );
 
-        assertTrue(trusted >= 0);
-        assertTrue(policy > trusted);
+        assertTrue(anyVelocity >= 0);
+        assertTrue(policy > anyVelocity);
+        assertTrue(contextual > policy);
+        assertFalse(source.contains("if (trustedVelocityContext) {"));
     }
 
     private static String read(String path) throws IOException {

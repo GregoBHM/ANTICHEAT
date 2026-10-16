@@ -209,7 +209,7 @@ Punishments:
     commands:
       - "20:20 [alert]"
       - "1:1 [log]"
-  # Ab 2.2.10 gibt es keine AutoClicker-Prüfungen mehr und dies ist ein Platzhalter. Grim wird in Zukunft AutoClicker-Prüfungen einbauen.
+  # Conservative excessive-swing evidence; alert/log only by default.
   Autoclicker:
     remove-violations-after: 300
     checks:

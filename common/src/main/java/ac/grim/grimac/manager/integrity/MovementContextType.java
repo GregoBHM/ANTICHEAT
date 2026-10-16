@@ -10,6 +10,8 @@ package ac.grim.grimac.manager.integrity;
 public enum MovementContextType {
     /** Server-authorized velocity/knockback. */
     KNOCKBACK(false, false, true),
+    /** Explosion-authored impulse, including RPG/plugin explosions. */
+    EXPLOSION(false, false, true),
     /** Upward/forward launch. */
     LAUNCH(false, false, true),
     /** Short horizontal burst. */

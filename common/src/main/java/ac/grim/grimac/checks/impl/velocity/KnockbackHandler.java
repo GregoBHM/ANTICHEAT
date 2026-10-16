@@ -10,6 +10,7 @@ import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.EnvironmentContext;
 import ac.grim.grimac.manager.integrity.EnvironmentContextManager;
+import ac.grim.grimac.manager.integrity.MovementContextManager;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import ac.grim.grimac.utils.data.Pair;
@@ -216,15 +217,18 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
         double offset = predictionComplete.getOffset();
-        if (!predictionComplete.isChecked() || predictionComplete.getData().isTeleport()) {
-            forceExempt();
-            specialEvidenceStreak = 0;
-            specialEvidenceKey = "";
-            normalEnforcementStreak = 0;
+        if (!predictionComplete.isChecked()) {
+            // A discarded prediction is neutral: it must neither create
+            // AntiKB evidence nor erase the authoritative velocity by forcing
+            // its minimum offset to zero. Clear only tick-local prediction
+            // state and wait for the next usable sample.
+            knockbackPointThree = false;
             return;
         }
 
-        if (GrimAPI.INSTANCE.getMovementContextManager().hasTrustedVelocityContext(player.uuid)) {
+        if (predictionComplete.getData().isTeleport()) {
+            // Teleport is a real continuity boundary. Velocities from the old
+            // position cannot be judged against the post-teleport state.
             forceExempt();
             knockbackPointThree = false;
             specialEvidenceStreak = 0;
@@ -265,27 +269,35 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 EnvironmentContextManager environment =
                         GrimAPI.INSTANCE.getEnvironmentContextManager();
                 Set<EnvironmentContext> contexts = environment.classify(player);
-                boolean observedVelocityContext = GrimAPI.INSTANCE
-                        .getMovementContextManager()
-                        .hasObservedVelocityContext(player.uuid);
+                MovementContextManager.VelocityContextAssessment velocityContext =
+                        GrimAPI.INSTANCE.getMovementContextManager()
+                                .assessVelocity(
+                                        player.uuid,
+                                        player.likelyKB.transaction,
+                                        player.likelyKB.vector
+                                );
+                boolean velocityContextUncertain =
+                        velocityContext.isUncertain();
                 boolean uncertainVelocity = specialEvidenceEnabled
                         && (environment.isVelocityUncertainEnvironment(player)
-                        || observedVelocityContext);
+                        || velocityContextUncertain);
 
                 if (uncertainVelocity) {
-                    normalEnforcementStreak = 0;
+                    // An ambiguous/plugin-authored sample is neutral to the
+                    // normal enforcement streak. It may build its own bounded
+                    // evidence, but it must not erase earlier combat evidence.
                     handleUncertainVelocityEvidence(
                             player.likelyKB,
                             contexts,
-                            observedVelocityContext
+                            velocityContextUncertain
                     );
                     return;
                 }
 
                 if (player.likelyKB.isSetback) {
                     // Grim-authored correction velocity must never feed back into
-                    // AntiKB enforcement or create a resend loop.
-                    normalEnforcementStreak = 0;
+                    // AntiKB enforcement or create a resend loop. It is neutral
+                    // evidence and therefore does not erase the prior streak.
                     specialEvidenceStreak = 0;
                     specialEvidenceKey = "";
                     return;
@@ -357,14 +369,19 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                 < enforcementMinimumServerConfidence) return false;
         if (enforcementNativeOneEightOnly
                 && player.getClientVersion() != ClientVersion.V_1_8) return false;
-        if (GrimAPI.INSTANCE.getMovementContextManager().hasTrustedVelocityContext(player.uuid)) return false;
         if (data == null || data.vector == null || data.vector.lengthSquared() <= 1.0E-8D) return false;
 
+        MovementContextManager.VelocityContextAssessment velocityContext =
+                GrimAPI.INSTANCE.getMovementContextManager().assessVelocity(
+                        player.uuid,
+                        data.transaction,
+                        data.vector
+                );
+        if (velocityContext.isUncertain()) return false;
+
         if (suppressInSpecialEnvironments
-                && (GrimAPI.INSTANCE.getEnvironmentContextManager()
-                .isVelocityUncertainEnvironment(player)
-                || GrimAPI.INSTANCE.getMovementContextManager()
-                .hasObservedVelocityContext(player.uuid))) {
+                && GrimAPI.INSTANCE.getEnvironmentContextManager()
+                .isVelocityUncertainEnvironment(player)) {
             return false;
         }
 
@@ -407,7 +424,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
     private void handleUncertainVelocityEvidence(
             @NotNull VelocityData data,
             @NotNull Set<EnvironmentContext> contexts,
-            boolean observedVelocityContext
+            boolean velocityContextUncertain
     ) {
         // Velocity created by Grim's own setback is authoritative correction,
         // not fresh AntiKB evidence. It must not consume either the component
@@ -418,8 +435,8 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
             return;
         }
 
-        threshold *= multiplier;
-
+        // Uncertainty is neutral. Do not decay the normal AntiKB threshold:
+        // otherwise entering an RPG/special context can wash earlier evidence.
         EnvironmentContextManager environment =
                 GrimAPI.INSTANCE.getEnvironmentContextManager();
         String contextSummary = environment.summary(contexts);
@@ -429,13 +446,13 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         );
         String component = velocityComponent(
                 contexts,
-                observedVelocityContext
+                velocityContextUncertain
         );
         DetectionEpisodeManager.SharedEpisode sharedEpisode =
                 environment.resolveMovementEvidenceEpisode(
                         player,
                         contexts,
-                        observedVelocityContext,
+                        velocityContextUncertain,
                         false,
                         false
                 );
@@ -490,8 +507,8 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         + formatOffset(contextualMinimumOffset)
                         + " environment="
                         + contextSummary
-                        + " observedVelocity="
-                        + observedVelocityContext
+                        + " velocityContextUncertain="
+                        + velocityContextUncertain
                         + " strong="
                         + specialEvidenceStreak
                         + " episode="
@@ -513,7 +530,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
 
     private static @NotNull String velocityComponent(
             @NotNull Set<EnvironmentContext> contexts,
-            boolean observedVelocityContext
+            boolean velocityContextUncertain
     ) {
         if (contexts.contains(EnvironmentContext.COBWEB)) {
             return "velocity.cobweb";
@@ -528,7 +545,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
         if (contexts.contains(EnvironmentContext.PISTON)) {
             return "velocity.piston";
         }
-        if (observedVelocityContext) {
+        if (velocityContextUncertain) {
             return "velocity.plugin";
         }
         return "velocity.special";

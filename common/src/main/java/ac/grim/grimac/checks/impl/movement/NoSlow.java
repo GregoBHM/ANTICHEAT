@@ -15,6 +15,7 @@ import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @CheckData(name = "NoSlow", stableKey = "grim.movement.noslow",
         description = "Was not slowed while using an item", setback = 5)
@@ -39,6 +40,7 @@ public class NoSlow extends Check implements PostPredictionListener {
     private int recoveryTicksRemaining;
     private boolean wasSpecialOrVelocity;
     private String lastContextEvidenceKey = "";
+    private long lastCheckedPredictionNanos;
 
     public NoSlow(GrimPlayer player) {
         super(player);
@@ -46,11 +48,25 @@ public class NoSlow extends Check implements PostPredictionListener {
 
     @Override
     public void onPredictionComplete(final PredictionComplete predictionComplete) {
+        final long now = System.nanoTime();
+
         if (!predictionComplete.isChecked()) {
+            // Unchecked prediction is neutral NoSlow evidence. The per-tick
+            // offset cannot be reused, but one discarded sample must not erase
+            // a still-live physical ItemUse/environment episode.
             resetTickState();
-            resetContextState();
+
+            long episodeWindowNanos = TimeUnit.MILLISECONDS.toNanos(
+                    Math.max(1L, episodeWindowMillis)
+            );
+            if (lastCheckedPredictionNanos != 0L
+                    && now - lastCheckedPredictionNanos > episodeWindowNanos) {
+                resetContextState();
+            }
             return;
         }
+
+        lastCheckedPredictionNanos = now;
 
         ItemUseSessionTracker.Session session =
                 player.itemUseSessionTracker.activeSession();
@@ -90,26 +106,15 @@ public class NoSlow extends Check implements PostPredictionListener {
                 movementContexts.hasTrustedVelocityContext(player.uuid);
         boolean observedVelocityContext =
                 movementContexts.hasObservedVelocityContext(player.uuid);
-
-        if (trustedVelocityContext) {
-            // A trusted plugin-authorized dash/launch/pull can invalidate
-            // vanilla NoSlow movement evidence for a very short bounded window.
-            // This suppresses only NoSlow evidence; it does not affect Phase,
-            // Reach, Timer, PacketOrder or FastConsume.
-            recoveryTicksRemaining = recoveryTicks;
-            wasSpecialOrVelocity = true;
-            contextualStrongStreak = 0;
-            lastContextEvidenceKey = "";
-            resetTickState();
-            return;
-        }
+        boolean anyVelocityContext =
+                trustedVelocityContext || observedVelocityContext;
 
         if (!contextPolicyEnabled) {
             handleNormal(session);
             return;
         }
 
-        if (specialEnvironment || observedVelocityContext) {
+        if (specialEnvironment || anyVelocityContext) {
             recoveryTicksRemaining = recoveryTicks;
             wasSpecialOrVelocity = true;
             double contextualMinimum = specialEnvironment
@@ -123,7 +128,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                     environment.resolveMovementEvidenceEpisode(
                             player,
                             contexts,
-                            observedVelocityContext,
+                            anyVelocityContext,
                             false,
                             false
                     );
@@ -132,7 +137,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                     session,
                     componentFor(
                             contexts,
-                            observedVelocityContext,
+                            anyVelocityContext,
                             false
                     ),
                     contextualMinimum,
@@ -370,6 +375,7 @@ public class NoSlow extends Check implements PostPredictionListener {
 
         resetTickState();
         resetContextState();
+        lastCheckedPredictionNanos = 0L;
     }
 
     private static long clamp(long value, long min, long max) {

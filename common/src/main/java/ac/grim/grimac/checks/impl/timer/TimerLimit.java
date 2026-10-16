@@ -40,6 +40,21 @@ public class TimerLimit extends Timer {
         }
 
         if (timerBalanceRealTime > now) {
+            ConnectionStall stall =
+                    player.checkManager.get(ConnectionStall.class);
+            boolean blinkOwned = stall != null
+                    && (stall.isHardReleaseCandidateActive()
+                    || stall.shouldSuppressMovementSetbacks());
+
+            if (blinkOwned) {
+                // The candidate/recovery already belongs to ConnectionStall.
+                // Do not create a second TimerLimit episode from the same
+                // buffered release and do not cancel the observation packet.
+                timerBalanceRealTime -= 50e6;
+                limitFallBehind();
+                return;
+            }
+
             if (!event.isCancelled()) {
                 boolean flagged = flag();
                 if (flagged) {
@@ -50,13 +65,10 @@ public class TimerLimit extends Timer {
                         player.onPacketCancel();
                     }
 
-                    ConnectionStall stall = player.checkManager.get(ConnectionStall.class);
-                    boolean suppressSetback = stall != null && stall.shouldSuppressMovementSetbacks();
-
                     // TimerLimit no longer owns Blink rollback. ConnectionStall's
                     // one-shot hard release barrier does. Outside such an episode,
                     // preserve Grim's original TimerLimit setback behavior.
-                    if (hardPrevention && !suppressSetback && shouldSetback()) {
+                    if (hardPrevention && shouldSetback()) {
                         GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true, this);
                     }
                 }

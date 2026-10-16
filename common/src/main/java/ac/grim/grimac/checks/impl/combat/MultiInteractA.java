@@ -3,6 +3,7 @@ package ac.grim.grimac.checks.impl.combat;
 import ac.grim.grimac.api.storage.verbose.Verbose;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
+import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
 import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.player.GrimPlayer;
@@ -31,6 +32,13 @@ public class MultiInteractA extends Check implements PacketReceiveListener, Post
 
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
+        ConnectionStall stall =
+                player.checkManager.get(ConnectionStall.class);
+        if (stall != null && stall.shouldBlockQueuedActions()) {
+            hasInteracted = false;
+            flags.clear();
+            return;
+        }
         if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
             WrapperPlayClientInteractEntity packet = new WrapperPlayClientInteractEntity(event);
             int entity = packet.getEntityId();

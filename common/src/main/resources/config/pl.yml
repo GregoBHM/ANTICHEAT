@@ -763,3 +763,65 @@ StallActions:
 # Multiple distinct placements without an intervening client tick are not vanilla behavior.
 MultiPlace:
     cancelVL: 2
+
+# Conservative excessive-input coverage. These checks observe only; they do not
+# cancel swings or block placements, and network release bursts are neutral.
+autoclicker-excess:
+    enabled: true
+    per-tick-threshold: 3
+    required-excessive-ticks: 4
+    emergency-per-tick-threshold: 6
+    sustained-one-second-limit: 32
+    flag-cooldown-ms: 2500
+    network-causal-window-ms: 1500
+    minimum-confidence: 0.80
+
+fast-place-integrity:
+    enabled: true
+    short-window-ms: 300
+    short-window-limit: 7
+    one-second-limit: 22
+    required-strong-windows: 4
+    flag-cooldown-ms: 2500
+    network-causal-window-ms: 1500
+    minimum-confidence: 0.80
+
+# Native protocol-47 inventory movement is detection-only. Isolated clicks are
+# neutral; repeated moving clicks become evidence, faster when independent
+# inventory/order evidence already exists.
+legacy-inventory-move:
+    window-ms: 1500
+    flag-cooldown-ms: 1500
+    correlation-window-ms: 1500
+    standalone-clicks: 4
+    correlated-clicks: 2
+
+# Experimental: evidence only. Never cancels attacks/rotations and is not
+# eligible for autonomous sanctions. Validate with native 1.8.9 players first.
+aim-assist-evidence:
+    enabled: true
+    minimum-yaw: 0.20
+    maximum-yaw: 45.0
+    minimum-step-residual: 0.18
+    required-invalid-rotations: 5
+    required-combat-confirmations: 4
+    attack-correlation-ms: 250
+    flag-cooldown-ms: 3000
+
+# Experimental long-window combat click cadence. High CPS alone is not enough:
+# the pattern must remain extremely low-variance and periodic across several
+# healthy-network windows. This check never cancels clicks.
+autoclicker-pattern:
+    enabled: true
+    samples: 32
+    evaluation-stride-ticks: 8
+    required-windows: 3
+    maximum-interval-ticks: 6
+    combat-recency-ticks: 40
+    network-causal-window-ms: 2000
+    flag-cooldown-ms: 5000
+    minimum-confidence: 0.85
+    minimum-cps: 8.0
+    maximum-variance: 0.10
+    minimum-periodicity: 0.95
+    minimum-mode-ratio: 0.85

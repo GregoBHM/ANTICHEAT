@@ -21,6 +21,8 @@ public enum IntegritySignal {
     PACKET_ORDER(1.5D, false),
     MULTI_ACTION(1.5D, false),
     ATTACK_BURST(2.0D, true),
+    AUTOCLICKER_EXCESS(2.0D, true),
+    FAST_PLACE(1.5D, true),
     BLOCK_PLACE_BURST(1.5D, true);
 
     private final double defaultWeight;
