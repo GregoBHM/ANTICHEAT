@@ -53,16 +53,27 @@ class VelocityContextAssessmentTest {
         assertTrue(exact.isUncertain());
         assertTrue(exact.hasTrustedMatch());
 
-        MovementContextManager.VelocityContextAssessment combat =
+        MovementContextManager.VelocityContextAssessment overlappingCombat =
                 manager.assessVelocity(
                         player,
-                        122,
+                        121,
                         new Vector3dm(-0.34D, 0.40D, 0.21D)
                 );
 
-        assertTrue(combat.isUncertain());
-        assertFalse(combat.hasTrustedMatch());
-        assertTrue(combat.isAmbiguous());
+        assertTrue(overlappingCombat.isUncertain());
+        assertFalse(overlappingCombat.hasTrustedMatch());
+        assertTrue(overlappingCombat.isAmbiguous());
+
+        MovementContextManager.VelocityContextAssessment laterCombat =
+                manager.assessVelocity(
+                        player,
+                        123,
+                        new Vector3dm(-0.34D, 0.40D, 0.21D)
+                );
+
+        assertFalse(laterCombat.isUncertain());
+        assertFalse(laterCombat.hasTrustedMatch());
+        assertFalse(laterCombat.isAmbiguous());
     }
 
     @Test
