@@ -28,8 +28,13 @@ class LegacyOneEightHardeningAuditTest {
     void timerLimitRollbackRequiresCausalBurstEvidence() throws IOException {
         String limit = source("checks/impl/timer/TimerLimit.java");
         assertTrue(limit.contains(
-                "if (hardPrevention && !suppressSetback && shouldSetback())"
+                "boolean hardPrevention = shouldPreventBurstRelease()"
         ));
+        assertTrue(limit.contains(
+                "if (hardPrevention && shouldSetback())"
+        ));
+        assertTrue(limit.contains("stall.isHardReleaseCandidateActive()"));
+        assertTrue(limit.contains("stall.shouldSuppressMovementSetbacks()"));
     }
 
     @Test
