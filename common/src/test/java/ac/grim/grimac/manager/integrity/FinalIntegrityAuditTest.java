@@ -139,6 +139,22 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void reachYieldsToConnectionStallOwnedQueuedAttacks() throws IOException {
+        String reach = source("checks/impl/combat/Reach.java");
+
+        int method = reach.indexOf("private void onInteract(");
+        int teleportGuard = reach.indexOf(
+                "// Don't let the player teleport to bypass reach",
+                method
+        );
+        String prefix = reach.substring(method, teleportGuard);
+
+        assertTrue(prefix.contains("ConnectionStall.class"));
+        assertTrue(prefix.contains("stall.shouldBlockQueuedActions()"));
+        assertTrue(prefix.contains("return;"));
+    }
+
+    @Test
     void reachUsesAttackTimeCompensatedTargetSnapshot() throws IOException {
         String reach = source("checks/impl/combat/Reach.java");
 
