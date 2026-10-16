@@ -136,6 +136,22 @@ class LegacyOneEightHardeningAuditTest {
 
 
     @Test
+    void discardedPhasePredictionIsNeutralInsteadOfRewarding() throws IOException {
+        String phase = source("checks/impl/prediction/Phase.java");
+
+        int guard = phase.indexOf("!predictionComplete.isChecked()");
+        int next = phase.indexOf(
+                "final SimpleCollisionBox newBB",
+                guard
+        );
+        String block = phase.substring(guard, next);
+
+        assertFalse(block.contains("reward()"));
+        assertFalse(block.contains("flag("));
+    }
+
+
+    @Test
     void nativeOneEightInventoryHeuristicsNeverCancelClicks() throws IOException {
         assertFalse(
                 InventoryClickPreventionPolicy
