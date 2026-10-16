@@ -27,6 +27,21 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
+    void trustedStallWindowsDoNotEraseHistoricalBlinkEvidence() throws IOException {
+        String stall = source("checks/impl/timer/ConnectionStall.java");
+
+        int method = stall.indexOf("private void acceptTrustedContext(long now)");
+        int next = stall.indexOf("private boolean hasTrustedFallReset()", method);
+        String block = stall.substring(method, next);
+
+        assertTrue(block.contains("MovementContextType.TELEPORT"));
+        assertTrue(block.contains("finishStallLocked(now)"));
+        assertTrue(block.contains("clearHardReleaseCandidateLocked()"));
+        assertTrue(block.contains("finishHardReleaseEpisodeLocked()"));
+        assertTrue(block.contains("if (hardBoundary)"));
+    }
+
+    @Test
     void combatDisconnectRequiresSanctionableEvidence() throws IOException {
         String combat = source("manager/integrity/CombatIntegrityManager.java");
         String stall = source("checks/impl/timer/ConnectionStall.java");
