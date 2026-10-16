@@ -19,6 +19,7 @@ import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.api.storage.verbose.Verbose;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
+import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.collisions.datatypes.SimpleCollisionBox;
@@ -94,6 +95,15 @@ public class Reach extends Check implements PacketReceiveListener {
     }
 
     private void onInteract(PacketReceiveEvent event, int entityId, InteractionHand hand) {
+        ConnectionStall stall =
+                player.checkManager.get(ConnectionStall.class);
+        if (stall != null && stall.shouldBlockQueuedActions()) {
+            // ConnectionStall/StallActions own attacks released from a
+            // confirmed/candidate withholding episode. Reach must not turn the
+            // same ambiguous network action into independent geometry evidence.
+            return;
+        }
+
         // Don't let the player teleport to bypass reach
         if (player.getSetbackTeleportUtil().shouldBlockMovement()) {
             event.setCancelled(true);
