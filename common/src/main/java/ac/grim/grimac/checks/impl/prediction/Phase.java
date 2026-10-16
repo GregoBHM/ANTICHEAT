@@ -74,7 +74,6 @@ public class Phase extends Check implements PostPredictionListener {
                 pendingGrace.clear();
             }
             oldBB = player.boundingBox;
-            reward();
             return;
         }
 
