@@ -47,21 +47,33 @@ class MovementContextManagerTest {
     }
 
     @Test
-    void explicitPluginVelocityCanBeTrustedForBoundedVelocityChecks() {
+    void explicitPluginVelocityRequiresConcreteVectorForTrust() {
         MovementContextManager manager = new MovementContextManager();
         UUID uuid = UUID.randomUUID();
 
         manager.beginTrusted(
                 uuid,
                 MovementContextType.LAUNCH,
+                "RPGItems:LegacyLeap",
+                1000L,
+                "power=LegacyLeap"
+        );
+
+        assertFalse(manager.hasTrustedVelocityContext(uuid));
+        assertTrue(manager.hasObservedVelocityContext(uuid));
+
+        manager.beginTrustedVelocity(
+                uuid,
+                MovementContextType.LAUNCH,
                 "RPGItems:Leap",
                 1000L,
+                new ac.grim.grimac.utils.math.Vector3dm(0.2D, 0.8D, 0.1D),
+                42,
                 "power=Leap"
         );
 
         assertTrue(manager.hasTrustedVelocityContext(uuid));
         assertTrue(manager.hasAnyVelocityContext(uuid));
-        assertFalse(manager.hasObservedVelocityContext(uuid));
     }
 
     @Test
