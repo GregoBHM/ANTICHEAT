@@ -300,9 +300,20 @@ public final class MovementContextManager {
                 continue;
             }
 
+            if (context.isVelocityScoped()
+                    && context.matchesVelocity(transaction, velocity)) {
+                if (context.trusted) {
+                    trustedMatch = true;
+                    matchedTrusted = context;
+                }
+                // Exact vector match remains valid for the bounded context even
+                // when an older integration could not provide a transaction.
+                continue;
+            }
+
             if (!context.mayOverlap(transaction, now)) {
-                // A scoped velocity from a different transaction (or an old
-                // legacy/unscoped observation) cannot explain this sample.
+                // A different scoped velocity from another transaction, or an
+                // old unscoped observation, cannot explain this sample.
                 continue;
             }
 
@@ -313,18 +324,9 @@ public final class MovementContextManager {
                 continue;
             }
 
-            if (context.matchesVelocity(transaction, velocity)) {
-                if (context.trusted) {
-                    trustedMatch = true;
-                    matchedTrusted = context;
-                }
-                // A matching observed context is just a second observation of
-                // this exact server velocity, not uncertainty.
-            } else {
-                // Only a transaction/time-overlapping different velocity may
-                // have composed with the concrete sample.
-                ambiguous = true;
-            }
+            // Only a transaction/time-overlapping different velocity may have
+            // composed with the concrete sample.
+            ambiguous = true;
         }
 
         if (!trustedMatch && !ambiguous) {
