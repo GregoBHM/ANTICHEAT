@@ -27,6 +27,8 @@ public final class MovementContextManager {
     private static final int MAX_CONTEXTS_PER_PLAYER = 64;
     private static final double DEFAULT_VECTOR_ABSOLUTE_TOLERANCE = 0.035D;
     private static final double DEFAULT_VECTOR_RELATIVE_TOLERANCE = 0.12D;
+    private static final long UNSCOPED_VELOCITY_OVERLAP_NANOS =
+            TimeUnit.MILLISECONDS.toNanos(150L);
 
     private final Map<UUID, CopyOnWriteArrayList<Context>> contexts = new ConcurrentHashMap<>();
 
@@ -298,9 +300,15 @@ public final class MovementContextManager {
                 continue;
             }
 
+            if (!context.mayOverlap(transaction, now)) {
+                // A scoped velocity from a different transaction (or an old
+                // legacy/unscoped observation) cannot explain this sample.
+                continue;
+            }
+
             if (!context.isVelocityScoped()) {
-                // Legacy/unscoped integration context is never a bypass. Keep
-                // enforcement conservative while still allowing evidence.
+                // Legacy velocity context is only ambiguous inside a very short
+                // overlap window. It never becomes an indefinite bypass.
                 ambiguous = true;
                 continue;
             }
@@ -313,7 +321,8 @@ public final class MovementContextManager {
                 // A matching observed context is just a second observation of
                 // this exact server velocity, not uncertainty.
             } else {
-                // A different active velocity may be composed with this one.
+                // Only a transaction/time-overlapping different velocity may
+                // have composed with the concrete sample.
                 ambiguous = true;
             }
         }
@@ -492,6 +501,18 @@ public final class MovementContextManager {
 
         public int getTransaction() {
             return transaction;
+        }
+
+        private boolean mayOverlap(
+                int actualTransaction,
+                long nowNanos
+        ) {
+            if (transaction >= 0 && actualTransaction >= 0) {
+                return Math.abs(actualTransaction - transaction) <= 1;
+            }
+
+            return nowNanos - createdAtNanos
+                    <= UNSCOPED_VELOCITY_OVERLAP_NANOS;
         }
 
         private boolean matchesVelocity(
