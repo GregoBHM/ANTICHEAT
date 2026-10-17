@@ -85,6 +85,16 @@ public class TimerLimit extends Timer {
                                 maxFlagsPerEpisode
                         );
 
+                // Prevention and evidence have different budgets. Capping
+                // TimerLimit VL must never turn the remaining packets of a
+                // causally-confirmed burst into a bypass.
+                boolean hardPrevention = shouldPreventBurstRelease();
+
+                if (hardPrevention && cancelBurstMovement && shouldModifyPackets()) {
+                    event.setCancelled(true);
+                    player.onPacketCancel();
+                }
+
                 if (episode.allowFlag()) {
                     boolean flagged = flagComponent(
                             "timerlimit.release",
@@ -93,21 +103,14 @@ public class TimerLimit extends Timer {
                                     + " episodeFlags=" + episode.flags()
                     );
 
-                    if (flagged) {
-                        boolean hardPrevention = shouldPreventBurstRelease();
-
-                        if (hardPrevention && cancelBurstMovement && shouldModifyPackets()) {
-                            event.setCancelled(true);
-                            player.onPacketCancel();
-                        }
-
-                        // TimerLimit no longer owns Blink rollback.
-                        // Outside a ConnectionStall-owned episode, retain
-                        // the causal hard-prevention behavior.
-                        if (hardPrevention && shouldSetback()) {
-                            GrimAPI.INSTANCE.getMovementReleaseGuard()
-                                    .apply(player, true, this);
-                        }
+                    if (flagged
+                            && hardPrevention
+                            && shouldSetback()) {
+                        // Keep destructive rollback bounded by the episode flag
+                        // budget; packet cancellation above may continue while
+                        // the independent causal evidence remains valid.
+                        GrimAPI.INSTANCE.getMovementReleaseGuard()
+                                .apply(player, true, this);
                     }
                 }
             }
