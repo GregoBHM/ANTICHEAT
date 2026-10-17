@@ -437,4 +437,24 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
 
+    @Test
+    void disabledEpisodeLedgerDoesNotAllocatePlayerState()
+            throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        int confirm = manager.indexOf("public @NotNull Decision confirm(");
+        int disabled = manager.indexOf("if (!enabled)", confirm);
+        int allocate = manager.indexOf("states.computeIfAbsent(", confirm);
+
+        assertTrue(confirm >= 0);
+        assertTrue(disabled > confirm);
+        assertTrue(allocate > disabled);
+        assertTrue(manager.contains(
+                "Disabled means fully inert"
+        ));
+    }
+
+
 }
