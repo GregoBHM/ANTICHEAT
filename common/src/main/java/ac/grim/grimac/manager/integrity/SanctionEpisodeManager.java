@@ -157,7 +157,10 @@ public final class SanctionEpisodeManager {
 
             String normalizedFamily = normalizeFamily(family);
             String normalizedComponent = sanitize(component);
-            String normalizedToken = sanitize(episodeToken);
+            String normalizedToken = "join="
+                    + player.joinTime
+                    + "|"
+                    + sanitize(episodeToken);
 
             Deque<Episode> episodes = state.episodes.computeIfAbsent(
                     normalizedFamily,
