@@ -401,6 +401,13 @@ public class PunishmentManager implements ConfigReloadable {
                         episodeFamily,
                         TimeUnit.MINUTES.toMillis(10L)
                 );
+        int confirmedEpisodes2h = GrimAPI.INSTANCE
+                .getSanctionEpisodeManager()
+                .countWithin(
+                        player.uuid,
+                        episodeFamily,
+                        TimeUnit.HOURS.toMillis(2L)
+                );
         int confirmedEpisodesRetention = GrimAPI.INSTANCE
                 .getSanctionEpisodeManager()
                 .countRetention(player.uuid, episodeFamily);
@@ -493,6 +500,14 @@ public class PunishmentManager implements ConfigReloadable {
                         )
                         .replace(
                                 "%confirmed_episodes_2h%",
+                                Integer.toString(confirmedEpisodes2h)
+                        )
+                        .replace(
+                                "%confirmed_episodes%",
+                                Integer.toString(confirmedEpisodesRetention)
+                        )
+                        .replace(
+                                "%confirmed_episodes_retention%",
                                 Integer.toString(confirmedEpisodesRetention)
                         )
                         .replace(
@@ -947,7 +962,21 @@ public class PunishmentManager implements ConfigReloadable {
                         );
             }
 
-            case "confirmed_episodes_2h", "confirmed_episodes" -> {
+            case "confirmed_episodes_2h" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countWithin(
+                                player.uuid,
+                                family,
+                                TimeUnit.HOURS.toMillis(2L)
+                        );
+            }
+
+            case "confirmed_episodes",
+                 "confirmed_episodes_retention" -> {
                 String family = SanctionEpisodeManager.familyFor(
                         check.getStableKey(),
                         componentFor(check)
