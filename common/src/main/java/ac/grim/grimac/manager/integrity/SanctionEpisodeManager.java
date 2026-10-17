@@ -109,8 +109,11 @@ public final class SanctionEpisodeManager {
         }
     }
 
-    /** Called only for checked, non-teleport movement predictions. */
-    public void noteCheckedPrediction(@NotNull UUID uuid) {
+    /**
+     * Advances continuity recovery only after a genuinely clean prediction.
+     * Callers must not use merely "checked" or still-suspicious movement here.
+     */
+    public void noteCleanPrediction(@NotNull UUID uuid) {
         if (!enabled) return;
 
         State state = states.get(uuid);
