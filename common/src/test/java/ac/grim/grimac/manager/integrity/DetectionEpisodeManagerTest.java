@@ -237,4 +237,30 @@ class DetectionEpisodeManagerTest {
         assertTrue(itemEight.id() != recovery.id());
     }
 
+    @Test
+    void explicitSharedBoundaryStartsFreshPhysicalEpisode() {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        DetectionEpisodeManager.SharedEpisode first =
+                manager.resolveSharedEpisode(
+                        "ground-integrity",
+                        "airborne",
+                        2000L,
+                        4000L
+                );
+
+        manager.clearSharedEpisode("ground-integrity");
+
+        DetectionEpisodeManager.SharedEpisode second =
+                manager.resolveSharedEpisode(
+                        "ground-integrity",
+                        "airborne",
+                        2000L,
+                        4000L
+                );
+
+        assertTrue(first.id() != second.id());
+    }
+
+
 }
