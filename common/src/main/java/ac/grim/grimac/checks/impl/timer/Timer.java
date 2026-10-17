@@ -29,6 +29,7 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
     private long episodeWindowMillis;
     private long episodeFlagIntervalMillis;
     private int maxFlagsPerEpisode;
+    private long episodeMaxLifetimeMillis;
 
     public Timer(GrimPlayer player) {
         super(player);
@@ -79,7 +80,8 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                     player.detectionEpisodeManager.resolveSharedEpisode(
                             "timer-normal",
                             "timer",
-                            episodeWindowMillis
+                            episodeWindowMillis,
+                            episodeMaxLifetimeMillis
                     );
 
             DetectionEpisodeManager.Decision episode =
@@ -209,6 +211,16 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                         config.getLongElse(
                                 getConfigName() + ".max-flags-per-episode",
                                 2L
+                        )
+                )
+        );
+        episodeMaxLifetimeMillis = Math.max(
+                episodeWindowMillis,
+                Math.min(
+                        30_000L,
+                        config.getLongElse(
+                                getConfigName() + ".episode-max-lifetime-ms",
+                                2500L
                         )
                 )
         );
