@@ -181,11 +181,17 @@ class ConfirmedSanctionEpisodesAuditTest {
         ));
         assertTrue(noFall.contains("boolean blinkRecovery"));
         assertTrue(noFall.contains(
-                "if (!blinkRecovery"
+                "if (blinkRecovery)"
+        ));
+        assertTrue(noFall.contains(
+                "Do not create NoFall evidence or rewrite"
         ));
         assertTrue(groundSpoof.contains("boolean blinkRecovery"));
         assertTrue(groundSpoof.contains(
-                "if (!blinkRecovery)"
+                "if (blinkRecovery)"
+        ));
+        assertTrue(groundSpoof.contains(
+                "must neither create evidence nor schedule a second packet-state"
         ));
         assertTrue(noFall.contains(
                 "SanctionEpisodeManager.FAMILY_GROUND"
