@@ -70,6 +70,10 @@ public final class MovementContextListener implements Listener {
         // old position. Cleanup is lifecycle-owned and must run even when the
         // automatic Bukkit observation bridge is disabled.
         contexts.clear(event.getPlayer().getUniqueId());
+        GrimAPI.INSTANCE.getSanctionEpisodeManager().markContinuityBreak(
+                event.getPlayer().getUniqueId(),
+                "teleport:" + (event.getCause() == null ? "UNKNOWN" : event.getCause().name())
+        );
         if (!enabled()) return;
 
         long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
@@ -83,6 +87,10 @@ public final class MovementContextListener implements Listener {
         var player = event.getPlayer();
         var contexts = GrimAPI.INSTANCE.getMovementContextManager();
         contexts.clear(player.getUniqueId());
+        GrimAPI.INSTANCE.getSanctionEpisodeManager().markContinuityBreak(
+                player.getUniqueId(),
+                "world-change"
+        );
         if (!enabled()) return;
 
         long duration = config().getLongElse("movement-context-auto.teleport-duration-ms", 1200L);
@@ -99,6 +107,10 @@ public final class MovementContextListener implements Listener {
     public void onDeath(PlayerDeathEvent event) {
         GrimAPI.INSTANCE.getMovementContextManager()
                 .clear(event.getEntity().getUniqueId());
+        GrimAPI.INSTANCE.getSanctionEpisodeManager().markContinuityBreak(
+                event.getEntity().getUniqueId(),
+                "death"
+        );
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -107,6 +119,10 @@ public final class MovementContextListener implements Listener {
         // velocity authored before death must never survive into the new life.
         GrimAPI.INSTANCE.getMovementContextManager()
                 .clear(event.getPlayer().getUniqueId());
+        GrimAPI.INSTANCE.getSanctionEpisodeManager().markContinuityBreak(
+                event.getPlayer().getUniqueId(),
+                "respawn"
+        );
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -116,6 +132,10 @@ public final class MovementContextListener implements Listener {
         // plugin contexts must not survive into the new mode either.
         GrimAPI.INSTANCE.getMovementContextManager()
                 .clear(event.getPlayer().getUniqueId());
+        GrimAPI.INSTANCE.getSanctionEpisodeManager().markContinuityBreak(
+                event.getPlayer().getUniqueId(),
+                "gamemode-change"
+        );
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
