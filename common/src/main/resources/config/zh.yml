@@ -145,6 +145,10 @@ RotationPlace:
 # 在这里解释错误的服务器代码......即使在发送垃圾数据包时右键单击和副手按钮也很分辨
 # 比其他反作弊更稳定，但请报告任何错误......我在这里修复了大量的代码问题。
 NoSlow:
+    normal-episode:
+        window-ms: 5000
+        flag-interval-ms: 1000
+        max-flags-per-episode: 1
     # 最大允许玩家在使用物品时的移动优势（单位：方块）
     # 启用 NoSlow 后，标记量持续为 0.03-0.2
     threshold: 0.001
@@ -221,6 +225,9 @@ Explosion:
     # 到达多少VL时回弹
 
 TimerA:
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 500
+    max-flags-per-episode: 2
     setbackvl: 10
     prevention:
         enabled: true
@@ -233,6 +240,9 @@ TimerA:
 
 # 此项是config是用来防止玩家移动与实时差距过大，来限制对 TimerA 平衡机制的滥用。
 TimerLimit:
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
     # 在检查玩家的延迟时对timer balance进行限制, 防止滥用
     # 在合法玩家的延迟超过这个延迟阈值时可能会造成误拉回
     # 填写-1则关闭
@@ -699,6 +709,10 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    normal-episode:
+        window-ms: 1200
+        flag-interval-ms: 500
+        max-flags-per-episode: 2
     # Destructive Simulation correction pauses only when the SERVER is unhealthy.
     # Player ping/jitter alone never becomes a movement bypass.
     minimum-server-confidence: 0.55
@@ -841,3 +855,26 @@ autoclicker-pattern:
     maximum-variance: 0.10
     minimum-periodicity: 0.95
     minimum-mode-ratio: 0.85
+
+# Long-window memory stores only independently confirmed episodes, never raw VL.
+# It is telemetry/punishment input only; this block does not enable autobans.
+sanction-episodes:
+    enabled: true
+    retention-seconds: 7200
+    max-episodes-per-family: 32
+    post-continuity-grace-ms: 1500
+    clean-recovery-predictions: 8
+    minimum-confidence: 0.85
+    minimum-server-confidence: 0.85
+    minimum-player-confidence: 0.85
+    minimum-tps: 18.0
+
+NoFall:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
+
+GroundSpoof:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
