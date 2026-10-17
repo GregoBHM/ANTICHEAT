@@ -3,6 +3,7 @@ package ac.grim.grimac.checks.impl.timer;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.checks.CheckData;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.player.GrimPlayer;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
@@ -18,6 +19,10 @@ public class TimerLimit extends Timer {
     private long preventionCausalWindowMillis;
 
     private long blinkMitigationSuppressUntilNanos;
+
+    private long episodeWindowMillis;
+    private long episodeFlagIntervalMillis;
+    private int maxFlagsPerEpisode;
 
     public TimerLimit(GrimPlayer player) {
         super(player);
@@ -56,20 +61,37 @@ public class TimerLimit extends Timer {
             }
 
             if (!event.isCancelled()) {
-                boolean flagged = flag();
-                if (flagged) {
-                    boolean hardPrevention = shouldPreventBurstRelease();
+                DetectionEpisodeManager.Decision episode =
+                        player.detectionEpisodeManager.evaluate(
+                                "timerlimit.release",
+                                "timerlimit",
+                                episodeWindowMillis,
+                                episodeFlagIntervalMillis,
+                                maxFlagsPerEpisode
+                        );
 
-                    if (hardPrevention && cancelBurstMovement && shouldModifyPackets()) {
-                        event.setCancelled(true);
-                        player.onPacketCancel();
-                    }
+                if (episode.allowFlag()) {
+                    boolean flagged = flagComponent(
+                            "timerlimit.release",
+                            "episodeObservations=" + episode.observations()
+                                    + " episodeFlags=" + episode.flags()
+                    );
 
-                    // TimerLimit no longer owns Blink rollback. ConnectionStall's
-                    // one-shot hard release barrier does. Outside such an episode,
-                    // preserve Grim's original TimerLimit setback behavior.
-                    if (hardPrevention && shouldSetback()) {
-                        GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true, this);
+                    if (flagged) {
+                        boolean hardPrevention = shouldPreventBurstRelease();
+
+                        if (hardPrevention && cancelBurstMovement && shouldModifyPackets()) {
+                            event.setCancelled(true);
+                            player.onPacketCancel();
+                        }
+
+                        // TimerLimit no longer owns Blink rollback.
+                        // Outside a ConnectionStall-owned episode, retain
+                        // the causal hard-prevention behavior.
+                        if (hardPrevention && shouldSetback()) {
+                            GrimAPI.INSTANCE.getMovementReleaseGuard()
+                                    .apply(player, true, this);
+                        }
                     }
                 }
             }
@@ -143,6 +165,28 @@ public class TimerLimit extends Timer {
         );
         preventionCausalWindowMillis = Math.max(250L, Math.min(10_000L,
                 config.getLongElse(getConfigName() + ".hard-prevention.causal-window-ms", 1500L)));
+
+        episodeWindowMillis = Math.max(250L, Math.min(
+                10_000L,
+                config.getLongElse(
+                        getConfigName() + ".episode-window-ms",
+                        1500L
+                )
+        ));
+        episodeFlagIntervalMillis = Math.max(0L, Math.min(
+                10_000L,
+                config.getLongElse(
+                        getConfigName() + ".episode-flag-interval-ms",
+                        750L
+                )
+        ));
+        maxFlagsPerEpisode = (int) Math.max(1L, Math.min(
+                4L,
+                config.getLongElse(
+                        getConfigName() + ".max-flags-per-episode",
+                        1L
+                )
+        ));
 
         blinkMitigationSuppressUntilNanos = 0L;
     }
