@@ -397,7 +397,9 @@ public final class SanctionEpisodeManager {
 
         synchronized (state) {
             purgeLocked(state, System.nanoTime());
-            return state.lastConfirmedConfidence;
+            return state.episodes.isEmpty()
+                    ? 0.0D
+                    : state.lastConfirmedConfidence;
         }
     }
 
