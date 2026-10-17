@@ -32,6 +32,7 @@ public final class SanctionEpisodeManager {
     public static final String FAMILY_GROUND = "GROUND";
     public static final String FAMILY_COMBAT = "COMBAT";
     public static final String FAMILY_NETWORK = "NETWORK";
+    public static final String FAMILY_OTHER = "OTHER";
 
     private final Map<UUID, State> states = new ConcurrentHashMap<>();
 
@@ -636,20 +637,21 @@ public final class SanctionEpisodeManager {
             String stableKey,
             String component
     ) {
-        if (stableKey == null) return FAMILY_NETWORK;
+        if (stableKey == null) return FAMILY_OTHER;
 
         return switch (stableKey) {
             case "grim.velocity.anti_knockback" -> FAMILY_VELOCITY;
             case "grim.prediction.simulation" -> FAMILY_MOVEMENT;
             case "grim.timer.timer", "grim.timer.limit" -> FAMILY_TIMER;
+            case "grim.timer.connection_stall",
+                 "grim.timer.packet_burst",
+                 "grim.exploit.stall_actions" -> FAMILY_NETWORK;
             case "grim.movement.noslow" -> FAMILY_ITEM_USE;
             case "grim.groundspoof.no_fall",
                  "grim.groundspoof.fake" -> FAMILY_GROUND;
             case "grim.combat.reach",
                  "grim.combat.hitboxes" -> FAMILY_COMBAT;
-            default -> stableKey.startsWith("grim.connection.")
-                    ? FAMILY_NETWORK
-                    : FAMILY_NETWORK;
+            default -> FAMILY_OTHER;
         };
     }
 
