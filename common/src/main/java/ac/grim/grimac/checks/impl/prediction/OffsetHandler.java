@@ -310,6 +310,19 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             return;
         }
 
+        if (predictionComplete.getData().isTeleport()) {
+            // Teleport is a hard continuity boundary. Its prediction can be
+            // observed for diagnostics, but must never create or continue a
+            // normal Simulation evidence episode.
+            advantageGained = 0.0D;
+            resetEnforcementState();
+            resetShortBlinkState();
+            resetEnvironmentState();
+            resetNormalEpisodeState(true);
+            removeOffsetLenience();
+            return;
+        }
+
         // Buffered movement that v20 already cancelled must not also become
         // Simulation VL. The one-shot Blink owner has already removed that
         // advantage and records the release as ConnectionStall evidence.
@@ -319,6 +332,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             specialEnvironmentEpisodeFlagAccepted = false;
             specialEnvironmentEpisodeCorrectionApplied = false;
             specialEnvironmentFlagKey = "";
+            resetNormalEpisodeState(true);
             removeOffsetLenience();
             return;
         }
@@ -344,6 +358,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
             if (environmentProtectedWindow) {
                 advantageGained = 0.0D;
+
+                if (!normalEpisodeStateToken.isEmpty()) {
+                    resetNormalEpisodeState(true);
+                }
 
                 DetectionEpisodeManager.SharedEpisode sharedEpisode =
                         environment.resolveMovementEvidenceEpisode(
@@ -686,6 +704,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         advantageGained = 0.0D;
         resetEnforcementState();
         resetShortBlinkState();
+        resetNormalEpisodeState(true);
         removeOffsetLenience();
     }
 
@@ -728,6 +747,17 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         shortBlinkLastPacketNanos = 0L;
         shortBlinkReleasePackets = 0;
         shortBlinkStart = null;
+    }
+
+    private void resetNormalEpisodeState(boolean clearSharedEpisode) {
+        normalEpisodeStateToken = "";
+        normalEpisodeFlagAccepted = false;
+        normalEpisodeCorrectionApplied = false;
+        if (clearSharedEpisode) {
+            player.detectionEpisodeManager.clearSharedEpisode(
+                    "simulation-normal"
+            );
+        }
     }
 
     private void resetEnvironmentState() {
@@ -804,9 +834,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         resetEnforcementState();
         resetShortBlinkState();
         resetEnvironmentState();
-        normalEpisodeStateToken = "";
-        normalEpisodeFlagAccepted = false;
-        normalEpisodeCorrectionApplied = false;
+        resetNormalEpisodeState(false);
 
         normalEpisodeWindowMillis = Math.max(
                 250L,
