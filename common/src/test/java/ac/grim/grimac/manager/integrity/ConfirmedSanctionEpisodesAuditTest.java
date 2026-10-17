@@ -311,6 +311,12 @@ class ConfirmedSanctionEpisodesAuditTest {
         assertTrue(punishment.contains(
                 "%episode_recovery_reason%"
         ));
+        assertTrue(punishment.contains(
+                "SanctionEpisodeManager.Snapshot episodeSnapshot"
+        ));
+        assertTrue(punishment.contains(
+                ".snapshot(player.uuid, episodeFamily)"
+        ));
     }
 
     @Test
@@ -402,6 +408,30 @@ class ConfirmedSanctionEpisodesAuditTest {
         ));
         assertTrue(reach.contains(
                 "() -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm("
+        ));
+    }
+
+
+    @Test
+    void episodeSnapshotIsAtomicPerFamily() throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        assertTrue(manager.contains(
+                "public @NotNull Snapshot snapshot("
+        ));
+        assertTrue(manager.contains(
+                "synchronized (state)"
+        ));
+        assertTrue(manager.contains(
+                "confirmedEpisodes10m"
+        ));
+        assertTrue(manager.contains(
+                "confirmedEpisodes2h"
+        ));
+        assertTrue(manager.contains(
+                "confirmedEpisodesRetention"
         ));
     }
 
