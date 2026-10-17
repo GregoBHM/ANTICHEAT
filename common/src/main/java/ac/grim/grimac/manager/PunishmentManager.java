@@ -394,32 +394,23 @@ public class PunishmentManager implements ConfigReloadable {
                 stableKey,
                 component
         );
-        int confirmedEpisodes10m = GrimAPI.INSTANCE
-                .getSanctionEpisodeManager()
-                .countWithin(
-                        player.uuid,
-                        episodeFamily,
-                        TimeUnit.MINUTES.toMillis(10L)
-                );
-        int confirmedEpisodes2h = GrimAPI.INSTANCE
-                .getSanctionEpisodeManager()
-                .countWithin(
-                        player.uuid,
-                        episodeFamily,
-                        TimeUnit.HOURS.toMillis(2L)
-                );
-        int confirmedEpisodesRetention = GrimAPI.INSTANCE
-                .getSanctionEpisodeManager()
-                .countRetention(player.uuid, episodeFamily);
-        double episodeConfidence = GrimAPI.INSTANCE
-                .getSanctionEpisodeManager()
-                .latestConfidence(player.uuid, episodeFamily);
-        boolean episodeRecovery = GrimAPI.INSTANCE
-                .getSanctionEpisodeManager()
-                .isRecoveryBlocked(player.uuid);
-        String episodeRecoveryReason = GrimAPI.INSTANCE
-                .getSanctionEpisodeManager()
-                .recoveryReason(player.uuid);
+        SanctionEpisodeManager.Snapshot episodeSnapshot =
+                GrimAPI.INSTANCE
+                        .getSanctionEpisodeManager()
+                        .snapshot(player.uuid, episodeFamily);
+
+        int confirmedEpisodes10m =
+                episodeSnapshot.confirmedEpisodes10m();
+        int confirmedEpisodes2h =
+                episodeSnapshot.confirmedEpisodes2h();
+        int confirmedEpisodesRetention =
+                episodeSnapshot.confirmedEpisodesRetention();
+        double episodeConfidence =
+                episodeSnapshot.latestConfidence();
+        boolean episodeRecovery =
+                episodeSnapshot.recoveryBlocked();
+        String episodeRecoveryReason =
+                episodeSnapshot.recoveryReason();
 
         String template = StaffAlertTemplate.expand(
                 original,
