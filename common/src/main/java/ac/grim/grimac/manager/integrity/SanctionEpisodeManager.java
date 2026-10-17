@@ -38,6 +38,7 @@ public final class SanctionEpisodeManager {
     private volatile boolean enabled = true;
     private volatile long nextPurgeNanos;
     private volatile long retentionNanos = TimeUnit.HOURS.toNanos(2L);
+    private volatile long storageRetentionNanos = TimeUnit.HOURS.toNanos(2L);
     private volatile int maxEpisodesPerFamily = 32;
     private volatile long postContinuityGraceNanos = TimeUnit.MILLISECONDS.toNanos(1500L);
     private volatile int minimumCleanPredictions = 8;
@@ -53,6 +54,14 @@ public final class SanctionEpisodeManager {
                 300L,
                 86_400L
         ));
+        // The public 2h metric must remain a real two-hour window even when
+        // operators choose a shorter custom retention window. Keep enough
+        // internal history for both views; countRetention still respects the
+        // configured retentionNanos value.
+        storageRetentionNanos = Math.max(
+                retentionNanos,
+                TimeUnit.HOURS.toNanos(2L)
+        );
         maxEpisodesPerFamily = (int) clamp(
                 config.getLongElse("sanction-episodes.max-episodes-per-family", 32L),
                 4L,
@@ -589,7 +598,7 @@ public final class SanctionEpisodeManager {
                 return state.episodes.isEmpty()
                         && state.rejectedEpisodes.isEmpty()
                         && !recoveryBlockedLocked(state, now)
-                        && now - state.lastConfirmedNanos > retentionNanos;
+                        && now - state.lastConfirmedNanos > storageRetentionNanos;
             }
         });
     }
@@ -597,7 +606,7 @@ public final class SanctionEpisodeManager {
     private void purgeLocked(@NotNull State state, long now) {
         for (Deque<Episode> episodes : state.episodes.values()) {
             while (!episodes.isEmpty()
-                    && now - episodes.peekFirst().timeNanos > retentionNanos) {
+                    && now - episodes.peekFirst().timeNanos > storageRetentionNanos) {
                 episodes.pollFirst();
             }
         }
@@ -608,7 +617,7 @@ public final class SanctionEpisodeManager {
         for (Deque<RejectedEpisode> rejected
                 : state.rejectedEpisodes.values()) {
             while (!rejected.isEmpty()
-                    && now - rejected.peekFirst().timeNanos > retentionNanos) {
+                    && now - rejected.peekFirst().timeNanos > storageRetentionNanos) {
                 rejected.pollFirst();
             }
         }
