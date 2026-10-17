@@ -37,6 +37,18 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
+    void confirmedHistoryIsNotClearedOnPlayerDisconnect() throws IOException {
+        String playerData = source("utils/anticheat/PlayerDataManager.java");
+
+        assertFalse(playerData.contains(
+                "getSanctionEpisodeManager().clear(uuid)"
+        ));
+        assertTrue(playerData.contains(
+                "detectionEpisodeManager.clearAll()"
+        ));
+    }
+
+    @Test
     void bukkitContinuityBreaksGateFutureConfirmations() throws IOException {
         String listener = Files.readString(Path.of(
                 "../bukkit/src/main/java/ac/grim/grimac/platform/bukkit/events/MovementContextListener.java"
