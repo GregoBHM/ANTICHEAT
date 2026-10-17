@@ -177,6 +177,15 @@ public final class DetectionEpisodeManager {
         states.remove(component);
     }
 
+    /**
+     * Ends one shared physical family explicitly. Use this for real lifecycle
+     * boundaries such as a clean landing so a later independent fall cannot
+     * inherit the previous episode merely because it happened quickly.
+     */
+    public synchronized void clearSharedEpisode(@NotNull String family) {
+        sharedStates.remove(family);
+    }
+
     public synchronized void clearAll() {
         states.clear();
         sharedStates.clear();
