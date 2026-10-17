@@ -291,7 +291,8 @@ public class Reach extends Check implements PacketReceiveListener {
 
             switch (result.type()) {
                 case REACH -> {
-                    flag(
+                    flagComponent(
+                            "reach",
                             V.write(verbose()).f64(result.minDistance()).uint(Math.max(0, reachEntity.getType().getId(PacketEvents.getAPI().getServerManager().getVersion().toClientVersion()))),
                             () -> {
                                 String added = ", type=" + reachEntity.getType().getName().getKey()
@@ -318,7 +319,8 @@ public class Reach extends Check implements PacketReceiveListener {
                         added += ", size=" + sizeable.size;
                     }
                     player.checkManager.get(Hitboxes.class)
-                            .flag(
+                            .flagComponent(
+                                    "hitbox",
                                     result.verbose() + added,
                                     () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
                                             player,
