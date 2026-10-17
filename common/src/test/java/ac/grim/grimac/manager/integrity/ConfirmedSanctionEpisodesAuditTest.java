@@ -47,6 +47,13 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
+    void everyFreshConnectionStartsInSanctionRecovery() throws IOException {
+        String playerData = source("utils/anticheat/PlayerDataManager.java");
+
+        assertTrue(playerData.contains("markContinuityBreak(player.uuid, \"join\")"));
+    }
+
+    @Test
     void confirmedHistoryIsNotClearedOnPlayerDisconnect() throws IOException {
         String playerData = source("utils/anticheat/PlayerDataManager.java");
 
