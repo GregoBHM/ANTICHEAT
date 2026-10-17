@@ -37,6 +37,16 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
+    void episodeTokensAreNamespacedPerConnection() throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        assertTrue(manager.contains("\"join=\""));
+        assertTrue(manager.contains("player.joinTime"));
+    }
+
+    @Test
     void confirmedHistoryIsNotClearedOnPlayerDisconnect() throws IOException {
         String playerData = source("utils/anticheat/PlayerDataManager.java");
 
