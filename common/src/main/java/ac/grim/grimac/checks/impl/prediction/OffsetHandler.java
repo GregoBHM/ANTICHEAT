@@ -74,6 +74,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private long normalEpisodeMaxLifetimeMillis;
     private String normalEpisodeStateToken = "";
     private boolean normalEpisodeFlagAccepted;
+    private boolean normalEpisodeConfirmed;
     private boolean normalEpisodeCorrectionApplied;
 
     private boolean shortBlinkEnabled;
@@ -457,6 +458,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 if (!specialEpisodeToken.equals(normalEpisodeStateToken)) {
                     normalEpisodeStateToken = specialEpisodeToken;
                     normalEpisodeFlagAccepted = false;
+                    normalEpisodeConfirmed = false;
                     normalEpisodeCorrectionApplied = false;
                     enforcementStrongStreak = 0;
                     enforcementCleanTicks = 0;
@@ -497,13 +499,19 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                                     + specialEpisodeDebug
                                     + " /gl " + flagId,
                             () -> {
-                                if (confirmNormalOnAcceptedFlag) {
-                                    GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                            player,
-                                            ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
-                                            simulationComponent,
-                                            specialEpisodeToken
-                                    );
+                                if (confirmNormalOnAcceptedFlag
+                                        && !normalEpisodeConfirmed) {
+                                    var confirmation = GrimAPI.INSTANCE
+                                            .getSanctionEpisodeManager()
+                                            .confirm(
+                                                    player,
+                                                    ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
+                                                    simulationComponent,
+                                                    specialEpisodeToken
+                                            );
+                                    if (!confirmation.blocked()) {
+                                        normalEpisodeConfirmed = true;
+                                    }
                                 }
                             }
                     );
@@ -576,13 +584,19 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             if (!environmentProtectedWindow
                     && "simulation.normal".equals(simulationComponent)
                     && normalEpisodeFlagAccepted
-                    && severeMovement) {
-                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                        player,
-                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
-                        simulationComponent,
-                        specialEpisodeToken
-                );
+                    && severeMovement
+                    && !normalEpisodeConfirmed) {
+                var confirmation = GrimAPI.INSTANCE
+                        .getSanctionEpisodeManager()
+                        .confirm(
+                                player,
+                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
+                                simulationComponent,
+                                specialEpisodeToken
+                        );
+                if (!confirmation.blocked()) {
+                    normalEpisodeConfirmed = true;
+                }
             }
 
             boolean correctionApplied = environmentProtectedWindow
@@ -774,6 +788,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private void resetNormalEpisodeState(boolean clearSharedEpisode) {
         normalEpisodeStateToken = "";
         normalEpisodeFlagAccepted = false;
+        normalEpisodeConfirmed = false;
         normalEpisodeCorrectionApplied = false;
         if (clearSharedEpisode) {
             player.detectionEpisodeManager.clearSharedEpisode(
