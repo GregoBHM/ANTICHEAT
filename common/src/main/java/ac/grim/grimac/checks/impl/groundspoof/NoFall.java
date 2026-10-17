@@ -89,7 +89,7 @@ public class NoFall extends Check implements PacketReceiveListener {
                                     .getIntegrityCorrelationManager()
                                     .record(player.uuid, IntegritySignal.NO_FALL);
 
-                            boolean accepted = flagComponent(
+                            flagComponent(
                                     "nofall.normal",
                                     "corr=" + String.format(
                                             java.util.Locale.ROOT,
@@ -99,17 +99,14 @@ public class NoFall extends Check implements PacketReceiveListener {
                                             + " episode="
                                             + sharedEpisode.token()
                                             + " observations="
-                                            + episode.observations()
+                                            + episode.observations(),
+                                    () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                            player,
+                                            ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_GROUND,
+                                            "nofall.normal",
+                                            sharedEpisode.token()
+                                    )
                             );
-
-                            if (accepted) {
-                                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                        player,
-                                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_GROUND,
-                                        "nofall.normal",
-                                        sharedEpisode.token()
-                                );
-                            }
                         }
                     }
 
