@@ -121,10 +121,46 @@ public class Check extends GrimProcessor implements AbstractCheck {
         return false;
     }
 
+    /**
+     * Runs trusted internal bookkeeping after the flag is accepted but before
+     * staff alerts and punishment commands are rendered. This keeps confirmed
+     * episode counters in the same alert that created them without recording an
+     * episode when a FlagEvent vetoes the flag.
+     */
+    public final boolean flag(
+            String verbose,
+            @NotNull Runnable afterRecordBeforeAlert
+    ) {
+        lastComponent = "";
+        Supplier<String> alertText = constant(verbose);
+        if (recordFlag(alertText)) {
+            afterRecordBeforeAlert.run();
+            alert(alertText);
+            return true;
+        }
+        return false;
+    }
+
     public final boolean flagComponent(@NotNull String component, String verbose) {
         lastComponent = normalizeComponent(component);
         Supplier<String> alertText = constant(verbose);
         if (recordFlag(alertText)) {
+            alert(alertText);
+            return true;
+        }
+        lastComponent = "";
+        return false;
+    }
+
+    public final boolean flagComponent(
+            @NotNull String component,
+            String verbose,
+            @NotNull Runnable afterRecordBeforeAlert
+    ) {
+        lastComponent = normalizeComponent(component);
+        Supplier<String> alertText = constant(verbose);
+        if (recordFlag(alertText)) {
+            afterRecordBeforeAlert.run();
             alert(alertText);
             return true;
         }
@@ -163,11 +199,43 @@ public class Check extends GrimProcessor implements AbstractCheck {
         return false;
     }
 
+    public final boolean flag(
+            @NotNull Verbose.Writer verbose,
+            @NotNull Supplier<String> alertText,
+            @NotNull Runnable afterRecordBeforeAlert
+    ) {
+        lastComponent = "";
+        BinaryVerbose binary = lazyVerbose(verbose);
+        if (recordFlag(binary)) {
+            afterRecordBeforeAlert.run();
+            alert(memoize(Objects.requireNonNull(alertText, "alertText")));
+            return true;
+        }
+        return false;
+    }
+
     public final boolean flagComponent(@NotNull String component, @NotNull Verbose.Writer verbose,
                                        @NotNull Supplier<String> alertText) {
         lastComponent = normalizeComponent(component);
         BinaryVerbose binary = lazyVerbose(verbose);
         if (recordFlag(binary)) {
+            alert(memoize(Objects.requireNonNull(alertText, "alertText")));
+            return true;
+        }
+        lastComponent = "";
+        return false;
+    }
+
+    public final boolean flagComponent(
+            @NotNull String component,
+            @NotNull Verbose.Writer verbose,
+            @NotNull Supplier<String> alertText,
+            @NotNull Runnable afterRecordBeforeAlert
+    ) {
+        lastComponent = normalizeComponent(component);
+        BinaryVerbose binary = lazyVerbose(verbose);
+        if (recordFlag(binary)) {
+            afterRecordBeforeAlert.run();
             alert(memoize(Objects.requireNonNull(alertText, "alertText")));
             return true;
         }
@@ -260,6 +328,18 @@ public class Check extends GrimProcessor implements AbstractCheck {
 
     public final boolean flagComponentWithSetback(@NotNull String component, String verbose) {
         if (flagComponent(component, verbose)) {
+            setbackIfAboveSetbackVL();
+            return true;
+        }
+        return false;
+    }
+
+    public final boolean flagComponentWithSetback(
+            @NotNull String component,
+            String verbose,
+            @NotNull Runnable afterRecordBeforeAlert
+    ) {
+        if (flagComponent(component, verbose, afterRecordBeforeAlert)) {
             setbackIfAboveSetbackVL();
             return true;
         }
