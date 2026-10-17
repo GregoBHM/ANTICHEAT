@@ -139,6 +139,9 @@ NoSlow:
         window-ms: 5000
         flag-interval-ms: 1000
         max-flags-per-episode: 1
+        # Long blocking/use sessions roll into bounded sub-episodes so sustained
+        # NoSlow remains detectable without one VL per prediction tick.
+        max-lifetime-ms: 4000
     # How much of an offset is "cheating"
     # By default this is lower than other offs
     # Flags by 0.03-0.2 consistently with NoSlow on
