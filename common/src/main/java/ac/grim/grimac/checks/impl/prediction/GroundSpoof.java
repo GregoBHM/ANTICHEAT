@@ -62,40 +62,44 @@ public class GroundSpoof extends Check implements PostPredictionListener {
 
         if (claimed != player.onGround) {
             ConnectionStall blinkOwner = player.checkManager.get(ConnectionStall.class);
-            boolean blinkRecovery = blinkOwner != null && blinkOwner.shouldSuppressMovementSetbacks();
+            boolean blinkRecovery = blinkOwner != null
+                    && blinkOwner.shouldSuppressMovementSetbacks();
 
-            boolean accepted = false;
-
-            if (!blinkRecovery) {
-                // GroundSpoof corroborates one airborne physical episode.
-                // It never creates long-window sanction history by itself.
-                DetectionEpisodeManager.SharedEpisode sharedEpisode =
-                        player.detectionEpisodeManager.resolveSharedEpisode(
-                                "ground-integrity",
-                                "airborne",
-                                episodeWindowMillis,
-                                episodeMaxLifetimeMillis
-                        );
-                DetectionEpisodeManager.Decision episode =
-                        player.detectionEpisodeManager.evaluate(
-                                "groundspoof.normal",
-                                "groundspoof|" + sharedEpisode.token(),
-                                episodeWindowMillis,
-                                episodeFlagIntervalMillis,
-                                maxFlagsPerEpisode,
-                                sharedEpisode,
-                                2
-                        );
-
-                accepted = episode.allowFlag()
-                        && flagComponent(
-                        "groundspoof.normal",
-                        V.write(verbose()).bool(claimed),
-                        () -> "claimed=" + claimed
-                                + " episode=" + sharedEpisode.token()
-                                + " observations=" + episode.observations()
-                );
+            if (blinkRecovery) {
+                // ConnectionStall owns this release/recovery window. GroundSpoof
+                // must neither create evidence nor schedule a second packet-state
+                // correction from the same buffered movement.
+                return;
             }
+
+            // GroundSpoof corroborates one airborne physical episode.
+            // It never creates long-window sanction history by itself.
+            DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                    player.detectionEpisodeManager.resolveSharedEpisode(
+                            "ground-integrity",
+                            "airborne",
+                            episodeWindowMillis,
+                            episodeMaxLifetimeMillis
+                    );
+            DetectionEpisodeManager.Decision episode =
+                    player.detectionEpisodeManager.evaluate(
+                            "groundspoof.normal",
+                            "groundspoof|" + sharedEpisode.token(),
+                            episodeWindowMillis,
+                            episodeFlagIntervalMillis,
+                            maxFlagsPerEpisode,
+                            sharedEpisode,
+                            2
+                    );
+
+            boolean accepted = episode.allowFlag()
+                    && flagComponent(
+                    "groundspoof.normal",
+                    V.write(verbose()).bool(claimed),
+                    () -> "claimed=" + claimed
+                            + " episode=" + sharedEpisode.token()
+                            + " observations=" + episode.observations()
+            );
 
             boolean specialEnvironment = GrimAPI.INSTANCE.getEnvironmentContextManager()
                     .isSpecialMovementEnvironment(player);
@@ -104,8 +108,6 @@ public class GroundSpoof extends Check implements PostPredictionListener {
                 predictionComplete.setSafePositionUpdateBlocked(true);
             }
 
-            // Keep state correction available during Blink recovery, but do not
-            // turn ConnectionStall-owned release movement into GroundSpoof VL.
             player.checkManager.getNoFall().flipPlayerGroundStatus = true;
         }
     }
