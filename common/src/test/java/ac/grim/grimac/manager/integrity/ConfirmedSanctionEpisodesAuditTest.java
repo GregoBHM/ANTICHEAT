@@ -81,12 +81,26 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
-    void checkedPredictionsRecoverEpisodeEligibility() throws IOException {
+    void onlyCleanPredictionsRecoverEpisodeEligibility() throws IOException {
         String simulation = source(
                 "checks/impl/prediction/OffsetHandler.java"
         );
+        String episodes = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
 
-        assertTrue(simulation.contains("noteCheckedPrediction(player.uuid)"));
+        assertFalse(simulation.contains("noteCheckedPrediction(player.uuid)"));
+        assertTrue(simulation.contains("noteCleanPrediction(player.uuid)"));
+        assertTrue(episodes.contains("public void noteCleanPrediction("));
+
+        int suspiciousBranch = simulation.indexOf(
+                "if (offset >= threshold || offset >= immediateSetbackThreshold)"
+        );
+        int cleanRecovery = simulation.indexOf(
+                "noteCleanPrediction(player.uuid)"
+        );
+        assertTrue(suspiciousBranch >= 0 && cleanRecovery > suspiciousBranch);
+
         assertTrue(simulation.contains("\"simulation-normal\""));
         assertTrue(simulation.contains("normalMaxFlagsPerEpisode"));
         assertTrue(simulation.contains("normalEpisodeMaxLifetimeMillis"));
@@ -133,7 +147,10 @@ class ConfirmedSanctionEpisodesAuditTest {
         assertTrue(noSlow.contains(
                 "\"itemuse#\" + session.sessionId()"
         ));
+        assertTrue(noSlow.contains("\"noslow-normal\""));
+        assertTrue(noSlow.contains("resolveSharedEpisode("));
         assertTrue(noSlow.contains("normalMaxFlagsPerEpisode"));
+        assertTrue(noSlow.contains("normalEpisodeMaxLifetimeMillis"));
         assertTrue(noSlow.contains(
                 "SanctionEpisodeManager.FAMILY_ITEM_USE"
         ));
