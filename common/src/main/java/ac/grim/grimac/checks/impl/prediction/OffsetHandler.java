@@ -72,6 +72,9 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private long normalEpisodeFlagIntervalMillis;
     private int normalMaxFlagsPerEpisode;
     private long normalEpisodeMaxLifetimeMillis;
+    private String normalEpisodeStateToken = "";
+    private boolean normalEpisodeFlagAccepted;
+    private boolean normalEpisodeCorrectionApplied;
 
     private boolean shortBlinkEnabled;
     private long shortBlinkMinGapNanos;
@@ -433,6 +436,13 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         );
 
                 specialEpisodeToken = normalEpisode.token();
+                if (!specialEpisodeToken.equals(normalEpisodeStateToken)) {
+                    normalEpisodeStateToken = specialEpisodeToken;
+                    normalEpisodeFlagAccepted = false;
+                    normalEpisodeCorrectionApplied = false;
+                    enforcementStrongStreak = 0;
+                    enforcementCleanTicks = 0;
+                }
                 specialEpisodeDebug = " episode="
                         + specialEpisodeToken
                         + " observations="
@@ -442,117 +452,131 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 specialFlagAllowed = decision.allowFlag();
             }
 
-            if (!specialFlagAllowed) {
-                boolean persistentCorrection = environmentProtectedWindow
-                        && specialEnvironmentEpisodeFlagAccepted
-                        && !specialEnvironmentEpisodeCorrectionApplied
-                        && enforcementEligible
-                        && offset >= specialEnvironmentCorrectionMinRawOffset
-                        && (enforcementOffset >= enforcementSevereOffset
-                        || specialEnvironmentCorrectionStreak
-                        >= specialEnvironmentCorrectionStrongTicks);
+            boolean flagRejected = false;
 
-                if (!blinkRecovery
-                        && !velocityRecovery
-                        && persistentCorrection
-                        && enforcementImmediateSetback
-                        && !isNoSetbackPermission()) {
-                    predictionComplete.setSafePositionUpdateBlocked(true);
-                    if (player.getSetbackTeleportUtil()
-                            .executeViolationSetback(this)) {
-                        specialEnvironmentEpisodeCorrectionApplied = true;
+            if (specialFlagAllowed) {
+                synchronized (flags) {
+                    int flagId = (flags.get() & 255) + 1;
+
+                    boolean accepted = flagComponent(
+                            simulationComponent,
+                            V.write(verbose()).f64(offset),
+                            () -> humanFormattedOffset(offset)
+                                    + " context="
+                                    + environment.summary(environmentContexts)
+                                    + specialEpisodeDebug
+                                    + " /gl " + flagId
+                    );
+
+                    if (accepted) {
+                        flags.incrementAndGet();
+                        predictionComplete.setIdentifier(flagId);
+
+                        if (environmentProtectedWindow) {
+                            specialEnvironmentEpisodeFlagAccepted = true;
+                        } else {
+                            normalEpisodeFlagAccepted = true;
+                        }
+                    } else {
+                        flagRejected = true;
                     }
                 }
+            }
 
+            if (flagRejected) {
+                if (enforcementEligible) {
+                    resetEnforcementState();
+                    resetShortBlinkState();
+                }
                 removeOffsetLenience();
                 return;
             }
 
-            synchronized (flags) {
-                int flagId = (flags.get() & 255) + 1;
+            // Episode budgets cap VL/alerts only. Once the episode has produced
+            // accepted evidence, mitigation must continue while the same
+            // impossible movement persists; otherwise a Fly client could wait
+            // out the flag budget and gain a temporary bypass.
+            boolean episodeEvidenceAccepted = environmentProtectedWindow
+                    ? specialEnvironmentEpisodeFlagAccepted
+                    : normalEpisodeFlagAccepted;
 
-                boolean accepted = flagComponent(
+            boolean severeMovement = false;
+
+            if (enforcementEligible && episodeEvidenceAccepted) {
+                boolean allowQuarantine = !environmentProtectedWindow
+                        || offset >= specialEnvironmentCorrectionMinRawOffset;
+
+                if (allowQuarantine
+                        && enforcementOffset >= enforcementQuarantineOffset) {
+                    enforcementQuarantineActive = true;
+                    enforcementCleanTicks = 0;
+                    predictionComplete.setSafePositionUpdateBlocked(true);
+                }
+
+                if (enforcementOffset >= enforcementStrongOffset) {
+                    enforcementStrongStreak++;
+                } else {
+                    enforcementStrongStreak = 0;
+                }
+
+                if (environmentProtectedWindow) {
+                    severeMovement = offset >= specialEnvironmentCorrectionMinRawOffset
+                            && (enforcementOffset >= enforcementSevereOffset
+                            || specialEnvironmentCorrectionStreak
+                            >= specialEnvironmentCorrectionStrongTicks);
+                } else {
+                    specialEnvironmentCorrectionStreak = 0;
+                    specialEnvironmentEpisodeFlagAccepted = false;
+                    severeMovement = enforcementOffset >= enforcementSevereOffset
+                            || enforcementStrongStreak
+                            >= enforcementStrongConsecutiveTicks;
+                }
+            }
+
+            if (!environmentProtectedWindow
+                    && "simulation.normal".equals(simulationComponent)
+                    && normalEpisodeFlagAccepted
+                    && severeMovement) {
+                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                        player,
+                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
                         simulationComponent,
-                        V.write(verbose()).f64(offset),
-                        () -> humanFormattedOffset(offset)
-                                + " context="
-                                + environment.summary(environmentContexts)
-                                + specialEpisodeDebug
-                                + " /gl " + flagId
+                        specialEpisodeToken
                 );
+            }
 
-                if (accepted) {
-                    flags.incrementAndGet();
-                    predictionComplete.setIdentifier(flagId);
+            boolean correctionApplied = environmentProtectedWindow
+                    ? specialEnvironmentEpisodeCorrectionApplied
+                    : normalEpisodeCorrectionApplied;
 
-                    boolean severeMovement = false;
-
-                    if (enforcementEligible) {
-                        boolean allowQuarantine = !environmentProtectedWindow
-                                || offset >= specialEnvironmentCorrectionMinRawOffset;
-
-                        if (allowQuarantine && enforcementOffset >= enforcementQuarantineOffset) {
-                            enforcementQuarantineActive = true;
-                            enforcementCleanTicks = 0;
-                            predictionComplete.setSafePositionUpdateBlocked(true);
-                        }
-
-                        if (enforcementOffset >= enforcementStrongOffset) {
-                            enforcementStrongStreak++;
-                        } else {
-                            enforcementStrongStreak = 0;
-                        }
-
-                        if (environmentProtectedWindow) {
-                            specialEnvironmentEpisodeFlagAccepted = true;
-                            severeMovement = offset >= specialEnvironmentCorrectionMinRawOffset
-                                    && (enforcementOffset >= enforcementSevereOffset
-                                    || specialEnvironmentCorrectionStreak
-                                    >= specialEnvironmentCorrectionStrongTicks);
-                        } else {
-                            specialEnvironmentCorrectionStreak = 0;
-                            specialEnvironmentEpisodeFlagAccepted = false;
-                            severeMovement = enforcementOffset >= enforcementSevereOffset
-                                    || enforcementStrongStreak >= enforcementStrongConsecutiveTicks;
-                        }
+            if (!blinkRecovery
+                    && !velocityRecovery
+                    && severeMovement
+                    && enforcementImmediateSetback
+                    && !correctionApplied
+                    && !isNoSetbackPermission()) {
+                predictionComplete.setSafePositionUpdateBlocked(true);
+                boolean corrected = player.getSetbackTeleportUtil()
+                        .executeViolationSetback(this);
+                if (corrected) {
+                    if (environmentProtectedWindow) {
+                        specialEnvironmentEpisodeCorrectionApplied = true;
+                    } else {
+                        normalEpisodeCorrectionApplied = true;
                     }
-
-                    if (!environmentProtectedWindow
-                            && "simulation.normal".equals(simulationComponent)
-                            && severeMovement) {
-                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                player,
-                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
-                                simulationComponent,
-                                specialEpisodeToken
-                        );
-                    }
-
-                    if (!blinkRecovery
-                            && !velocityRecovery
-                            && severeMovement
-                            && enforcementImmediateSetback
-                            && !isNoSetbackPermission()
-                            && (!environmentProtectedWindow
-                            || !specialEnvironmentEpisodeCorrectionApplied)) {
-                        predictionComplete.setSafePositionUpdateBlocked(true);
-                        boolean corrected = player.getSetbackTeleportUtil()
-                                .executeViolationSetback(this);
-                        if (corrected && environmentProtectedWindow) {
-                            specialEnvironmentEpisodeCorrectionApplied = true;
-                        }
-                    } else if (!blinkRecovery
-                            && !velocityRecovery
-                            && !environmentProtectedWindow
-                            && (advantageGained >= maxAdvantage
-                            || setbackEvidenceOffset >= immediateSetbackThreshold)
-                            && !isNoSetbackPermission()
-                            && violations >= setbackViolationThreshold) {
-                        player.getSetbackTeleportUtil().executeViolationSetback(this);
-                    }
-                } else if (enforcementEligible) {
-                    resetEnforcementState();
-                    resetShortBlinkState();
+                }
+            } else if (!blinkRecovery
+                    && !velocityRecovery
+                    && !environmentProtectedWindow
+                    && normalEpisodeFlagAccepted
+                    && !normalEpisodeCorrectionApplied
+                    && (advantageGained >= maxAdvantage
+                    || setbackEvidenceOffset >= immediateSetbackThreshold)
+                    && !isNoSetbackPermission()
+                    && violations >= setbackViolationThreshold) {
+                if (player.getSetbackTeleportUtil()
+                        .executeViolationSetback(this)) {
+                    normalEpisodeCorrectionApplied = true;
                 }
             }
 
@@ -780,6 +804,9 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         resetEnforcementState();
         resetShortBlinkState();
         resetEnvironmentState();
+        normalEpisodeStateToken = "";
+        normalEpisodeFlagAccepted = false;
+        normalEpisodeCorrectionApplied = false;
 
         normalEpisodeWindowMillis = Math.max(
                 250L,
