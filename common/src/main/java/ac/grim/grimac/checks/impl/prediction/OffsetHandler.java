@@ -138,6 +138,11 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
         lastCheckedPredictionNanos = now;
 
+        if (!predictionComplete.getData().isTeleport()) {
+            GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                    .noteCheckedPrediction(player.uuid);
+        }
+
         final double offset = predictionComplete.getOffset();
 
         final ConnectionStall blinkOwner = player.checkManager.get(ConnectionStall.class);
