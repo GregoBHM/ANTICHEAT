@@ -170,6 +170,17 @@ class ConfirmedSanctionEpisodesAuditTest {
         assertTrue(groundSpoof.contains("\"ground-integrity\""));
         assertTrue(noFall.contains("episodeMaxLifetimeMillis"));
         assertTrue(groundSpoof.contains("episodeMaxLifetimeMillis"));
+        assertTrue(groundSpoof.contains(
+                "clearSharedEpisode(\n                    \"ground-integrity\""
+        ));
+        assertTrue(noFall.contains("boolean blinkRecovery"));
+        assertTrue(noFall.contains(
+                "if (!blinkRecovery"
+        ));
+        assertTrue(groundSpoof.contains("boolean blinkRecovery"));
+        assertTrue(groundSpoof.contains(
+                "if (!blinkRecovery)"
+        ));
         assertTrue(noFall.contains(
                 "SanctionEpisodeManager.FAMILY_GROUND"
         ));
