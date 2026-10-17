@@ -328,4 +328,28 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "getSanctionEpisodeManager().tick()"
         ));
     }
+    @Test
+    void continuityIsRecheckedAtomicallyBeforeConfirmation()
+            throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        int lock = manager.indexOf("synchronized (state)");
+        int comment = manager.indexOf(
+                "Re-check continuity while holding the same state lock"
+        );
+        int blocked = manager.indexOf(
+                "if (recoveryBlockedLocked(state, now))",
+                comment
+        );
+        int add = manager.indexOf("episodes.addLast(", blocked);
+
+        assertTrue(lock >= 0);
+        assertTrue(comment > lock);
+        assertTrue(blocked > comment);
+        assertTrue(add > blocked);
+    }
+
+
 }
