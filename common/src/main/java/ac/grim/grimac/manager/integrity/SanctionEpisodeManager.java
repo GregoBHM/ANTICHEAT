@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit;
  * recovery gate and keeps a bounded history for future punishment conditions.</p>
  */
 public final class SanctionEpisodeManager {
+    private static final long PURGE_INTERVAL_NANOS =
+            TimeUnit.SECONDS.toNanos(30L);
+
     public static final String FAMILY_VELOCITY = "VELOCITY";
     public static final String FAMILY_MOVEMENT = "MOVEMENT";
     public static final String FAMILY_TIMER = "TIMER";
@@ -33,6 +36,7 @@ public final class SanctionEpisodeManager {
     private final Map<UUID, State> states = new ConcurrentHashMap<>();
 
     private volatile boolean enabled = true;
+    private volatile long nextPurgeNanos;
     private volatile long retentionNanos = TimeUnit.HOURS.toNanos(2L);
     private volatile int maxEpisodesPerFamily = 32;
     private volatile long postContinuityGraceNanos = TimeUnit.MILLISECONDS.toNanos(1500L);
@@ -77,6 +81,8 @@ public final class SanctionEpisodeManager {
                 1.0D,
                 config.getDoubleElse("sanction-episodes.minimum-tps", 18.0D)
         );
+
+        nextPurgeNanos = 0L;
 
         if (!enabled) {
             states.clear();
@@ -302,6 +308,11 @@ public final class SanctionEpisodeManager {
 
     public void tick() {
         if (!enabled) return;
+
+        long now = System.nanoTime();
+        if (now < nextPurgeNanos) return;
+
+        nextPurgeNanos = now + PURGE_INTERVAL_NANOS;
         purgeAll();
     }
 
