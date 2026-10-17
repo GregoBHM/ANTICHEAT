@@ -231,6 +231,9 @@ TimerLimit:
     episode-window-ms: 1500
     episode-flag-interval-ms: 750
     max-flags-per-episode: 1
+    # Continuous abuse rolls into a fresh bounded episode instead of becoming
+    # either one immortal episode or one violation per movement packet.
+    episode-max-lifetime-ms: 4000
     # Ping at which the check will start to limit timer balance, to prevent abuse.
     # Can cause some setbacks for legitimate players but only if they are over this ping threshold.
     # -1 to disable
