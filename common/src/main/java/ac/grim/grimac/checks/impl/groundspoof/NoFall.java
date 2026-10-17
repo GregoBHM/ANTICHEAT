@@ -5,6 +5,7 @@ import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
+import ac.grim.grimac.checks.impl.timer.ConnectionStall;
 import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.player.GrimPlayer;
@@ -51,7 +52,13 @@ public class NoFall extends Check implements PacketReceiveListener {
                     && wrapper.isOnGround()
                     && !wrapper.hasPositionChanged()) {
                 if (!isNearGround(true)) {
-                    if (!GhostBlockDetector.isGhostBlock(player)) {
+                    ConnectionStall blinkOwner =
+                            player.checkManager.get(ConnectionStall.class);
+                    boolean blinkRecovery = blinkOwner != null
+                            && blinkOwner.shouldSuppressMovementSetbacks();
+
+                    if (!blinkRecovery
+                            && !GhostBlockDetector.isGhostBlock(player)) {
                         DetectionEpisodeManager.SharedEpisode sharedEpisode =
                                 player.detectionEpisodeManager.resolveSharedEpisode(
                                         "ground-integrity",
@@ -100,6 +107,9 @@ public class NoFall extends Check implements PacketReceiveListener {
                         }
                     }
 
+                    // Even while Blink recovery owns the evidence window, keep
+                    // the packet-state correction so a release cannot fake a
+                    // durable client-ground state.
                     if (shouldModifyPackets()) {
                         wrapper.setOnGround(false);
                         event.markForReEncode(true);
