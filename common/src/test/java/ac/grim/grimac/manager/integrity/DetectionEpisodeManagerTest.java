@@ -186,6 +186,31 @@ class DetectionEpisodeManagerTest {
 
 
     @Test
+    void persistentSharedEpisodeRollsAfterMaximumLifetime() throws Exception {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        DetectionEpisodeManager.SharedEpisode first =
+                manager.resolveSharedEpisode(
+                        "simulation-normal",
+                        "simulation.normal",
+                        1000L,
+                        1L
+                );
+
+        Thread.sleep(5L);
+
+        DetectionEpisodeManager.SharedEpisode rolled =
+                manager.resolveSharedEpisode(
+                        "simulation-normal",
+                        "simulation.normal",
+                        1000L,
+                        1L
+                );
+
+        assertTrue(first.id() != rolled.id());
+    }
+
+    @Test
     void itemUseSessionAndRecoveryTransitionsStartFreshSharedEpisodes() {
         DetectionEpisodeManager manager = new DetectionEpisodeManager();
 
