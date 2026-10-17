@@ -105,6 +105,7 @@ class ConfirmedSanctionEpisodesAuditTest {
         assertTrue(simulation.contains("normalMaxFlagsPerEpisode"));
         assertTrue(simulation.contains("normalEpisodeMaxLifetimeMillis"));
         assertTrue(simulation.contains("normalEpisodeFlagAccepted"));
+        assertTrue(simulation.contains("normalEpisodeConfirmed"));
         assertTrue(simulation.contains("normalEpisodeCorrectionApplied"));
         assertTrue(simulation.contains("resetNormalEpisodeState(true)"));
         assertTrue(simulation.contains(
