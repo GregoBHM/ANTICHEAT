@@ -571,4 +571,32 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
 
+    @Test
+    void fixedTwoHourWindowSurvivesShorterConfiguredRetention()
+            throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        assertTrue(manager.contains(
+                "private volatile long storageRetentionNanos"
+        ));
+        assertTrue(manager.contains(
+                "storageRetentionNanos = Math.max("
+        ));
+        assertTrue(manager.contains(
+                "TimeUnit.HOURS.toNanos(2L)"
+        ));
+        assertTrue(manager.contains(
+                "now - episodes.peekFirst().timeNanos > storageRetentionNanos"
+        ));
+        assertTrue(manager.contains(
+                "now - rejected.peekFirst().timeNanos > storageRetentionNanos"
+        ));
+        assertTrue(manager.contains(
+                "TimeUnit.NANOSECONDS.toMillis(retentionNanos)"
+        ));
+    }
+
+
 }
