@@ -473,6 +473,18 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             boolean flagRejected = false;
 
             if (specialFlagAllowed) {
+                int projectedStrongStreak =
+                        enforcementOffset >= enforcementStrongOffset
+                                ? enforcementStrongStreak + 1
+                                : 0;
+                boolean confirmNormalOnAcceptedFlag =
+                        !environmentProtectedWindow
+                                && "simulation.normal".equals(simulationComponent)
+                                && enforcementEligible
+                                && (enforcementOffset >= enforcementSevereOffset
+                                || projectedStrongStreak
+                                >= enforcementStrongConsecutiveTicks);
+
                 synchronized (flags) {
                     int flagId = (flags.get() & 255) + 1;
 
@@ -483,7 +495,17 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                                     + " context="
                                     + environment.summary(environmentContexts)
                                     + specialEpisodeDebug
-                                    + " /gl " + flagId
+                                    + " /gl " + flagId,
+                            () -> {
+                                if (confirmNormalOnAcceptedFlag) {
+                                    GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                            player,
+                                            ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
+                                            simulationComponent,
+                                            specialEpisodeToken
+                                    );
+                                }
+                            }
                     );
 
                     if (accepted) {
