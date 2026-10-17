@@ -45,6 +45,7 @@ public class NoSlow extends Check implements PostPredictionListener {
     private long normalEpisodeWindowMillis;
     private long normalEpisodeFlagIntervalMillis;
     private int normalMaxFlagsPerEpisode;
+    private long normalEpisodeMaxLifetimeMillis;
 
     public NoSlow(GrimPlayer player) {
         super(player);
@@ -185,8 +186,22 @@ public class NoSlow extends Check implements PostPredictionListener {
     private void handleNormal(@NotNull ItemUseSessionTracker.Session session) {
         if (bestOffset > offsetToFlag) {
             if (flaggedLastTick) {
+                // Eating is naturally short-lived, but blocking/use-item states
+                // can remain active for a long time. Keep the physical session
+                // identity while rolling persistent NoSlow into bounded
+                // sub-episodes so one held session is neither x70 spam nor an
+                // immortal single piece of evidence.
+                DetectionEpisodeManager.SharedEpisode normalEpisode =
+                        player.detectionEpisodeManager.resolveSharedEpisode(
+                                "noslow-normal",
+                                "itemuse#" + session.sessionId(),
+                                normalEpisodeWindowMillis,
+                                normalEpisodeMaxLifetimeMillis
+                        );
+
                 String episodeKey = "noslow.normal|session="
-                        + session.sessionId();
+                        + session.sessionId()
+                        + "|" + normalEpisode.token();
 
                 DetectionEpisodeManager.Decision decision =
                         player.detectionEpisodeManager.evaluate(
@@ -194,6 +209,8 @@ public class NoSlow extends Check implements PostPredictionListener {
                                 episodeKey,
                                 normalEpisodeWindowMillis,
                                 normalEpisodeFlagIntervalMillis,
+                                normalMaxFlagsPerEpisode,
+                                normalEpisode,
                                 normalMaxFlagsPerEpisode
                         );
 
@@ -202,6 +219,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                             "noslow.normal",
                             "offset=" + formatOffset(bestOffset)
                                     + " session=" + session.sessionId()
+                                    + " episode=" + normalEpisode.token()
                                     + " episodeObservations="
                                     + decision.observations()
                                     + " episodeFlags="
@@ -213,7 +231,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                                 player,
                                 ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_ITEM_USE,
                                 "noslow.normal",
-                                "itemuse#" + session.sessionId()
+                                normalEpisode.token()
                         );
                     }
                 }
@@ -427,6 +445,17 @@ public class NoSlow extends Check implements PostPredictionListener {
                 ),
                 1L,
                 4L
+        );
+        normalEpisodeMaxLifetimeMillis = Math.max(
+                normalEpisodeWindowMillis,
+                clamp(
+                        config.getLongElse(
+                                "NoSlow.normal-episode.max-lifetime-ms",
+                                4000L
+                        ),
+                        1000L,
+                        30_000L
+                )
         );
 
         resetTickState();
