@@ -183,16 +183,19 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
-    void sanctionVlAlsoStopsDuringTeleportRecovery() throws IOException {
+    void recoveryIsScopedToNewEpisodesNotLegacySanctionVl() throws IOException {
         String punishment = source("manager/PunishmentManager.java");
+        String episodes = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
 
         int method = punishment.indexOf("private boolean sanctionableNow()");
         int next = punishment.indexOf("private static double clamp01", method);
         String block = punishment.substring(method, next);
 
-        assertTrue(block.contains("getSanctionEpisodeManager()"));
-        assertTrue(block.contains("isRecoveryBlocked(player.uuid)"));
-        assertTrue(block.contains("return false;"));
+        assertFalse(block.contains("isRecoveryBlocked(player.uuid)"));
+        assertTrue(episodes.contains("recoveryBlockedLocked("));
+        assertTrue(episodes.contains("if (recoveryBlockedLocked(existing, now))"));
     }
 
     @Test
