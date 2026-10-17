@@ -68,6 +68,10 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private boolean specialEnvironmentEpisodeFlagAccepted;
     private boolean specialEnvironmentEpisodeCorrectionApplied;
 
+    private long normalEpisodeWindowMillis;
+    private long normalEpisodeFlagIntervalMillis;
+    private int normalMaxFlagsPerEpisode;
+
     private boolean shortBlinkEnabled;
     private long shortBlinkMinGapNanos;
     private long shortBlinkMaxGapNanos;
@@ -409,9 +413,36 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                 specialEnvironmentCorrectionStreak = 0;
                 specialEnvironmentEpisodeFlagAccepted = false;
                 specialEnvironmentEpisodeCorrectionApplied = false;
-                specialEpisodeToken = "";
-                specialEpisodeDebug = "";
-                specialFlagAllowed = true;
+
+                DetectionEpisodeManager.SharedEpisode normalEpisode =
+                        player.detectionEpisodeManager.resolveSharedEpisode(
+                                "simulation-normal",
+                                simulationComponent,
+                                normalEpisodeWindowMillis
+                        );
+
+                String evidenceKey = simulationComponent
+                        + "|" + normalEpisode.token();
+
+                DetectionEpisodeManager.Decision decision =
+                        player.detectionEpisodeManager.evaluate(
+                                simulationComponent,
+                                evidenceKey,
+                                normalEpisodeWindowMillis,
+                                normalEpisodeFlagIntervalMillis,
+                                normalMaxFlagsPerEpisode,
+                                normalEpisode,
+                                normalMaxFlagsPerEpisode
+                        );
+
+                specialEpisodeToken = normalEpisode.token();
+                specialEpisodeDebug = " episode="
+                        + specialEpisodeToken
+                        + " observations="
+                        + decision.observations()
+                        + " episodeFlags="
+                        + decision.flags();
+                specialFlagAllowed = decision.allowFlag();
             }
 
             if (!specialFlagAllowed) {
@@ -487,6 +518,17 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                             severeMovement = enforcementOffset >= enforcementSevereOffset
                                     || enforcementStrongStreak >= enforcementStrongConsecutiveTicks;
                         }
+                    }
+
+                    if (!environmentProtectedWindow
+                            && "simulation.normal".equals(simulationComponent)
+                            && severeMovement) {
+                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                player,
+                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
+                                simulationComponent,
+                                specialEpisodeToken
+                        );
                     }
 
                     if (!blinkRecovery
@@ -729,6 +771,37 @@ public class OffsetHandler extends Check implements PostPredictionListener {
         resetEnforcementState();
         resetShortBlinkState();
         resetEnvironmentState();
+
+        normalEpisodeWindowMillis = Math.max(
+                250L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                "movement-enforcement.normal-episode.window-ms",
+                                1200L
+                        )
+                )
+        );
+        normalEpisodeFlagIntervalMillis = Math.max(
+                0L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                "movement-enforcement.normal-episode.flag-interval-ms",
+                                500L
+                        )
+                )
+        );
+        normalMaxFlagsPerEpisode = (int) Math.max(
+                1L,
+                Math.min(
+                        8L,
+                        config.getLongElse(
+                                "movement-enforcement.normal-episode.max-flags-per-episode",
+                                2L
+                        )
+                )
+        );
 
         try {
             enforcementEnabled =
