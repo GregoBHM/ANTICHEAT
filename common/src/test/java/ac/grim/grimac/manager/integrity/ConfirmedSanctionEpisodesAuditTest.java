@@ -464,6 +464,9 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "manager/integrity/SanctionEpisodeManager.java"
         );
 
+        int confirmedLookup = manager.indexOf(
+                "state.episodes.get(normalizedFamily)"
+        );
         int rejectedLookup = manager.indexOf(
                 "state.rejectedEpisodes.get(normalizedFamily)"
         );
@@ -474,7 +477,8 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "episodes.addLast("
         );
 
-        assertTrue(rejectedLookup >= 0);
+        assertTrue(confirmedLookup >= 0);
+        assertTrue(rejectedLookup > confirmedLookup);
         assertTrue(remember > rejectedLookup);
         assertTrue(confirmedAdd > remember);
         assertTrue(manager.contains(
