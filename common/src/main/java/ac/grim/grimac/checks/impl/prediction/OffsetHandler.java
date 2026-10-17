@@ -143,11 +143,6 @@ public class OffsetHandler extends Check implements PostPredictionListener {
 
         lastCheckedPredictionNanos = now;
 
-        if (!predictionComplete.getData().isTeleport()) {
-            GrimAPI.INSTANCE.getSanctionEpisodeManager()
-                    .noteCheckedPrediction(player.uuid);
-        }
-
         final double offset = predictionComplete.getOffset();
 
         final ConnectionStall blinkOwner = player.checkManager.get(ConnectionStall.class);
@@ -566,6 +561,18 @@ public class OffsetHandler extends Check implements PostPredictionListener {
             advantageGained *= setbackDecayMultiplier;
             specialEnvironmentFlagStreak = 0;
             specialEnvironmentCorrectionStreak = 0;
+
+            // Continuity recovery is earned only by genuinely clean movement.
+            // A prediction that was merely processed but still suspicious must
+            // never consume the post-/home or post-teleport recovery budget.
+            if (!predictionComplete.getData().isTeleport()
+                    && !blinkRecovery
+                    && !velocityRecovery
+                    && !GrimAPI.INSTANCE.getMovementContextManager()
+                    .suppressesConnectionStall(player.uuid)) {
+                GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .noteCleanPrediction(player.uuid);
+            }
 
             if (enforcementEligible && !enforcementQuarantineActive) {
                 enforcementStrongStreak = 0;
