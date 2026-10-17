@@ -352,4 +352,58 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
 
+    @Test
+    void confirmedEpisodeBookkeepingRunsBeforeAcceptedFlagAlerts()
+            throws IOException {
+        String check = source("checks/Check.java");
+        String timer = source("checks/impl/timer/Timer.java");
+        String simulation = source(
+                "checks/impl/prediction/OffsetHandler.java"
+        );
+        String noSlow = source(
+                "checks/impl/movement/NoSlow.java"
+        );
+        String noFall = source(
+                "checks/impl/groundspoof/NoFall.java"
+        );
+        String knockback = source(
+                "checks/impl/velocity/KnockbackHandler.java"
+        );
+        String reach = source(
+                "checks/impl/combat/Reach.java"
+        );
+
+        int callback = check.indexOf("afterRecordBeforeAlert.run()");
+        int alert = check.indexOf("alert(alertText)", callback);
+        assertTrue(callback >= 0 && alert > callback);
+
+        assertTrue(timer.contains(
+                "flagComponent(\n                    \"timer.normal\""
+        ));
+        assertTrue(timer.contains(
+                "() -> {\n                        if (confirmEpisode)"
+        ));
+
+        assertTrue(simulation.contains(
+                "confirmNormalOnAcceptedFlag"
+        ));
+        assertTrue(simulation.contains(
+                "afterRecordBeforeAlert"
+        ) || check.contains("afterRecordBeforeAlert"));
+
+        assertTrue(noSlow.contains(
+                "flagComponentWithSetback("
+        ));
+        assertTrue(noFall.contains(
+                "() -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm("
+        ));
+        assertTrue(knockback.contains(
+                "if (strongEpisode)"
+        ));
+        assertTrue(reach.contains(
+                "() -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm("
+        ));
+    }
+
+
 }
