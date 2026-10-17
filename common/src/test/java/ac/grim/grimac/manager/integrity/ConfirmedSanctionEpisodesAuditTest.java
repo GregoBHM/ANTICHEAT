@@ -279,7 +279,16 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "case \"confirmed_episodes_10m\""
         ));
         assertTrue(punishment.contains(
-                "case \"confirmed_episodes_2h\", \"confirmed_episodes\""
+                "case \"confirmed_episodes_2h\""
+        ));
+        assertTrue(punishment.contains(
+                "TimeUnit.HOURS.toMillis(2L)"
+        ));
+        assertTrue(punishment.contains(
+                "case \"confirmed_episodes\","
+        ));
+        assertTrue(punishment.contains(
+                "\"confirmed_episodes_retention\""
         ));
         assertTrue(punishment.contains(
                 "case \"episode_confidence\""
@@ -292,6 +301,12 @@ class ConfirmedSanctionEpisodesAuditTest {
         ));
         assertTrue(punishment.contains(
                 "%confirmed_episodes_2h%"
+        ));
+        assertTrue(punishment.contains(
+                "%confirmed_episodes_retention%"
+        ));
+        assertTrue(punishment.contains(
+                "%confirmed_episodes%"
         ));
         assertTrue(punishment.contains(
                 "%episode_recovery_reason%"
