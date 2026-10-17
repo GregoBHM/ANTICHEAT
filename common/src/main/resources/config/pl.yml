@@ -134,6 +134,10 @@ RotationPlace:
 # Grim uwzględnia tutaj problematyczny kod sieciowy... trudno o fałszywe alarmy nawet przy spamowaniu prawym przyciskiem i przyciskiem offhand.
 # Znacznie stabilniejsza niż w innych antycheatach, ale prosimy zgłaszać wszelkie fałszywe alarmy... Naprawiłem tu mnóstwo problemów z kodem sieciowym.
 NoSlow:
+    normal-episode:
+        window-ms: 5000
+        flag-interval-ms: 1000
+        max-flags-per-episode: 1
     # Jakie odchylenie jest uznawane za "oszukiwanie"?
     # Domyślnie jest niższe niż w innych kontrolach.
     # Konsekwentnie wykrywa odchylenia o 0.03-0.2 przy włączonym NoSlow.
@@ -200,6 +204,9 @@ Explosion:
     setbackvl: 3
 
 TimerA:
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 500
+    max-flags-per-episode: 2
     setbackvl: 10
     prevention:
         enabled: true
@@ -212,6 +219,9 @@ TimerA:
 
 # Ta kontrola ogranicza nadużywanie balansu z checku TimerA, zapobiegając zbytniemu opóźnieniu ruchu gracza względem czasu rzeczywistego.
 TimerLimit:
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
     # Ping, przy którym kontrola zacznie ograniczać balans timera, aby zapobiec nadużyciom.
     # Może powodować pewne cofnięcia u uczciwych graczy, ale tylko jeśli mają ping powyżej tego progu.
     # -1 aby wyłączyć
@@ -683,6 +693,10 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    normal-episode:
+        window-ms: 1200
+        flag-interval-ms: 500
+        max-flags-per-episode: 2
     # Destructive Simulation correction pauses only when the SERVER is unhealthy.
     # Player ping/jitter alone never becomes a movement bypass.
     minimum-server-confidence: 0.55
@@ -825,3 +839,26 @@ autoclicker-pattern:
     maximum-variance: 0.10
     minimum-periodicity: 0.95
     minimum-mode-ratio: 0.85
+
+# Long-window memory stores only independently confirmed episodes, never raw VL.
+# It is telemetry/punishment input only; this block does not enable autobans.
+sanction-episodes:
+    enabled: true
+    retention-seconds: 7200
+    max-episodes-per-family: 32
+    post-continuity-grace-ms: 1500
+    clean-recovery-predictions: 8
+    minimum-confidence: 0.85
+    minimum-server-confidence: 0.85
+    minimum-player-confidence: 0.85
+    minimum-tps: 18.0
+
+NoFall:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
+
+GroundSpoof:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
