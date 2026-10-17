@@ -32,6 +32,7 @@ public class NoFall extends Check implements PacketReceiveListener {
     private long episodeWindowMillis;
     private long episodeFlagIntervalMillis;
     private int maxFlagsPerEpisode;
+    private long episodeMaxLifetimeMillis;
 
     public NoFall(GrimPlayer player) {
         super(player);
@@ -55,7 +56,8 @@ public class NoFall extends Check implements PacketReceiveListener {
                                 player.detectionEpisodeManager.resolveSharedEpisode(
                                         "ground-integrity",
                                         "airborne",
-                                        episodeWindowMillis
+                                        episodeWindowMillis,
+                                        episodeMaxLifetimeMillis
                                 );
 
                         DetectionEpisodeManager.Decision episode =
@@ -155,6 +157,16 @@ public class NoFall extends Check implements PacketReceiveListener {
                         config.getLongElse(
                                 "NoFall.max-flags-per-episode",
                                 1L
+                        )
+                )
+        );
+        episodeMaxLifetimeMillis = Math.max(
+                episodeWindowMillis,
+                Math.min(
+                        30_000L,
+                        config.getLongElse(
+                                "NoFall.episode-max-lifetime-ms",
+                                4000L
                         )
                 )
         );
