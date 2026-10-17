@@ -68,4 +68,38 @@ class SanctionEpisodeManagerTest {
         field.setAccessible(true);
         field.setInt(manager, value);
     }
+    @Test
+    void snapshotReportsRecoveryFromOneConsistentState()
+            throws Exception {
+        SanctionEpisodeManager manager = new SanctionEpisodeManager();
+        setLong(manager, "postContinuityGraceNanos", 0L);
+        setInt(manager, "minimumCleanPredictions", 1);
+
+        UUID uuid = UUID.randomUUID();
+        manager.markContinuityBreak(uuid, "teleport:test");
+
+        SanctionEpisodeManager.Snapshot blocked =
+                manager.snapshot(
+                        uuid,
+                        SanctionEpisodeManager.FAMILY_MOVEMENT
+                );
+
+        assertTrue(blocked.recoveryBlocked());
+        assertTrue(blocked.recoveryReason().contains("teleport:test"));
+        assertTrue(blocked.confirmedEpisodes10m() == 0);
+        assertTrue(blocked.confirmedEpisodes2h() == 0);
+        assertTrue(blocked.confirmedEpisodesRetention() == 0);
+
+        manager.noteCleanPrediction(uuid);
+
+        SanctionEpisodeManager.Snapshot recovered =
+                manager.snapshot(
+                        uuid,
+                        SanctionEpisodeManager.FAMILY_MOVEMENT
+                );
+
+        assertFalse(recovered.recoveryBlocked());
+    }
+
+
 }
