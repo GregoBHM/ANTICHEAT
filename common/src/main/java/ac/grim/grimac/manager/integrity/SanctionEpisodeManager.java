@@ -154,6 +154,18 @@ public final class SanctionEpisodeManager {
         synchronized (state) {
             purgeLocked(state, now);
 
+            // Re-check continuity while holding the same state lock that will
+            // record the episode. A teleport/rejoin boundary may arrive on a
+            // different event thread between the optimistic eligibility check
+            // above and this critical section.
+            if (recoveryBlockedLocked(state, now)) {
+                eligibility = new Eligibility(
+                        false,
+                        0.0D,
+                        "recovery:" + state.lastContinuityReason
+                );
+            }
+
             if (!enabled || !eligibility.allowed) {
                 return decision(
                         false,
