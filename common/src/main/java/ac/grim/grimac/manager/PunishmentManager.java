@@ -390,6 +390,30 @@ public class PunishmentManager implements ConfigReloadable {
                         .severity(player.uuid, vl)
                         .name();
 
+        String episodeFamily = SanctionEpisodeManager.familyFor(
+                stableKey,
+                component
+        );
+        int confirmedEpisodes10m = GrimAPI.INSTANCE
+                .getSanctionEpisodeManager()
+                .countWithin(
+                        player.uuid,
+                        episodeFamily,
+                        TimeUnit.MINUTES.toMillis(10L)
+                );
+        int confirmedEpisodesRetention = GrimAPI.INSTANCE
+                .getSanctionEpisodeManager()
+                .countRetention(player.uuid, episodeFamily);
+        double episodeConfidence = GrimAPI.INSTANCE
+                .getSanctionEpisodeManager()
+                .latestConfidence(player.uuid, episodeFamily);
+        boolean episodeRecovery = GrimAPI.INSTANCE
+                .getSanctionEpisodeManager()
+                .isRecoveryBlocked(player.uuid);
+        String episodeRecoveryReason = GrimAPI.INSTANCE
+                .getSanctionEpisodeManager()
+                .recoveryReason(player.uuid);
+
         String template = StaffAlertTemplate.expand(
                 original,
                 alertString,
@@ -462,6 +486,26 @@ public class PunishmentManager implements ConfigReloadable {
                                         GrimAPI.INSTANCE.getIntegrityCorrelationManager()
                                                 .getScore(player.uuid)
                                 )
+                        )
+                        .replace(
+                                "%confirmed_episodes_10m%",
+                                Integer.toString(confirmedEpisodes10m)
+                        )
+                        .replace(
+                                "%confirmed_episodes_2h%",
+                                Integer.toString(confirmedEpisodesRetention)
+                        )
+                        .replace(
+                                "%episode_confidence%",
+                                formatMetric(episodeConfidence)
+                        )
+                        .replace(
+                                "%episode_recovery%",
+                                episodeRecovery ? "YES" : "NO"
+                        )
+                        .replace(
+                                "%episode_recovery_reason%",
+                                episodeRecoveryReason
                         )
                         .replace("%lag_state%", lagState())
                         .replace(
