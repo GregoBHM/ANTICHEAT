@@ -493,4 +493,82 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
 
+    @Test
+    void onlyStrongRepeatedHardBlinkFeedsNetworkEpisodeHistory()
+            throws IOException {
+        String stall = source(
+                "checks/impl/timer/ConnectionStall.java"
+        );
+
+        int ambiguousFreeze = stall.indexOf(
+                "if (transactionAdvance < hardReleaseMinTransactions)"
+        );
+        int ambiguousReturn = stall.indexOf(
+                "return HardReleaseDecision.NONE;",
+                ambiguousFreeze
+        );
+        int repeatGate = stall.indexOf(
+                "hardReleaseRepeats >= hardReleaseFlagAfterRepeats"
+        );
+        int confidenceGate = stall.indexOf(
+                "sanctionConfidence >= hardReleaseSanctionMinConfidence",
+                repeatGate
+        );
+        int hardFlag = stall.indexOf(
+                "if (hardDecision.flag)"
+        );
+        int networkEpisode = stall.indexOf(
+                "SanctionEpisodeManager.FAMILY_NETWORK",
+                hardFlag
+        );
+
+        assertTrue(ambiguousFreeze >= 0);
+        assertTrue(ambiguousReturn > ambiguousFreeze);
+        assertTrue(repeatGate >= 0);
+        assertTrue(confidenceGate > repeatGate);
+        assertTrue(hardFlag >= 0);
+        assertTrue(networkEpisode > hardFlag);
+
+        assertTrue(stall.contains(
+                "\"connectionstall.hard-release\""
+        ));
+        assertTrue(stall.contains(
+                "\"blink#release=\" + hardDecision.episodeId"
+        ));
+        assertTrue(stall.contains(
+                "long episodeId"
+        ));
+        assertTrue(stall.contains(
+                "true,\n                now,\n                releaseType"
+        ));
+    }
+
+    @Test
+    void ordinaryConnectionStallFlagsDoNotFeedNetworkEpisodeHistory()
+            throws IOException {
+        String stall = source(
+                "checks/impl/timer/ConnectionStall.java"
+        );
+
+        int execute = stall.indexOf(
+                "private void execute(Action action, long now)"
+        );
+        int prediction = stall.indexOf(
+                "@Override\n    public void onPredictionComplete",
+                execute
+        );
+
+        assertTrue(execute >= 0 && prediction > execute);
+
+        String ordinaryStallPath = stall.substring(
+                execute,
+                prediction
+        );
+
+        assertFalse(ordinaryStallPath.contains(
+                "SanctionEpisodeManager.FAMILY_NETWORK"
+        ));
+    }
+
+
 }
