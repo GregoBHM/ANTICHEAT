@@ -1195,6 +1195,11 @@ public class PunishmentManager implements ConfigReloadable {
     }
 
     private boolean sanctionableNow() {
+        if (GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                .isRecoveryBlocked(player.uuid)) {
+            return false;
+        }
+
         var lag = GrimAPI.INSTANCE.getLagProtectionManager();
         double serverConfidence = lag.heuristicConfidence();
         double playerConfidence = lag.playerNetworkConfidence(player);
