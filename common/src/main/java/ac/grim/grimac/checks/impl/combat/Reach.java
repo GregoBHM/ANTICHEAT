@@ -284,18 +284,34 @@ public class Reach extends Check implements PacketReceiveListener {
                             - interactionData.attackTransaction
             );
 
+            String combatEpisodeToken = "attack#tx="
+                    + interactionData.attackTransaction
+                    + "#entity=" + attack.getIntKey();
+
             switch (result.type()) {
-                case REACH -> flag(
-                        V.write(verbose()).f64(result.minDistance()).uint(Math.max(0, reachEntity.getType().getId(PacketEvents.getAPI().getServerManager().getVersion().toClientVersion()))),
-                        () -> {
-                            String added = ", type=" + reachEntity.getType().getName().getKey()
-                                    + ", attackAge=" + attackAgeMillis + "ms"
-                                    + ", txAdvance=" + transactionAdvance;
-                            if (reachEntity instanceof PacketEntitySizeable sizeable) {
-                                added += ", size=" + sizeable.size;
+                case REACH -> {
+                    boolean accepted = flag(
+                            V.write(verbose()).f64(result.minDistance()).uint(Math.max(0, reachEntity.getType().getId(PacketEvents.getAPI().getServerManager().getVersion().toClientVersion()))),
+                            () -> {
+                                String added = ", type=" + reachEntity.getType().getName().getKey()
+                                        + ", attackAge=" + attackAgeMillis + "ms"
+                                        + ", txAdvance=" + transactionAdvance;
+                                if (reachEntity instanceof PacketEntitySizeable sizeable) {
+                                    added += ", size=" + sizeable.size;
+                                }
+                                return result.verbose() + added;
                             }
-                            return result.verbose() + added;
-                        });
+                    );
+
+                    if (accepted) {
+                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                player,
+                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
+                                "reach",
+                                combatEpisodeToken
+                        );
+                    }
+                }
                 case HITBOX -> {
                     String added = "type=" + reachEntity.getType().getName().getKey()
                             + ", attackAge=" + attackAgeMillis + "ms"
@@ -303,7 +319,17 @@ public class Reach extends Check implements PacketReceiveListener {
                     if (reachEntity instanceof PacketEntitySizeable sizeable) {
                         added += ", size=" + sizeable.size;
                     }
-                    player.checkManager.get(Hitboxes.class).flag(result.verbose() + added);
+                    boolean accepted = player.checkManager.get(Hitboxes.class)
+                            .flag(result.verbose() + added);
+
+                    if (accepted) {
+                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                player,
+                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
+                                "hitbox",
+                                combatEpisodeToken
+                        );
+                    }
                 }
             }
         }
