@@ -190,15 +190,25 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
-    void onlyNormalEpisodeCappedMovementComponentsEnterSanctionTelemetry()
+    void newMovementFamiliesUseConfirmedEpisodesNotLegacySanctionVl()
             throws IOException {
         String punishment = source("manager/PunishmentManager.java");
 
-        assertTrue(punishment.contains("\"simulation.normal\".equals(check.getLastComponent())"));
-        assertTrue(punishment.contains("\"noslow.normal\".equals(check.getLastComponent())"));
-        assertTrue(punishment.contains("\"nofall.normal\".equals(check.getLastComponent())"));
-        assertFalse(punishment.contains("case \"grim.timer.limit\" -> true"));
-        assertFalse(punishment.contains("case \"grim.groundspoof.fake\" -> true"));
+        assertFalse(punishment.contains(
+                "case \"grim.prediction.simulation\" ->"
+        ));
+        assertFalse(punishment.contains(
+                "case \"grim.movement.noslow\" ->"
+        ));
+        assertFalse(punishment.contains(
+                "case \"grim.groundspoof.no_fall\" ->"
+        ));
+        assertFalse(punishment.contains(
+                "case \"grim.timer.limit\" -> true"
+        ));
+        assertFalse(punishment.contains(
+                "case \"grim.groundspoof.fake\" -> true"
+        ));
     }
 
     @Test
