@@ -71,6 +71,7 @@ public class OffsetHandler extends Check implements PostPredictionListener {
     private long normalEpisodeWindowMillis;
     private long normalEpisodeFlagIntervalMillis;
     private int normalMaxFlagsPerEpisode;
+    private long normalEpisodeMaxLifetimeMillis;
 
     private boolean shortBlinkEnabled;
     private long shortBlinkMinGapNanos;
@@ -418,7 +419,8 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         player.detectionEpisodeManager.resolveSharedEpisode(
                                 "simulation-normal",
                                 simulationComponent,
-                                normalEpisodeWindowMillis
+                                normalEpisodeWindowMillis,
+                                normalEpisodeMaxLifetimeMillis
                         );
 
                 String evidenceKey = simulationComponent
@@ -799,6 +801,16 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                         config.getLongElse(
                                 "movement-enforcement.normal-episode.max-flags-per-episode",
                                 2L
+                        )
+                )
+        );
+        normalEpisodeMaxLifetimeMillis = Math.max(
+                normalEpisodeWindowMillis,
+                Math.min(
+                        30_000L,
+                        config.getLongElse(
+                                "movement-enforcement.normal-episode.max-lifetime-ms",
+                                3000L
                         )
                 )
         );
