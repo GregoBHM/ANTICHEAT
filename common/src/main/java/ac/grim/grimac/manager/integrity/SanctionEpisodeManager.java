@@ -143,6 +143,23 @@ public final class SanctionEpisodeManager {
             @NotNull String component,
             @NotNull String episodeToken
     ) {
+        String normalizedFamily = normalizeFamily(family);
+
+        // Disabled means fully inert: do not even allocate per-player state,
+        // because tick() is also disabled and therefore cannot purge it.
+        if (!enabled) {
+            return new Decision(
+                    false,
+                    normalizedFamily,
+                    sanitize(component),
+                    0,
+                    0,
+                    0.0D,
+                    true,
+                    "disabled"
+            );
+        }
+
         long now = System.nanoTime();
         Eligibility eligibility = eligibility(player, now);
 
@@ -170,13 +187,12 @@ public final class SanctionEpisodeManager {
                 return decision(
                         false,
                         state,
-                        normalizeFamily(family),
+                        normalizedFamily,
                         eligibility,
                         component
                 );
             }
 
-            String normalizedFamily = normalizeFamily(family);
             String normalizedComponent = sanitize(component);
             String normalizedToken = "join="
                     + player.joinTime
