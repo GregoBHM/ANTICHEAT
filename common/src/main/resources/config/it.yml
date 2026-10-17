@@ -129,6 +129,11 @@ RotationPlace:
     cancelvl: 5
 
 NoSlow:
+    # One physical ItemUse session can contribute at most one normal NoSlow flag.
+    normal-episode:
+        window-ms: 5000
+        flag-interval-ms: 1000
+        max-flags-per-episode: 1
     # Limite per rilevare l'uso scorretto dell'oggetto
     threshold: 0.001
     # Livello di violazione per l'uso scorretto dell'oggetto
@@ -192,6 +197,10 @@ Explosion:
     setbackvl: 3
 
 TimerA:
+    # Timer acceleration is episode-bounded while packet prevention stays active.
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 500
+    max-flags-per-episode: 2
     # Livello di violazione per il timer
     setbackvl: 10
     prevention:
@@ -204,6 +213,10 @@ TimerA:
 
 # This check limits abuse of the TimerA balance by preventing the player's movement falling too far behind realtime
 TimerLimit:
+    # A buffered/debt release is one diagnostic episode, not one VL per packet.
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
     # Ping at which the check will start to limit timer balance, to prevent abuse.
     # Can cause some setbacks for legitimate players but only if they are over this ping threshold.
     # -1 to disable
@@ -661,6 +674,11 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    # Normal Simulation is also episode-bounded; one Fly episode must not become x300 VL.
+    normal-episode:
+        window-ms: 1200
+        flag-interval-ms: 500
+        max-flags-per-episode: 2
     # Destructive Simulation correction pauses only when the SERVER is unhealthy.
     # Player ping/jitter alone never becomes a movement bypass.
     minimum-server-confidence: 0.55
@@ -803,3 +821,27 @@ autoclicker-pattern:
     maximum-variance: 0.10
     minimum-periodicity: 0.95
     minimum-mode-ratio: 0.85
+
+# Long-window memory stores only independently confirmed episodes, never raw VL.
+# It is telemetry/punishment input only; this block does not enable autobans.
+sanction-episodes:
+    enabled: true
+    retention-seconds: 7200
+    max-episodes-per-family: 32
+    post-continuity-grace-ms: 1500
+    clean-recovery-predictions: 8
+    minimum-confidence: 0.85
+    minimum-server-confidence: 0.85
+    minimum-player-confidence: 0.85
+    minimum-tps: 18.0
+
+# Native ground-integrity packet spam is collapsed into physical fall episodes.
+NoFall:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
+
+GroundSpoof:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
