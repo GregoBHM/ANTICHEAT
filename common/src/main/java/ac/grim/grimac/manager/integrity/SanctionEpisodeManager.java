@@ -176,6 +176,26 @@ public final class SanctionEpisodeManager {
         synchronized (state) {
             purgeLocked(state, now);
 
+            Deque<Episode> existingEpisodes =
+                    state.episodes.get(normalizedFamily);
+            if (existingEpisodes != null) {
+                for (Episode episode : existingEpisodes) {
+                    if (episode.token.equals(normalizedToken)) {
+                        return decision(
+                                false,
+                                state,
+                                normalizedFamily,
+                                new Eligibility(
+                                        true,
+                                        episode.confidence,
+                                        "duplicate"
+                                ),
+                                normalizedComponent
+                        );
+                    }
+                }
+            }
+
             Deque<RejectedEpisode> rejected =
                     state.rejectedEpisodes.get(normalizedFamily);
             if (rejected != null) {
@@ -231,18 +251,6 @@ public final class SanctionEpisodeManager {
                     normalizedFamily,
                     ignored -> new ArrayDeque<>()
             );
-
-            for (Episode episode : episodes) {
-                if (episode.token.equals(normalizedToken)) {
-                    return decision(
-                            false,
-                            state,
-                            normalizedFamily,
-                            eligibility,
-                            normalizedComponent
-                    );
-                }
-            }
 
             episodes.addLast(new Episode(
                     now,
