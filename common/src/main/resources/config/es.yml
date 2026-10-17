@@ -142,6 +142,9 @@ NoSlow:
         window-ms: 5000
         flag-interval-ms: 1000
         max-flags-per-episode: 1
+        # Long blocking/use sessions roll into bounded sub-episodes so sustained
+        # NoSlow remains detectable without one VL per prediction tick.
+        max-lifetime-ms: 4000
     # ¿Cuánta debería ser la compensacion como para que se considere trampa?
     # Por defecto esto es más bajo que otras compensaciones
     # Marca por 0.03-0.2 consistentemente con NoSlow activado
