@@ -57,8 +57,14 @@ public class NoFall extends Check implements PacketReceiveListener {
                     boolean blinkRecovery = blinkOwner != null
                             && blinkOwner.shouldSuppressMovementSetbacks();
 
-                    if (!blinkRecovery
-                            && !GhostBlockDetector.isGhostBlock(player)) {
+                    if (blinkRecovery) {
+                        // ConnectionStall/FallIntegrity own this buffered
+                        // recovery. Do not create NoFall evidence or rewrite the
+                        // same release packet a second time.
+                        return;
+                    }
+
+                    if (!GhostBlockDetector.isGhostBlock(player)) {
                         DetectionEpisodeManager.SharedEpisode sharedEpisode =
                                 player.detectionEpisodeManager.resolveSharedEpisode(
                                         "ground-integrity",
@@ -107,9 +113,6 @@ public class NoFall extends Check implements PacketReceiveListener {
                         }
                     }
 
-                    // Even while Blink recovery owns the evidence window, keep
-                    // the packet-state correction so a release cannot fake a
-                    // durable client-ground state.
                     if (shouldModifyPackets()) {
                         wrapper.setOnGround(false);
                         event.markForReEncode(true);
