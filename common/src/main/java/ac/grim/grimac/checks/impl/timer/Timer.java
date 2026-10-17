@@ -1,9 +1,11 @@
 package ac.grim.grimac.checks.impl.timer;
 
+import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PrePredictionPacketReceiveListener;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.player.GrimPlayer;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
@@ -23,6 +25,10 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
 
     private boolean preventExcessPackets;
     private double preventionMinimumServerConfidence;
+
+    private long episodeWindowMillis;
+    private long episodeFlagIntervalMillis;
+    private int maxFlagsPerEpisode;
 
     public Timer(GrimPlayer player) {
         super(player);
@@ -69,7 +75,41 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                 return;
             }
 
-            boolean acceptedViolation = flag();
+            DetectionEpisodeManager.SharedEpisode timerEpisode =
+                    player.detectionEpisodeManager.resolveSharedEpisode(
+                            "timer-normal",
+                            "timer",
+                            episodeWindowMillis
+                    );
+
+            DetectionEpisodeManager.Decision episode =
+                    player.detectionEpisodeManager.evaluate(
+                            "timer.normal",
+                            "timer|" + timerEpisode.token(),
+                            episodeWindowMillis,
+                            episodeFlagIntervalMillis,
+                            maxFlagsPerEpisode,
+                            timerEpisode,
+                            maxFlagsPerEpisode
+                    );
+
+            boolean acceptedViolation = episode.allowFlag()
+                    && flagComponent(
+                    "timer.normal",
+                    "ahead=" + getLastAheadMillis()
+                            + "ms episode=" + timerEpisode.token()
+                            + " observations=" + episode.observations()
+                            + " episodeFlags=" + episode.flags()
+            );
+
+            if (acceptedViolation && episode.observations() >= 2) {
+                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                        player,
+                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_TIMER,
+                        "timer.normal",
+                        timerEpisode.token()
+                );
+            }
 
             // Prevention is deliberately independent from punishment confidence.
             // Server/player lag can suppress sanctions, but it must not become a
@@ -77,7 +117,7 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
             // packet cancellation, and that threshold is separately configurable.
             boolean prevent = preventExcessPackets
                     && shouldModifyPackets()
-                    && ac.grim.grimac.GrimAPI.INSTANCE
+                    && GrimAPI.INSTANCE
                     .getLagProtectionManager()
                     .heuristicConfidence() >= preventionMinimumServerConfidence;
 
@@ -138,6 +178,37 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                         config.getDoubleElse(
                                 getConfigName() + ".prevention.minimum-server-confidence",
                                 0.50D
+                        )
+                )
+        );
+
+        episodeWindowMillis = Math.max(
+                250L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                getConfigName() + ".episode-window-ms",
+                                1500L
+                        )
+                )
+        );
+        episodeFlagIntervalMillis = Math.max(
+                0L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                getConfigName() + ".episode-flag-interval-ms",
+                                500L
+                        )
+                )
+        );
+        maxFlagsPerEpisode = (int) Math.max(
+                1L,
+                Math.min(
+                        8L,
+                        config.getLongElse(
+                                getConfigName() + ".max-flags-per-episode",
+                                2L
                         )
                 )
         );
