@@ -104,6 +104,12 @@ class ConfirmedSanctionEpisodesAuditTest {
         assertTrue(simulation.contains("\"simulation-normal\""));
         assertTrue(simulation.contains("normalMaxFlagsPerEpisode"));
         assertTrue(simulation.contains("normalEpisodeMaxLifetimeMillis"));
+        assertTrue(simulation.contains("normalEpisodeFlagAccepted"));
+        assertTrue(simulation.contains("normalEpisodeCorrectionApplied"));
+        assertFalse(simulation.contains("if (!specialFlagAllowed)"));
+        assertTrue(simulation.contains(
+                "Episode budgets cap VL/alerts only"
+        ));
         assertTrue(simulation.contains(
                 "SanctionEpisodeManager.FAMILY_MOVEMENT"
         ));
