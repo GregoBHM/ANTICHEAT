@@ -111,6 +111,9 @@ class ConfirmedSanctionEpisodesAuditTest {
 
         assertTrue(limit.contains("DetectionEpisodeManager.Decision episode"));
         assertTrue(limit.contains("\"timerlimit.release\""));
+        assertTrue(limit.contains("resolveSharedEpisode("));
+        assertTrue(limit.contains("\"timerlimit-release\""));
+        assertTrue(limit.contains("episodeMaxLifetimeMillis"));
         assertTrue(limit.contains("maxFlagsPerEpisode"));
         assertFalse(limit.contains(
                 "getSanctionEpisodeManager().confirm("
