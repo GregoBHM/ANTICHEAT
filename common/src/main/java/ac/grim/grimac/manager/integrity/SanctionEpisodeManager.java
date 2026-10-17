@@ -264,6 +264,23 @@ public final class SanctionEpisodeManager {
         }
     }
 
+    public double latestConfidence(
+            @NotNull UUID uuid,
+            @NotNull String family
+    ) {
+        State state = states.get(uuid);
+        if (!enabled || state == null) return 0.0D;
+
+        synchronized (state) {
+            purgeLocked(state, System.nanoTime());
+            Deque<Episode> episodes = state.episodes.get(
+                    normalizeFamily(family)
+            );
+            if (episodes == null || episodes.isEmpty()) return 0.0D;
+            return episodes.peekLast().confidence;
+        }
+    }
+
     public @NotNull String recoveryReason(@NotNull UUID uuid) {
         State state = states.get(uuid);
         if (!enabled || state == null) return "";
@@ -427,7 +444,7 @@ public final class SanctionEpisodeManager {
             case "grim.timer.timer", "grim.timer.limit" -> FAMILY_TIMER;
             case "grim.movement.noslow" -> FAMILY_ITEM_USE;
             case "grim.groundspoof.no_fall",
-                 "grim.prediction.ground_spoof" -> FAMILY_GROUND;
+                 "grim.groundspoof.fake" -> FAMILY_GROUND;
             case "grim.combat.reach",
                  "grim.combat.hitboxes" -> FAMILY_COMBAT;
             default -> stableKey.startsWith("grim.connection.")
