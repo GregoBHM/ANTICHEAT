@@ -7,6 +7,7 @@ import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PostPredictionListener;
 import ac.grim.grimac.checks.impl.timer.ConnectionStall;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.PredictionComplete;
 import com.github.retrooper.packetevents.PacketEvents;
@@ -19,6 +20,9 @@ public class GroundSpoof extends Check implements PostPredictionListener {
     private static final Verbose V = Verbose.of("claimed {bool}");
 
     private boolean quarantineUnsafeGround;
+    private long episodeWindowMillis;
+    private long episodeFlagIntervalMillis;
+    private int maxFlagsPerEpisode;
 
     public GroundSpoof(GrimPlayer player) {
         super(player);
@@ -48,10 +52,33 @@ public class GroundSpoof extends Check implements PostPredictionListener {
             ConnectionStall blinkOwner = player.checkManager.get(ConnectionStall.class);
             boolean blinkRecovery = blinkOwner != null && blinkOwner.shouldSuppressMovementSetbacks();
 
-            // Ground spoof is a state violation, not a position violation.
-            // v22 keeps the evidence/VL but lets NoFall rewrite the client ground
-            // bit instead of teleporting the player every time this fires.
-            boolean accepted = flag(V.write(verbose()).bool(claimed));
+            // GroundSpoof corroborates one airborne physical episode.
+            // It never creates long-window sanction history by itself.
+            DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                    player.detectionEpisodeManager.resolveSharedEpisode(
+                            "ground-integrity",
+                            "airborne",
+                            episodeWindowMillis
+                    );
+            DetectionEpisodeManager.Decision episode =
+                    player.detectionEpisodeManager.evaluate(
+                            "groundspoof.normal",
+                            "groundspoof|" + sharedEpisode.token(),
+                            episodeWindowMillis,
+                            episodeFlagIntervalMillis,
+                            maxFlagsPerEpisode,
+                            sharedEpisode,
+                            2
+                    );
+
+            boolean accepted = episode.allowFlag()
+                    && flagComponent(
+                    "groundspoof.normal",
+                    V.write(verbose()).bool(claimed),
+                    () -> "claimed=" + claimed
+                            + " episode=" + sharedEpisode.token()
+                            + " observations=" + episode.observations()
+            );
 
             boolean specialEnvironment = GrimAPI.INSTANCE.getEnvironmentContextManager()
                     .isSpecialMovementEnvironment(player);
@@ -72,5 +99,36 @@ public class GroundSpoof extends Check implements PostPredictionListener {
         } catch (RuntimeException ex) {
             quarantineUnsafeGround = false;
         }
+
+        episodeWindowMillis = Math.max(
+                500L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                "GroundSpoof.episode-window-ms",
+                                2000L
+                        )
+                )
+        );
+        episodeFlagIntervalMillis = Math.max(
+                0L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                "GroundSpoof.episode-flag-interval-ms",
+                                750L
+                        )
+                )
+        );
+        maxFlagsPerEpisode = (int) Math.max(
+                1L,
+                Math.min(
+                        4L,
+                        config.getLongElse(
+                                "GroundSpoof.max-flags-per-episode",
+                                1L
+                        )
+                )
+        );
     }
 }
