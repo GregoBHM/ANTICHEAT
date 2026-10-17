@@ -1,9 +1,11 @@
 package ac.grim.grimac.checks.impl.groundspoof;
 
 import ac.grim.grimac.GrimAPI;
+import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketReceiveListener;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.predictionengine.GhostBlockDetector;
@@ -16,6 +18,7 @@ import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPl
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 
 // Catches NoFalls for LOOK and GROUND packets
 // This check runs AFTER the predictions
@@ -25,6 +28,10 @@ import java.util.List;
 public class NoFall extends Check implements PacketReceiveListener {
 
     public boolean flipPlayerGroundStatus = false;
+
+    private long episodeWindowMillis;
+    private long episodeFlagIntervalMillis;
+    private int maxFlagsPerEpisode;
 
     public NoFall(GrimPlayer player) {
         super(player);
@@ -44,13 +51,51 @@ public class NoFall extends Check implements PacketReceiveListener {
                     && !wrapper.hasPositionChanged()) {
                 if (!isNearGround(true)) {
                     if (!GhostBlockDetector.isGhostBlock(player)) {
-                        double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
-                                .record(player.uuid, IntegritySignal.NO_FALL);
+                        DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                                player.detectionEpisodeManager.resolveSharedEpisode(
+                                        "ground-integrity",
+                                        "airborne",
+                                        episodeWindowMillis
+                                );
 
-                        // v22: NoFall removes the advantage by correcting the packet
-                        // state. It keeps VL/punishments, but does not teleport the
-                        // player merely because the client lied about onGround.
-                        flag("corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation));
+                        DetectionEpisodeManager.Decision episode =
+                                player.detectionEpisodeManager.evaluate(
+                                        "nofall.normal",
+                                        "nofall|" + sharedEpisode.token(),
+                                        episodeWindowMillis,
+                                        episodeFlagIntervalMillis,
+                                        maxFlagsPerEpisode,
+                                        sharedEpisode,
+                                        2
+                                );
+
+                        if (episode.allowFlag()) {
+                            double correlation = GrimAPI.INSTANCE
+                                    .getIntegrityCorrelationManager()
+                                    .record(player.uuid, IntegritySignal.NO_FALL);
+
+                            boolean accepted = flagComponent(
+                                    "nofall.normal",
+                                    "corr=" + String.format(
+                                            java.util.Locale.ROOT,
+                                            "%.2f",
+                                            correlation
+                                    )
+                                            + " episode="
+                                            + sharedEpisode.token()
+                                            + " observations="
+                                            + episode.observations()
+                            );
+
+                            if (accepted) {
+                                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                        player,
+                                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_GROUND,
+                                        "nofall.normal",
+                                        sharedEpisode.token()
+                                );
+                            }
+                        }
                     }
 
                     if (shouldModifyPackets()) {
@@ -80,6 +125,41 @@ public class NoFall extends Check implements PacketReceiveListener {
             }
         }
     }
+
+    @Override
+    public void onReload(@NotNull ConfigManager config) {
+        episodeWindowMillis = Math.max(
+                500L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                "NoFall.episode-window-ms",
+                                2000L
+                        )
+                )
+        );
+        episodeFlagIntervalMillis = Math.max(
+                0L,
+                Math.min(
+                        10_000L,
+                        config.getLongElse(
+                                "NoFall.episode-flag-interval-ms",
+                                750L
+                        )
+                )
+        );
+        maxFlagsPerEpisode = (int) Math.max(
+                1L,
+                Math.min(
+                        4L,
+                        config.getLongElse(
+                                "NoFall.max-flags-per-episode",
+                                1L
+                        )
+                )
+        );
+    }
+
 
     private boolean isNearGround(boolean onGround) {
         if (onGround) {
