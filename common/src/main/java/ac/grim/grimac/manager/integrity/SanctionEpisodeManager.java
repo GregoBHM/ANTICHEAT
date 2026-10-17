@@ -226,6 +226,67 @@ public final class SanctionEpisodeManager {
         }
     }
 
+    public @NotNull Snapshot snapshot(
+            @NotNull UUID uuid,
+            @NotNull String family
+    ) {
+        State state = states.get(uuid);
+        String normalizedFamily = normalizeFamily(family);
+
+        if (!enabled || state == null) {
+            return new Snapshot(
+                    normalizedFamily,
+                    0,
+                    0,
+                    0,
+                    0.0D,
+                    false,
+                    ""
+            );
+        }
+
+        long now = System.nanoTime();
+
+        synchronized (state) {
+            purgeLocked(state, now);
+
+            Deque<Episode> episodes =
+                    state.episodes.get(normalizedFamily);
+
+            double confidence =
+                    episodes == null || episodes.isEmpty()
+                            ? 0.0D
+                            : episodes.peekLast().confidence;
+
+            boolean recovery = recoveryBlockedLocked(state, now);
+
+            return new Snapshot(
+                    normalizedFamily,
+                    countLocked(
+                            state,
+                            normalizedFamily,
+                            now,
+                            TimeUnit.MINUTES.toNanos(10L)
+                    ),
+                    countLocked(
+                            state,
+                            normalizedFamily,
+                            now,
+                            TimeUnit.HOURS.toNanos(2L)
+                    ),
+                    countLocked(
+                            state,
+                            normalizedFamily,
+                            now,
+                            retentionNanos
+                    ),
+                    confidence,
+                    recovery,
+                    recovery ? state.lastContinuityReason : ""
+            );
+        }
+    }
+
     public int countWithin(
             @NotNull UUID uuid,
             @NotNull String family,
@@ -508,6 +569,17 @@ public final class SanctionEpisodeManager {
 
     private static double clamp01(double value) {
         return Math.max(0.0D, Math.min(1.0D, value));
+    }
+
+    public record Snapshot(
+            @NotNull String family,
+            int confirmedEpisodes10m,
+            int confirmedEpisodes2h,
+            int confirmedEpisodesRetention,
+            double latestConfidence,
+            boolean recoveryBlocked,
+            @NotNull String recoveryReason
+    ) {
     }
 
     public record Decision(
