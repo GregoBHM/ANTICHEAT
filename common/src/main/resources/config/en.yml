@@ -859,6 +859,8 @@ autoclicker-pattern:
 # It is telemetry/punishment input only; this block does not enable autobans.
 sanction-episodes:
     enabled: true
+    # Configurable recurrence window. Internally SparkGrim keeps at least two
+    # hours so the fixed confirmed_episodes_2h metric remains exact.
     retention-seconds: 7200
     max-episodes-per-family: 32
     post-continuity-grace-ms: 1500
