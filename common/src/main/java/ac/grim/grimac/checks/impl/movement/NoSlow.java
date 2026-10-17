@@ -446,16 +446,13 @@ public class NoSlow extends Check implements PostPredictionListener {
                 1L,
                 4L
         );
-        normalEpisodeMaxLifetimeMillis = Math.max(
-                normalEpisodeWindowMillis,
-                clamp(
-                        config.getLongElse(
-                                "NoSlow.normal-episode.max-lifetime-ms",
-                                4000L
-                        ),
-                        1000L,
-                        30_000L
-                )
+        normalEpisodeMaxLifetimeMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.max-lifetime-ms",
+                        4000L
+                ),
+                1000L,
+                30_000L
         );
 
         resetTickState();
