@@ -890,6 +890,43 @@ public class PunishmentManager implements ConfigReloadable {
             case "sanction_group_vl" ->
                     group.sanctionViolations.size();
 
+            case "confirmed_episodes_10m" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countWithin(
+                                player.uuid,
+                                family,
+                                TimeUnit.MINUTES.toMillis(10L)
+                        );
+            }
+
+            case "confirmed_episodes_2h", "confirmed_episodes" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countRetention(player.uuid, family);
+            }
+
+            case "episode_confidence" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .latestConfidence(player.uuid, family);
+            }
+
+            case "episode_recovery" ->
+                    GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                            .isRecoveryBlocked(player.uuid)
+                            ? 1.0D
+                            : 0.0D;
+
             case "integrity", "integrity_score" ->
                     GrimAPI.INSTANCE
                             .getIntegrityCorrelationManager()
