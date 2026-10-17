@@ -488,7 +488,7 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "state.rejectedEpisodes.isEmpty()"
         ));
         assertTrue(manager.contains(
-                "now - rejected.peekFirst().timeNanos > retentionNanos"
+                "now - rejected.peekFirst().timeNanos > storageRetentionNanos"
         ));
     }
 
