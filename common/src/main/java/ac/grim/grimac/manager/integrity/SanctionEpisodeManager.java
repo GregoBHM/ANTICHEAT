@@ -300,6 +300,11 @@ public final class SanctionEpisodeManager {
         states.remove(uuid);
     }
 
+    public void tick() {
+        if (!enabled) return;
+        purgeAll();
+    }
+
     private @NotNull Eligibility eligibility(
             @NotNull GrimPlayer player,
             long now
