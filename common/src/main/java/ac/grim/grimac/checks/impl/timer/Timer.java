@@ -95,23 +95,26 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                             maxFlagsPerEpisode
                     );
 
+            boolean confirmEpisode = episode.observations() >= 2;
+
             boolean acceptedViolation = episode.allowFlag()
                     && flagComponent(
                     "timer.normal",
                     "ahead=" + getLastAheadMillis()
                             + "ms episode=" + timerEpisode.token()
                             + " observations=" + episode.observations()
-                            + " episodeFlags=" + episode.flags()
+                            + " episodeFlags=" + episode.flags(),
+                    () -> {
+                        if (confirmEpisode) {
+                            GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                    player,
+                                    ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_TIMER,
+                                    "timer.normal",
+                                    timerEpisode.token()
+                            );
+                        }
+                    }
             );
-
-            if (acceptedViolation && episode.observations() >= 2) {
-                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                        player,
-                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_TIMER,
-                        "timer.normal",
-                        timerEpisode.token()
-                );
-            }
 
             // Prevention is deliberately independent from punishment confidence.
             // Server/player lag can suppress sanctions, but it must not become a
