@@ -162,6 +162,11 @@ public final class SanctionEpisodeManager {
 
         long now = System.nanoTime();
         Eligibility eligibility = eligibility(player, now);
+        String normalizedComponent = sanitize(component);
+        String normalizedToken = "join="
+                + player.joinTime
+                + "|"
+                + sanitize(episodeToken);
 
         State state = states.computeIfAbsent(
                 player.uuid,
@@ -170,6 +175,26 @@ public final class SanctionEpisodeManager {
 
         synchronized (state) {
             purgeLocked(state, now);
+
+            Deque<RejectedEpisode> rejected =
+                    state.rejectedEpisodes.get(normalizedFamily);
+            if (rejected != null) {
+                for (RejectedEpisode episode : rejected) {
+                    if (episode.token.equals(normalizedToken)) {
+                        return decision(
+                                false,
+                                state,
+                                normalizedFamily,
+                                new Eligibility(
+                                        false,
+                                        0.0D,
+                                        episode.reason
+                                ),
+                                normalizedComponent
+                        );
+                    }
+                }
+            }
 
             // Re-check continuity while holding the same state lock that will
             // record the episode. A teleport/rejoin boundary may arrive on a
@@ -184,20 +209,23 @@ public final class SanctionEpisodeManager {
             }
 
             if (!enabled || !eligibility.allowed) {
+                if (enabled) {
+                    rememberRejectedLocked(
+                            state,
+                            normalizedFamily,
+                            normalizedToken,
+                            eligibility.reason,
+                            now
+                    );
+                }
                 return decision(
                         false,
                         state,
                         normalizedFamily,
                         eligibility,
-                        component
+                        normalizedComponent
                 );
             }
-
-            String normalizedComponent = sanitize(component);
-            String normalizedToken = "join="
-                    + player.joinTime
-                    + "|"
-                    + sanitize(episodeToken);
 
             Deque<Episode> episodes = state.episodes.computeIfAbsent(
                     normalizedFamily,
@@ -486,6 +514,36 @@ public final class SanctionEpisodeManager {
         );
     }
 
+    private void rememberRejectedLocked(
+            @NotNull State state,
+            @NotNull String family,
+            @NotNull String token,
+            @NotNull String reason,
+            long now
+    ) {
+        Deque<RejectedEpisode> rejected =
+                state.rejectedEpisodes.computeIfAbsent(
+                        family,
+                        ignored -> new ArrayDeque<>()
+                );
+
+        for (RejectedEpisode episode : rejected) {
+            if (episode.token.equals(token)) {
+                return;
+            }
+        }
+
+        rejected.addLast(new RejectedEpisode(
+                now,
+                token,
+                sanitize(reason)
+        ));
+
+        while (rejected.size() > maxEpisodesPerFamily) {
+            rejected.pollFirst();
+        }
+    }
+
     private int countLocked(
             @NotNull State state,
             @NotNull String family,
@@ -519,6 +577,7 @@ public final class SanctionEpisodeManager {
             synchronized (state) {
                 purgeLocked(state, now);
                 return state.episodes.isEmpty()
+                        && state.rejectedEpisodes.isEmpty()
                         && !recoveryBlockedLocked(state, now)
                         && now - state.lastConfirmedNanos > retentionNanos;
             }
@@ -533,6 +592,17 @@ public final class SanctionEpisodeManager {
             }
         }
         state.episodes.entrySet().removeIf(
+                entry -> entry.getValue().isEmpty()
+        );
+
+        for (Deque<RejectedEpisode> rejected
+                : state.rejectedEpisodes.values()) {
+            while (!rejected.isEmpty()
+                    && now - rejected.peekFirst().timeNanos > retentionNanos) {
+                rejected.pollFirst();
+            }
+        }
+        state.rejectedEpisodes.entrySet().removeIf(
                 entry -> entry.getValue().isEmpty()
         );
 
@@ -625,8 +695,17 @@ public final class SanctionEpisodeManager {
     ) {
     }
 
+    private record RejectedEpisode(
+            long timeNanos,
+            @NotNull String token,
+            @NotNull String reason
+    ) {
+    }
+
     private static final class State {
         final Map<String, Deque<Episode>> episodes = new HashMap<>();
+        final Map<String, Deque<RejectedEpisode>> rejectedEpisodes =
+                new HashMap<>();
         long recoveryUntilNanos;
         int cleanPredictions = Integer.MAX_VALUE;
         String lastContinuityReason = "";
