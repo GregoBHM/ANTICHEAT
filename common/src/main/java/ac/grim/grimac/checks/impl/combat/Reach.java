@@ -291,7 +291,7 @@ public class Reach extends Check implements PacketReceiveListener {
 
             switch (result.type()) {
                 case REACH -> {
-                    boolean accepted = flag(
+                    flag(
                             V.write(verbose()).f64(result.minDistance()).uint(Math.max(0, reachEntity.getType().getId(PacketEvents.getAPI().getServerManager().getVersion().toClientVersion()))),
                             () -> {
                                 String added = ", type=" + reachEntity.getType().getName().getKey()
@@ -301,17 +301,14 @@ public class Reach extends Check implements PacketReceiveListener {
                                     added += ", size=" + sizeable.size;
                                 }
                                 return result.verbose() + added;
-                            }
+                            },
+                            () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                    player,
+                                    ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
+                                    "reach",
+                                    combatEpisodeToken
+                            )
                     );
-
-                    if (accepted) {
-                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                player,
-                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
-                                "reach",
-                                combatEpisodeToken
-                        );
-                    }
                 }
                 case HITBOX -> {
                     String added = "type=" + reachEntity.getType().getName().getKey()
@@ -320,17 +317,16 @@ public class Reach extends Check implements PacketReceiveListener {
                     if (reachEntity instanceof PacketEntitySizeable sizeable) {
                         added += ", size=" + sizeable.size;
                     }
-                    boolean accepted = player.checkManager.get(Hitboxes.class)
-                            .flag(result.verbose() + added);
-
-                    if (accepted) {
-                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                player,
-                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
-                                "hitbox",
-                                combatEpisodeToken
-                        );
-                    }
+                    player.checkManager.get(Hitboxes.class)
+                            .flag(
+                                    result.verbose() + added,
+                                    () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                            player,
+                                            ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
+                                            "hitbox",
+                                            combatEpisodeToken
+                                    )
+                            );
                 }
             }
         }
