@@ -42,6 +42,10 @@ public class NoSlow extends Check implements PostPredictionListener {
     private String lastContextEvidenceKey = "";
     private long lastCheckedPredictionNanos;
 
+    private long normalEpisodeWindowMillis;
+    private long normalEpisodeFlagIntervalMillis;
+    private int normalMaxFlagsPerEpisode;
+
     public NoSlow(GrimPlayer player) {
         super(player);
     }
@@ -181,11 +185,38 @@ public class NoSlow extends Check implements PostPredictionListener {
     private void handleNormal(@NotNull ItemUseSessionTracker.Session session) {
         if (bestOffset > offsetToFlag) {
             if (flaggedLastTick) {
-                flagComponentWithSetback(
-                        "noslow.normal",
-                        "offset=" + formatOffset(bestOffset)
-                                + " session=" + session.sessionId()
-                );
+                String episodeKey = "noslow.normal|session="
+                        + session.sessionId();
+
+                DetectionEpisodeManager.Decision decision =
+                        player.detectionEpisodeManager.evaluate(
+                                "noslow.normal",
+                                episodeKey,
+                                normalEpisodeWindowMillis,
+                                normalEpisodeFlagIntervalMillis,
+                                normalMaxFlagsPerEpisode
+                        );
+
+                if (decision.allowFlag()) {
+                    boolean accepted = flagComponentWithSetback(
+                            "noslow.normal",
+                            "offset=" + formatOffset(bestOffset)
+                                    + " session=" + session.sessionId()
+                                    + " episodeObservations="
+                                    + decision.observations()
+                                    + " episodeFlags="
+                                    + decision.flags()
+                    );
+
+                    if (accepted) {
+                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                player,
+                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_ITEM_USE,
+                                "noslow.normal",
+                                "itemuse#" + session.sessionId()
+                        );
+                    }
+                }
             }
             flaggedLastTick = true;
         } else {
@@ -371,6 +402,31 @@ public class NoSlow extends Check implements PostPredictionListener {
                 ),
                 1L,
                 10L
+        );
+
+        normalEpisodeWindowMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.window-ms",
+                        5000L
+                ),
+                500L,
+                15_000L
+        );
+        normalEpisodeFlagIntervalMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.flag-interval-ms",
+                        1000L
+                ),
+                0L,
+                10_000L
+        );
+        normalMaxFlagsPerEpisode = (int) clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.max-flags-per-episode",
+                        1L
+                ),
+                1L,
+                4L
         );
 
         resetTickState();
