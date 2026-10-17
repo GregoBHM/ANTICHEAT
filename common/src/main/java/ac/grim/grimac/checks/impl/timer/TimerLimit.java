@@ -23,6 +23,7 @@ public class TimerLimit extends Timer {
     private long episodeWindowMillis;
     private long episodeFlagIntervalMillis;
     private int maxFlagsPerEpisode;
+    private long episodeMaxLifetimeMillis;
 
     public TimerLimit(GrimPlayer player) {
         super(player);
@@ -61,19 +62,34 @@ public class TimerLimit extends Timer {
             }
 
             if (!event.isCancelled()) {
+                // A continuous high-latency/debt release is bounded as one
+                // physical episode, but it must not become immortal. Rolling
+                // the shared token after a maximum lifetime preserves sustained
+                // abuse visibility without returning to one VL per packet.
+                DetectionEpisodeManager.SharedEpisode releaseEpisode =
+                        player.detectionEpisodeManager.resolveSharedEpisode(
+                                "timerlimit-release",
+                                "timerlimit",
+                                episodeWindowMillis,
+                                episodeMaxLifetimeMillis
+                        );
+
                 DetectionEpisodeManager.Decision episode =
                         player.detectionEpisodeManager.evaluate(
                                 "timerlimit.release",
-                                "timerlimit",
+                                "timerlimit|" + releaseEpisode.token(),
                                 episodeWindowMillis,
                                 episodeFlagIntervalMillis,
+                                maxFlagsPerEpisode,
+                                releaseEpisode,
                                 maxFlagsPerEpisode
                         );
 
                 if (episode.allowFlag()) {
                     boolean flagged = flagComponent(
                             "timerlimit.release",
-                            "episodeObservations=" + episode.observations()
+                            "episode=" + releaseEpisode.token()
+                                    + " episodeObservations=" + episode.observations()
                                     + " episodeFlags=" + episode.flags()
                     );
 
@@ -187,6 +203,16 @@ public class TimerLimit extends Timer {
                         1L
                 )
         ));
+        episodeMaxLifetimeMillis = Math.max(
+                episodeWindowMillis,
+                Math.min(
+                        30_000L,
+                        config.getLongElse(
+                                getConfigName() + ".episode-max-lifetime-ms",
+                                4000L
+                        )
+                )
+        );
 
         blinkMitigationSuppressUntilNanos = 0L;
     }
