@@ -599,4 +599,29 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
 
+    @Test
+    void unrelatedChecksDoNotDisplayNetworkEpisodeHistory()
+            throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        assertTrue(manager.contains(
+                "public static final String FAMILY_OTHER = \"OTHER\""
+        ));
+        assertTrue(manager.contains(
+                "case \"grim.timer.connection_stall\","
+        ));
+        assertTrue(manager.contains(
+                "\"grim.timer.packet_burst\","
+        ));
+        assertTrue(manager.contains(
+                "\"grim.exploit.stall_actions\" -> FAMILY_NETWORK"
+        ));
+        assertTrue(manager.contains(
+                "default -> FAMILY_OTHER"
+        ));
+    }
+
+
 }
