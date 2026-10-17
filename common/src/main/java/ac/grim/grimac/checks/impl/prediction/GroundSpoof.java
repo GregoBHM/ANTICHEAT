@@ -49,46 +49,63 @@ public class GroundSpoof extends Check implements PostPredictionListener {
         }
 
         boolean claimed = player.clientClaimsLastOnGround;
+
+        // A clean landing is a real physical boundary. End the shared ground
+        // episode immediately so a second quick fall cannot inherit the first
+        // fall's flag budget merely because it happened inside the idle window.
+        if (claimed && player.onGround) {
+            player.detectionEpisodeManager.clearSharedEpisode(
+                    "ground-integrity"
+            );
+            return;
+        }
+
         if (claimed != player.onGround) {
             ConnectionStall blinkOwner = player.checkManager.get(ConnectionStall.class);
             boolean blinkRecovery = blinkOwner != null && blinkOwner.shouldSuppressMovementSetbacks();
 
-            // GroundSpoof corroborates one airborne physical episode.
-            // It never creates long-window sanction history by itself.
-            DetectionEpisodeManager.SharedEpisode sharedEpisode =
-                    player.detectionEpisodeManager.resolveSharedEpisode(
-                            "ground-integrity",
-                            "airborne",
-                            episodeWindowMillis,
-                            episodeMaxLifetimeMillis
-                    );
-            DetectionEpisodeManager.Decision episode =
-                    player.detectionEpisodeManager.evaluate(
-                            "groundspoof.normal",
-                            "groundspoof|" + sharedEpisode.token(),
-                            episodeWindowMillis,
-                            episodeFlagIntervalMillis,
-                            maxFlagsPerEpisode,
-                            sharedEpisode,
-                            2
-                    );
+            boolean accepted = false;
 
-            boolean accepted = episode.allowFlag()
-                    && flagComponent(
-                    "groundspoof.normal",
-                    V.write(verbose()).bool(claimed),
-                    () -> "claimed=" + claimed
-                            + " episode=" + sharedEpisode.token()
-                            + " observations=" + episode.observations()
-            );
+            if (!blinkRecovery) {
+                // GroundSpoof corroborates one airborne physical episode.
+                // It never creates long-window sanction history by itself.
+                DetectionEpisodeManager.SharedEpisode sharedEpisode =
+                        player.detectionEpisodeManager.resolveSharedEpisode(
+                                "ground-integrity",
+                                "airborne",
+                                episodeWindowMillis,
+                                episodeMaxLifetimeMillis
+                        );
+                DetectionEpisodeManager.Decision episode =
+                        player.detectionEpisodeManager.evaluate(
+                                "groundspoof.normal",
+                                "groundspoof|" + sharedEpisode.token(),
+                                episodeWindowMillis,
+                                episodeFlagIntervalMillis,
+                                maxFlagsPerEpisode,
+                                sharedEpisode,
+                                2
+                        );
+
+                accepted = episode.allowFlag()
+                        && flagComponent(
+                        "groundspoof.normal",
+                        V.write(verbose()).bool(claimed),
+                        () -> "claimed=" + claimed
+                                + " episode=" + sharedEpisode.token()
+                                + " observations=" + episode.observations()
+                );
+            }
 
             boolean specialEnvironment = GrimAPI.INSTANCE.getEnvironmentContextManager()
                     .isSpecialMovementEnvironment(player);
 
-            if (accepted && quarantineUnsafeGround && !blinkRecovery && !specialEnvironment) {
+            if (accepted && quarantineUnsafeGround && !specialEnvironment) {
                 predictionComplete.setSafePositionUpdateBlocked(true);
             }
 
+            // Keep state correction available during Blink recovery, but do not
+            // turn ConnectionStall-owned release movement into GroundSpoof VL.
             player.checkManager.getNoFall().flipPlayerGroundStatus = true;
         }
     }
