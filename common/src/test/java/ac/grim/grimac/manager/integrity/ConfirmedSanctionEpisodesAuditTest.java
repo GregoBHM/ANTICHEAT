@@ -148,6 +148,31 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
+    void sanctionVlAlsoStopsDuringTeleportRecovery() throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+
+        int method = punishment.indexOf("private boolean sanctionableNow()");
+        int next = punishment.indexOf("private static double clamp01", method);
+        String block = punishment.substring(method, next);
+
+        assertTrue(block.contains("getSanctionEpisodeManager()"));
+        assertTrue(block.contains("isRecoveryBlocked(player.uuid)"));
+        assertTrue(block.contains("return false;"));
+    }
+
+    @Test
+    void onlyNormalEpisodeCappedMovementComponentsEnterSanctionTelemetry()
+            throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+
+        assertTrue(punishment.contains("\"simulation.normal\".equals(check.getLastComponent())"));
+        assertTrue(punishment.contains("\"noslow.normal\".equals(check.getLastComponent())"));
+        assertTrue(punishment.contains("\"nofall.normal\".equals(check.getLastComponent())"));
+        assertFalse(punishment.contains("case \"grim.timer.limit\" -> true"));
+        assertFalse(punishment.contains("case \"grim.groundspoof.fake\" -> true"));
+    }
+
+    @Test
     void punishmentLayerExposesEpisodeMetricsButDoesNotAutobanByItself()
             throws IOException {
         String punishment = source("manager/PunishmentManager.java");
