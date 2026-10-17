@@ -1167,6 +1167,15 @@ public class PunishmentManager implements ConfigReloadable {
 
         return switch (key) {
             case "grim.timer.timer" -> true;
+            case "grim.prediction.simulation" ->
+                    "simulation.normal".equals(check.getLastComponent())
+                            && sensitiveLegacyEvidenceAllowed();
+            case "grim.movement.noslow" ->
+                    "noslow.normal".equals(check.getLastComponent())
+                            && sensitiveLegacyEvidenceAllowed();
+            case "grim.groundspoof.no_fall" ->
+                    "nofall.normal".equals(check.getLastComponent())
+                            && sensitiveLegacyEvidenceAllowed();
             case "grim.velocity.anti_knockback" ->
                     "velocity.normal".equals(check.getLastComponent())
                             && sensitiveLegacyEvidenceAllowed();
