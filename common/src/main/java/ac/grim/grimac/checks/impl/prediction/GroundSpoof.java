@@ -23,6 +23,7 @@ public class GroundSpoof extends Check implements PostPredictionListener {
     private long episodeWindowMillis;
     private long episodeFlagIntervalMillis;
     private int maxFlagsPerEpisode;
+    private long episodeMaxLifetimeMillis;
 
     public GroundSpoof(GrimPlayer player) {
         super(player);
@@ -58,7 +59,8 @@ public class GroundSpoof extends Check implements PostPredictionListener {
                     player.detectionEpisodeManager.resolveSharedEpisode(
                             "ground-integrity",
                             "airborne",
-                            episodeWindowMillis
+                            episodeWindowMillis,
+                            episodeMaxLifetimeMillis
                     );
             DetectionEpisodeManager.Decision episode =
                     player.detectionEpisodeManager.evaluate(
@@ -127,6 +129,16 @@ public class GroundSpoof extends Check implements PostPredictionListener {
                         config.getLongElse(
                                 "GroundSpoof.max-flags-per-episode",
                                 1L
+                        )
+                )
+        );
+        episodeMaxLifetimeMillis = Math.max(
+                episodeWindowMillis,
+                Math.min(
+                        30_000L,
+                        config.getLongElse(
+                                "GroundSpoof.episode-max-lifetime-ms",
+                                4000L
                         )
                 )
         );
