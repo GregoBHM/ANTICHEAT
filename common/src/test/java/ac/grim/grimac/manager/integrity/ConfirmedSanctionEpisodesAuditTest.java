@@ -457,4 +457,36 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
 
+    @Test
+    void blockedEpisodeTokensCanNeverBePromotedLater()
+            throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        int rejectedLookup = manager.indexOf(
+                "state.rejectedEpisodes.get(normalizedFamily)"
+        );
+        int remember = manager.indexOf(
+                "rememberRejectedLocked("
+        );
+        int confirmedAdd = manager.indexOf(
+                "episodes.addLast("
+        );
+
+        assertTrue(rejectedLookup >= 0);
+        assertTrue(remember > rejectedLookup);
+        assertTrue(confirmedAdd > remember);
+        assertTrue(manager.contains(
+                "final Map<String, Deque<RejectedEpisode>> rejectedEpisodes"
+        ));
+        assertTrue(manager.contains(
+                "state.rejectedEpisodes.isEmpty()"
+        ));
+        assertTrue(manager.contains(
+                "now - rejected.peekFirst().timeNanos > retentionNanos"
+        ));
+    }
+
+
 }
