@@ -215,7 +215,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                         );
 
                 if (decision.allowFlag()) {
-                    boolean accepted = flagComponentWithSetback(
+                    flagComponentWithSetback(
                             "noslow.normal",
                             "offset=" + formatOffset(bestOffset)
                                     + " session=" + session.sessionId()
@@ -223,17 +223,14 @@ public class NoSlow extends Check implements PostPredictionListener {
                                     + " episodeObservations="
                                     + decision.observations()
                                     + " episodeFlags="
-                                    + decision.flags()
+                                    + decision.flags(),
+                            () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                    player,
+                                    ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_ITEM_USE,
+                                    "noslow.normal",
+                                    normalEpisode.token()
+                            )
                     );
-
-                    if (accepted) {
-                        GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                player,
-                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_ITEM_USE,
-                                "noslow.normal",
-                                normalEpisode.token()
-                        );
-                    }
                 }
             }
             flaggedLastTick = true;
