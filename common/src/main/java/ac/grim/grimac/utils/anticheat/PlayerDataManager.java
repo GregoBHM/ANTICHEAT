@@ -97,6 +97,8 @@ public class PlayerDataManager {
         if (shouldCheck(user)) {
             GrimPlayer player = new GrimPlayer(user);
             playerDataMap.put(user, player);
+            GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                    .markContinuityBreak(player.uuid, "join");
             Channels.JOIN.fire(player);
         }
     }

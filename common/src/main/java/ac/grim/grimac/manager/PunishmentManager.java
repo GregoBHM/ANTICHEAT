@@ -6,6 +6,7 @@ import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.api.config.ConfigReloadable;
 import ac.grim.grimac.api.event.events.CommandExecuteEvent;
 import ac.grim.grimac.checks.Check;
+import ac.grim.grimac.manager.integrity.SanctionEpisodeManager;
 import ac.grim.grimac.events.packets.ProxyAlertMessenger;
 import ac.grim.grimac.platform.api.player.PlatformPlayer;
 import ac.grim.grimac.player.GrimPlayer;
@@ -389,6 +390,28 @@ public class PunishmentManager implements ConfigReloadable {
                         .severity(player.uuid, vl)
                         .name();
 
+        String episodeFamily = SanctionEpisodeManager.familyFor(
+                stableKey,
+                component
+        );
+        SanctionEpisodeManager.Snapshot episodeSnapshot =
+                GrimAPI.INSTANCE
+                        .getSanctionEpisodeManager()
+                        .snapshot(player.uuid, episodeFamily);
+
+        int confirmedEpisodes10m =
+                episodeSnapshot.confirmedEpisodes10m();
+        int confirmedEpisodes2h =
+                episodeSnapshot.confirmedEpisodes2h();
+        int confirmedEpisodesRetention =
+                episodeSnapshot.confirmedEpisodesRetention();
+        double episodeConfidence =
+                episodeSnapshot.latestConfidence();
+        boolean episodeRecovery =
+                episodeSnapshot.recoveryBlocked();
+        String episodeRecoveryReason =
+                episodeSnapshot.recoveryReason();
+
         String template = StaffAlertTemplate.expand(
                 original,
                 alertString,
@@ -461,6 +484,34 @@ public class PunishmentManager implements ConfigReloadable {
                                         GrimAPI.INSTANCE.getIntegrityCorrelationManager()
                                                 .getScore(player.uuid)
                                 )
+                        )
+                        .replace(
+                                "%confirmed_episodes_10m%",
+                                Integer.toString(confirmedEpisodes10m)
+                        )
+                        .replace(
+                                "%confirmed_episodes_2h%",
+                                Integer.toString(confirmedEpisodes2h)
+                        )
+                        .replace(
+                                "%confirmed_episodes%",
+                                Integer.toString(confirmedEpisodesRetention)
+                        )
+                        .replace(
+                                "%confirmed_episodes_retention%",
+                                Integer.toString(confirmedEpisodesRetention)
+                        )
+                        .replace(
+                                "%episode_confidence%",
+                                formatMetric(episodeConfidence)
+                        )
+                        .replace(
+                                "%episode_recovery%",
+                                episodeRecovery ? "YES" : "NO"
+                        )
+                        .replace(
+                                "%episode_recovery_reason%",
+                                episodeRecoveryReason
                         )
                         .replace("%lag_state%", lagState())
                         .replace(
@@ -888,6 +939,57 @@ public class PunishmentManager implements ConfigReloadable {
 
             case "sanction_group_vl" ->
                     group.sanctionViolations.size();
+
+            case "confirmed_episodes_10m" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countWithin(
+                                player.uuid,
+                                family,
+                                TimeUnit.MINUTES.toMillis(10L)
+                        );
+            }
+
+            case "confirmed_episodes_2h" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countWithin(
+                                player.uuid,
+                                family,
+                                TimeUnit.HOURS.toMillis(2L)
+                        );
+            }
+
+            case "confirmed_episodes",
+                 "confirmed_episodes_retention" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countRetention(player.uuid, family);
+            }
+
+            case "episode_confidence" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .latestConfidence(player.uuid, family);
+            }
+
+            case "episode_recovery" ->
+                    GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                            .isRecoveryBlocked(player.uuid)
+                            ? 1.0D
+                            : 0.0D;
 
             case "integrity", "integrity_score" ->
                     GrimAPI.INSTANCE

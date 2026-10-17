@@ -335,15 +335,32 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         )
                                 + " enforced=" + enforced;
 
-                if (!flagComponent(
-                            "velocity.normal",
-                            V.write(verbose())
-                                    .bool(ignored)
-                                    .f64(player.likelyKB.offset),
-                            () -> alertText
-                    )) {
-                        reward();
-                    }
+                boolean strongEpisode =
+                        normalEnforcementStreak
+                                >= enforcementStrongConsecutiveTicks
+                                || player.likelyKB.offset >= immediate;
+
+                boolean accepted = flagComponent(
+                        "velocity.normal",
+                        V.write(verbose())
+                                .bool(ignored)
+                                .f64(player.likelyKB.offset),
+                        () -> alertText,
+                        () -> {
+                            if (strongEpisode) {
+                                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                                        player,
+                                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_VELOCITY,
+                                        "velocity.normal",
+                                        "kb#tx=" + player.likelyKB.transaction
+                                );
+                            }
+                        }
+                );
+
+                if (!accepted) {
+                    reward();
+                }
             } else {
                 // A clean/non-flagging velocity sample breaks the requirement
                 // for consecutive strong special-environment evidence.

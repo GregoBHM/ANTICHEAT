@@ -3,6 +3,7 @@ package ac.grim.grimac.checks.impl.timer;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.checks.CheckData;
+import ac.grim.grimac.manager.integrity.DetectionEpisodeManager;
 import ac.grim.grimac.manager.integrity.IntegritySignal;
 import ac.grim.grimac.player.GrimPlayer;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
@@ -18,6 +19,11 @@ public class TimerLimit extends Timer {
     private long preventionCausalWindowMillis;
 
     private long blinkMitigationSuppressUntilNanos;
+
+    private long episodeWindowMillis;
+    private long episodeFlagIntervalMillis;
+    private int maxFlagsPerEpisode;
+    private long episodeMaxLifetimeMillis;
 
     public TimerLimit(GrimPlayer player) {
         super(player);
@@ -56,20 +62,55 @@ public class TimerLimit extends Timer {
             }
 
             if (!event.isCancelled()) {
-                boolean flagged = flag();
-                if (flagged) {
-                    boolean hardPrevention = shouldPreventBurstRelease();
+                // A continuous high-latency/debt release is bounded as one
+                // physical episode, but it must not become immortal. Rolling
+                // the shared token after a maximum lifetime preserves sustained
+                // abuse visibility without returning to one VL per packet.
+                DetectionEpisodeManager.SharedEpisode releaseEpisode =
+                        player.detectionEpisodeManager.resolveSharedEpisode(
+                                "timerlimit-release",
+                                "timerlimit",
+                                episodeWindowMillis,
+                                episodeMaxLifetimeMillis
+                        );
 
-                    if (hardPrevention && cancelBurstMovement && shouldModifyPackets()) {
-                        event.setCancelled(true);
-                        player.onPacketCancel();
-                    }
+                DetectionEpisodeManager.Decision episode =
+                        player.detectionEpisodeManager.evaluate(
+                                "timerlimit.release",
+                                "timerlimit|" + releaseEpisode.token(),
+                                episodeWindowMillis,
+                                episodeFlagIntervalMillis,
+                                maxFlagsPerEpisode,
+                                releaseEpisode,
+                                maxFlagsPerEpisode
+                        );
 
-                    // TimerLimit no longer owns Blink rollback. ConnectionStall's
-                    // one-shot hard release barrier does. Outside such an episode,
-                    // preserve Grim's original TimerLimit setback behavior.
-                    if (hardPrevention && shouldSetback()) {
-                        GrimAPI.INSTANCE.getMovementReleaseGuard().apply(player, true, this);
+                // Prevention and evidence have different budgets. Capping
+                // TimerLimit VL must never turn the remaining packets of a
+                // causally-confirmed burst into a bypass.
+                boolean hardPrevention = shouldPreventBurstRelease();
+
+                if (hardPrevention && cancelBurstMovement && shouldModifyPackets()) {
+                    event.setCancelled(true);
+                    player.onPacketCancel();
+                }
+
+                if (episode.allowFlag()) {
+                    boolean flagged = flagComponent(
+                            "timerlimit.release",
+                            "episode=" + releaseEpisode.token()
+                                    + " episodeObservations=" + episode.observations()
+                                    + " episodeFlags=" + episode.flags()
+                    );
+
+                    if (flagged
+                            && hardPrevention
+                            && shouldSetback()) {
+                        // Keep destructive rollback bounded by the episode flag
+                        // budget; packet cancellation above may continue while
+                        // the independent causal evidence remains valid.
+                        GrimAPI.INSTANCE.getMovementReleaseGuard()
+                                .apply(player, true, this);
                     }
                 }
             }
@@ -143,6 +184,38 @@ public class TimerLimit extends Timer {
         );
         preventionCausalWindowMillis = Math.max(250L, Math.min(10_000L,
                 config.getLongElse(getConfigName() + ".hard-prevention.causal-window-ms", 1500L)));
+
+        episodeWindowMillis = Math.max(250L, Math.min(
+                10_000L,
+                config.getLongElse(
+                        getConfigName() + ".episode-window-ms",
+                        1500L
+                )
+        ));
+        episodeFlagIntervalMillis = Math.max(0L, Math.min(
+                10_000L,
+                config.getLongElse(
+                        getConfigName() + ".episode-flag-interval-ms",
+                        750L
+                )
+        ));
+        maxFlagsPerEpisode = (int) Math.max(1L, Math.min(
+                4L,
+                config.getLongElse(
+                        getConfigName() + ".max-flags-per-episode",
+                        1L
+                )
+        ));
+        episodeMaxLifetimeMillis = Math.max(
+                episodeWindowMillis,
+                Math.min(
+                        30_000L,
+                        config.getLongElse(
+                                getConfigName() + ".episode-max-lifetime-ms",
+                                4000L
+                        )
+                )
+        );
 
         blinkMitigationSuppressUntilNanos = 0L;
     }
