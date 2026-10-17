@@ -50,7 +50,9 @@ class ConfirmedSanctionEpisodesAuditTest {
     void everyFreshConnectionStartsInSanctionRecovery() throws IOException {
         String playerData = source("utils/anticheat/PlayerDataManager.java");
 
-        assertTrue(playerData.contains("markContinuityBreak(player.uuid, \"join\")"));
+        assertTrue(playerData.contains(
+                "markContinuityBreak(player.uuid, \"join\")"
+        ));
     }
 
     @Test
@@ -72,10 +74,10 @@ class ConfirmedSanctionEpisodesAuditTest {
         ));
 
         assertTrue(listener.contains("markContinuityBreak("));
-        assertTrue(listener.contains(""teleport:""));
-        assertTrue(listener.contains(""world-change""));
-        assertTrue(listener.contains(""respawn""));
-        assertTrue(listener.contains(""gamemode-change""));
+        assertTrue(listener.contains("\"teleport:\""));
+        assertTrue(listener.contains("\"world-change\""));
+        assertTrue(listener.contains("\"respawn\""));
+        assertTrue(listener.contains("\"gamemode-change\""));
     }
 
     @Test
@@ -85,12 +87,13 @@ class ConfirmedSanctionEpisodesAuditTest {
         );
 
         assertTrue(simulation.contains("noteCheckedPrediction(player.uuid)"));
-        assertTrue(simulation.contains("simulation-normal"));
+        assertTrue(simulation.contains("\"simulation-normal\""));
         assertTrue(simulation.contains("normalMaxFlagsPerEpisode"));
+        assertTrue(simulation.contains("normalEpisodeMaxLifetimeMillis"));
         assertTrue(simulation.contains(
                 "SanctionEpisodeManager.FAMILY_MOVEMENT"
         ));
-        assertTrue(simulation.contains(""simulation.normal""));
+        assertTrue(simulation.contains("\"simulation.normal\""));
     }
 
     @Test
@@ -99,14 +102,15 @@ class ConfirmedSanctionEpisodesAuditTest {
         String limit = source("checks/impl/timer/TimerLimit.java");
 
         assertTrue(timer.contains("resolveSharedEpisode("));
-        assertTrue(timer.contains(""timer-normal""));
+        assertTrue(timer.contains("\"timer-normal\""));
         assertTrue(timer.contains("maxFlagsPerEpisode"));
+        assertTrue(timer.contains("episodeMaxLifetimeMillis"));
         assertTrue(timer.contains(
                 "SanctionEpisodeManager.FAMILY_TIMER"
         ));
 
         assertTrue(limit.contains("DetectionEpisodeManager.Decision episode"));
-        assertTrue(limit.contains(""timerlimit.release""));
+        assertTrue(limit.contains("\"timerlimit.release\""));
         assertTrue(limit.contains("maxFlagsPerEpisode"));
         assertFalse(limit.contains(
                 "getSanctionEpisodeManager().confirm("
@@ -121,10 +125,10 @@ class ConfirmedSanctionEpisodesAuditTest {
         );
 
         assertTrue(noSlow.contains(
-                ""noslow.normal|session=""
+                "\"noslow.normal|session=\""
         ));
         assertTrue(noSlow.contains(
-                ""itemuse#" + session.sessionId()"
+                "\"itemuse#\" + session.sessionId()"
         ));
         assertTrue(noSlow.contains("normalMaxFlagsPerEpisode"));
         assertTrue(noSlow.contains(
@@ -142,8 +146,10 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "checks/impl/prediction/GroundSpoof.java"
         );
 
-        assertTrue(noFall.contains(""ground-integrity""));
-        assertTrue(groundSpoof.contains(""ground-integrity""));
+        assertTrue(noFall.contains("\"ground-integrity\""));
+        assertTrue(groundSpoof.contains("\"ground-integrity\""));
+        assertTrue(noFall.contains("episodeMaxLifetimeMillis"));
+        assertTrue(groundSpoof.contains("episodeMaxLifetimeMillis"));
         assertTrue(noFall.contains(
                 "SanctionEpisodeManager.FAMILY_GROUND"
         ));
@@ -166,13 +172,13 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "SanctionEpisodeManager.FAMILY_VELOCITY"
         ));
         assertTrue(knockback.contains(
-                ""kb#tx=" + player.likelyKB.transaction"
+                "\"kb#tx=\" + player.likelyKB.transaction"
         ));
         assertTrue(reach.contains(
                 "SanctionEpisodeManager.FAMILY_COMBAT"
         ));
         assertTrue(reach.contains(
-                ""attack#tx=""
+                "\"attack#tx=\""
         ));
     }
 
@@ -217,16 +223,16 @@ class ConfirmedSanctionEpisodesAuditTest {
         String punishment = source("manager/PunishmentManager.java");
 
         assertTrue(punishment.contains(
-                "case "confirmed_episodes_10m""
+                "case \"confirmed_episodes_10m\""
         ));
         assertTrue(punishment.contains(
-                "case "confirmed_episodes_2h", "confirmed_episodes""
+                "case \"confirmed_episodes_2h\", \"confirmed_episodes\""
         ));
         assertTrue(punishment.contains(
-                "case "episode_confidence""
+                "case \"episode_confidence\""
         ));
         assertTrue(punishment.contains(
-                "case "episode_recovery""
+                "case \"episode_recovery\""
         ));
         assertTrue(punishment.contains(
                 "%confirmed_episodes_10m%"
@@ -236,6 +242,22 @@ class ConfirmedSanctionEpisodesAuditTest {
         ));
         assertTrue(punishment.contains(
                 "%episode_recovery_reason%"
+        ));
+    }
+
+    @Test
+    void confirmedEpisodeRetentionIsPurgedFromTheGlobalTick() throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+        String tick = source(
+                "manager/tick/impl/ClientVersionSetter.java"
+        );
+
+        assertTrue(manager.contains("public void tick()"));
+        assertTrue(manager.contains("purgeAll()"));
+        assertTrue(tick.contains(
+                "getSanctionEpisodeManager().tick()"
         ));
     }
 }
