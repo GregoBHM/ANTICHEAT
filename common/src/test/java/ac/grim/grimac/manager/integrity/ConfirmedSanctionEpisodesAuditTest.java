@@ -402,13 +402,13 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "flagComponentWithSetback("
         ));
         assertTrue(noFall.contains(
-                "() -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm("
+                "() -> confirmSanctionEpisode("
         ));
         assertTrue(knockback.contains(
                 "if (strongEpisode)"
         ));
         assertTrue(reach.contains(
-                "() -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm("
+                "() -> confirmSanctionEpisode("
         ));
     }
 
@@ -621,6 +621,143 @@ class ConfirmedSanctionEpisodesAuditTest {
         assertTrue(manager.contains(
                 "default -> FAMILY_OTHER"
         ));
+    }
+
+
+    @Test
+    void confirmedEpisodeDecisionCarriesAtomicTwoHourCount()
+            throws IOException {
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        assertTrue(manager.contains(
+                "int confirmedEpisodes2h"
+        ));
+        assertTrue(manager.contains(
+                "TimeUnit.HOURS.toNanos(2L)"
+        ));
+        assertTrue(manager.contains(
+                "tenMinutes,\n                twoHours,\n                retained"
+        ));
+    }
+
+    @Test
+    void newConfirmedEpisodeIsTheOnlyAutomaticKickTrigger()
+            throws IOException {
+        String check = source("checks/Check.java");
+        String punishment = source("manager/PunishmentManager.java");
+
+        assertTrue(check.contains(
+                "public final @NotNull SanctionEpisodeManager.Decision confirmSanctionEpisode("
+        ));
+        assertTrue(check.contains(
+                "if (decision.recorded())"
+        ));
+        assertTrue(check.contains(
+                "player.punishmentManager.handleConfirmedEpisode(this, decision)"
+        ));
+
+        assertTrue(punishment.contains(
+                "public void handleConfirmedEpisode("
+        ));
+        assertTrue(punishment.contains(
+                "|| !decision.recorded()"
+        ));
+        assertTrue(punishment.contains(
+                "confirmedEpisodeKickExecuted.compareAndSet("
+        ));
+        assertFalse(punishment.contains(
+                "handleConfirmedEpisode(this"
+        ));
+    }
+
+    @Test
+    void phaseThreeAKicksOnlyReliableFamiliesAndNeverBans()
+            throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+
+        assertTrue(punishment.contains(
+                "case SanctionEpisodeManager.FAMILY_TIMER"
+        ));
+        assertTrue(punishment.contains(
+                "case SanctionEpisodeManager.FAMILY_VELOCITY"
+        ));
+        assertTrue(punishment.contains(
+                "case SanctionEpisodeManager.FAMILY_COMBAT"
+        ));
+        assertTrue(punishment.contains(
+                "case SanctionEpisodeManager.FAMILY_MOVEMENT,"
+        ));
+        assertTrue(punishment.contains(
+                "SanctionEpisodeManager.FAMILY_NETWORK ->\n                    false"
+        ));
+        assertTrue(punishment.contains(
+                "startsWith(\"kick \")"
+        ));
+        assertFalse(punishment.contains(
+                "startsWith(\"ban \")"
+        ));
+        assertTrue(punishment.contains(
+                "\"grim.velocity.anti_knockback\".equals(key)"
+        ));
+        assertTrue(punishment.contains(
+                "sensitiveLegacyEvidenceAllowed()"
+        ));
+    }
+
+    @Test
+    void legacyVlKickConditionsAreDisabledByDefaultOutsideCrash()
+            throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+
+        assertTrue(punishment.contains(
+                "\"sanctions.legacy-vl-actions-enabled\",\n                false"
+        ));
+        assertTrue(punishment.contains(
+                "command.legacySanctionVlCondition"
+        ));
+        assertTrue(punishment.contains(
+                "&& !legacyVlActionsEnabled"
+        ));
+        assertTrue(punishment.contains(
+                "&& !isCrashCheck(check)"
+        ));
+    }
+
+    @Test
+    void allConfirmedEpisodeProducersUseCentralSanctionBridge()
+            throws IOException {
+        String timer = source("checks/impl/timer/Timer.java");
+        String simulation = source(
+                "checks/impl/prediction/OffsetHandler.java"
+        );
+        String noSlow = source(
+                "checks/impl/movement/NoSlow.java"
+        );
+        String noFall = source(
+                "checks/impl/groundspoof/NoFall.java"
+        );
+        String knockback = source(
+                "checks/impl/velocity/KnockbackHandler.java"
+        );
+        String reach = source("checks/impl/combat/Reach.java");
+        String stall = source("checks/impl/timer/ConnectionStall.java");
+
+        for (String producer : new String[]{
+                timer,
+                simulation,
+                noSlow,
+                noFall,
+                knockback,
+                reach,
+                stall
+        }) {
+            assertTrue(producer.contains("confirmSanctionEpisode("));
+            assertFalse(producer.contains(
+                    ".getSanctionEpisodeManager().confirm("
+            ));
+        }
     }
 
 
