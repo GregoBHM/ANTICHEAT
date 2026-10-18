@@ -1398,25 +1398,25 @@ public class PunishmentManager implements ConfigReloadable {
                 episodeSanctionRules.get(decision.family());
 
         if (rule == null
-                || !rule.enabled
+                || !rule.enabled()
                 || !confirmedEpisodeSanctionEligible(check, decision)) {
             return;
         }
 
         boolean shortWindowTriggered =
-                rule.minimumEpisodes10m > 0
+                rule.minimumEpisodes10m() > 0
                         && decision.confirmedEpisodes10m()
-                        >= rule.minimumEpisodes10m;
+                        >= rule.minimumEpisodes10m();
         boolean longWindowTriggered =
-                rule.minimumEpisodes2h > 0
+                rule.minimumEpisodes2h() > 0
                         && decision.confirmedEpisodes2h()
-                        >= rule.minimumEpisodes2h;
+                        >= rule.minimumEpisodes2h();
 
         if (!shortWindowTriggered && !longWindowTriggered) {
             return;
         }
 
-        if (decision.confidence() < rule.minimumConfidence) {
+        if (decision.confidence() < rule.minimumConfidence()) {
             return;
         }
 
@@ -1424,13 +1424,13 @@ public class PunishmentManager implements ConfigReloadable {
                 .getIntegrityCorrelationManager()
                 .getScore(player.uuid);
 
-        if (integrity < rule.minimumIntegrityScore) {
+        if (integrity < rule.minimumIntegrityScore()) {
             return;
         }
 
         String cmd = MessageUtil.replacePlaceholders(
                 player,
-                rule.command
+                rule.command()
                         .replace("%episode_family%", decision.family())
                         .replace("%episode_component%", decision.component())
                         .replace(
