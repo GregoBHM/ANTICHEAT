@@ -1632,6 +1632,8 @@ public class PunishmentManager implements ConfigReloadable {
                         + " outcome=" + decision.outcome().name()
                         + " family=" + decision.family()
                         + " component=" + decision.component()
+                        + " episode="
+                        + decision.episodeToken().replace(' ', '_')
                         + " action=" + action
                         + " reason=" + policyReason.replace(' ', '_')
                         + " episodes10m="
