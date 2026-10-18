@@ -370,6 +370,7 @@ public class PunishmentManager implements ConfigReloadable {
 
         PunishmentCondition condition = null;
         boolean unless = false;
+        boolean legacySanctionVlCondition = false;
 
         String lower =
                 action.toLowerCase(Locale.ROOT);
@@ -400,6 +401,13 @@ public class PunishmentManager implements ConfigReloadable {
                             doIndex
                     ).trim();
 
+            String normalizedExpression =
+                    expression.toLowerCase(Locale.ROOT);
+            legacySanctionVlCondition =
+                    normalizedExpression.contains("sanction_vl")
+                            || normalizedExpression.contains("sanction_check_vl")
+                            || normalizedExpression.contains("sanction_group_vl");
+
             action =
                     action.substring(doIndex + 4).trim();
 
@@ -419,7 +427,8 @@ public class PunishmentManager implements ConfigReloadable {
                 interval,
                 action,
                 condition,
-                unless
+                unless,
+                legacySanctionVlCondition
         );
     }
 
@@ -984,6 +993,12 @@ public class PunishmentManager implements ConfigReloadable {
             return true;
         }
 
+        if (command.legacySanctionVlCondition
+                && !legacyVlActionsEnabled
+                && !isCrashCheck(check)) {
+            return false;
+        }
+
         boolean result =
                 command.condition.test(
                         variable -> conditionValue(
@@ -1526,6 +1541,11 @@ public class PunishmentManager implements ConfigReloadable {
         };
     }
 
+    private static boolean isCrashCheck(Check check) {
+        String key = check.getStableKey();
+        return key != null && key.startsWith("grim.crash.");
+    }
+
     private boolean sanctionEvidenceEligible(Check check) {
         String key = check.getStableKey();
         if (key == null || key.isBlank()) {
@@ -1812,6 +1832,7 @@ final class ParsedCommand {
     final String command;
     final PunishmentCondition condition;
     final boolean unless;
+    final boolean legacySanctionVlCondition;
 
     private int groupExecuteCount;
     private int groupNextBoundary;
@@ -1829,13 +1850,15 @@ final class ParsedCommand {
             int interval,
             String command,
             PunishmentCondition condition,
-            boolean unless
+            boolean unless,
+            boolean legacySanctionVlCondition
     ) {
         this.threshold = threshold;
         this.interval = interval;
         this.command = command;
         this.condition = condition;
         this.unless = unless;
+        this.legacySanctionVlCondition = legacySanctionVlCondition;
         this.groupNextBoundary = threshold;
     }
 
