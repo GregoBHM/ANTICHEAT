@@ -108,6 +108,9 @@ class StaffAlertResourceAuditTest {
                 assertTrue(text.contains("native-sensitive-sanctions-only: true"), path.toString());
                 assertTrue(text.contains("legacy-vl-actions-enabled: false"), path.toString());
                 assertTrue(text.contains("episode-sanctions:"), path.toString());
+                assertTrue(text.contains("audit:"), path.toString());
+                assertTrue(text.contains("log-rejections: true"), path.toString());
+                assertTrue(text.contains("log-observe-only: true"), path.toString());
                 assertTrue(text.contains("minimum-episodes-10m: 4"), path.toString());
                 assertTrue(text.contains("minimum-episodes-2h: 6"), path.toString());
                 assertTrue(text.contains("minimum-confidence: 0.90"), path.toString());
