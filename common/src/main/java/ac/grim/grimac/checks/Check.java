@@ -8,6 +8,7 @@ import ac.grim.grimac.api.storage.verbose.Verbose;
 import ac.grim.grimac.api.storage.verbose.VerboseBuf;
 import ac.grim.grimac.api.storage.verbose.VerboseRenderContext;
 import ac.grim.grimac.internal.storage.verbose.VerboseRegistry;
+import ac.grim.grimac.manager.integrity.SanctionEpisodeManager;
 import ac.grim.grimac.player.GrimPlayer;
 import lombok.Getter;
 import lombok.Setter;
@@ -241,6 +242,32 @@ public class Check extends GrimProcessor implements AbstractCheck {
         }
         lastComponent = "";
         return false;
+    }
+
+    /**
+     * Confirms one physical detection episode and routes only newly-recorded
+     * episodes into the episode-sanction policy. Repeated packets/ticks using
+     * the same token remain telemetry and can never retrigger a kick by
+     * themselves.
+     */
+    public final @NotNull SanctionEpisodeManager.Decision confirmSanctionEpisode(
+            @NotNull String family,
+            @NotNull String component,
+            @NotNull String episodeToken
+    ) {
+        SanctionEpisodeManager.Decision decision =
+                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
+                        player,
+                        family,
+                        component,
+                        episodeToken
+                );
+
+        if (decision.recorded()) {
+            player.punishmentManager.handleConfirmedEpisode(this, decision);
+        }
+
+        return decision;
     }
 
     private boolean recordFlag(@NotNull Supplier<String> verbose) {
