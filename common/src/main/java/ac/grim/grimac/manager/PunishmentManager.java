@@ -1398,127 +1398,271 @@ public class PunishmentManager implements ConfigReloadable {
      * physical episode is recorded. Raw VL, repeated packets and duplicate
      * tokens cannot enter this method.
      */
-    public void handleConfirmedEpisode(
+    /**
+     * Phase 3B: evaluate one ledger decision and emit one structured audit line
+     * for each new physical episode. Duplicate tokens are deliberately silent.
+     */
+    public void handleEpisodeDecision(
             Check check,
             SanctionEpisodeManager.Decision decision
     ) {
-        if (!confirmedEpisodeSanctionsEnabled
-                || !decision.recorded()
-                || decision.blocked()
-                || confirmedEpisodeKickExecuted.get()) {
+        if (decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.DUPLICATE
+                || decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.REJECTED_DUPLICATE
+                || decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.DISABLED) {
             return;
         }
 
         EpisodeSanctionRule rule =
                 episodeSanctionRules.get(decision.family());
-
-        if (rule == null
-                || !rule.enabled()
-                || !confirmedEpisodeSanctionEligible(check, decision)) {
-            return;
-        }
-
-        boolean shortWindowTriggered =
-                rule.minimumEpisodes10m() > 0
-                        && decision.confirmedEpisodes10m()
-                        >= rule.minimumEpisodes10m();
-        boolean longWindowTriggered =
-                rule.minimumEpisodes2h() > 0
-                        && decision.confirmedEpisodes2h()
-                        >= rule.minimumEpisodes2h();
-
-        if (!shortWindowTriggered && !longWindowTriggered) {
-            return;
-        }
-
-        if (decision.confidence() < rule.minimumConfidence()) {
-            return;
-        }
-
         double integrity = GrimAPI.INSTANCE
                 .getIntegrityCorrelationManager()
                 .getScore(player.uuid);
 
-        if (integrity < rule.minimumIntegrityScore()) {
+        String action = "NONE";
+        String policyReason = decision.reason();
+        boolean autonomousEligible = false;
+
+        if (!decision.recorded()) {
+            policyReason = "rejected:" + decision.reason();
+            auditEpisodeDecision(
+                    check,
+                    decision,
+                    rule,
+                    integrity,
+                    action,
+                    policyReason,
+                    false
+            );
             return;
         }
 
-        String cmd = MessageUtil.replacePlaceholders(
-                player,
-                rule.command()
-                        .replace("%episode_family%", decision.family())
-                        .replace("%episode_component%", decision.component())
-                        .replace(
-                                "%confirmed_episodes_10m%",
-                                Integer.toString(
-                                        decision.confirmedEpisodes10m()
-                                )
-                        )
-                        .replace(
-                                "%confirmed_episodes_2h%",
-                                Integer.toString(
-                                        decision.confirmedEpisodes2h()
-                                )
-                        )
-                        .replace(
-                                "%confirmed_episodes_retention%",
-                                Integer.toString(
-                                        decision.confirmedEpisodesRetention()
-                                )
-                        )
-                        .replace(
-                                "%episode_confidence%",
-                                formatMetric(decision.confidence())
-                        )
-                        .replace(
-                                "%integrity_score%",
-                                formatMetric(integrity)
-                        )
-                        .replace(
-                                "%check_name%",
-                                check.getDisplayName() == null
-                                        ? "Unknown"
-                                        : check.getDisplayName()
-                        )
-                        .replace(
-                                "%component%",
-                                decision.component()
-                        )
-        );
+        if (!confirmedEpisodeSanctionsEnabled) {
+            policyReason = "policy-disabled";
+        } else if (rule == null) {
+            policyReason = "no-rule";
+        } else if (!rule.enabled()) {
+            policyReason = "observe-only";
+        } else {
+            autonomousEligible =
+                    confirmedEpisodeSanctionEligible(check, decision);
 
-        boolean canceled = COMMAND_CHANNEL.fire(
-                player,
-                check,
-                "confirmed-episode family=" + decision.family()
-                        + " component=" + decision.component()
-                        + " 10m=" + decision.confirmedEpisodes10m()
-                        + " 2h=" + decision.confirmedEpisodes2h()
-                        + " confidence=" + formatMetric(decision.confidence()),
-                cmd
-        );
+            if (!autonomousEligible) {
+                policyReason = "family-not-autonomous";
+            } else if (confirmedEpisodeKickExecuted.get()) {
+                policyReason = "kick-already-queued";
+            } else {
+                boolean shortWindowTriggered =
+                        rule.minimumEpisodes10m() > 0
+                                && decision.confirmedEpisodes10m()
+                                >= rule.minimumEpisodes10m();
+                boolean longWindowTriggered =
+                        rule.minimumEpisodes2h() > 0
+                                && decision.confirmedEpisodes2h()
+                                >= rule.minimumEpisodes2h();
 
-        if (canceled
-                || !confirmedEpisodeKickExecuted.compareAndSet(
-                        false,
-                        true
-                )) {
-            return;
-        }
+                if (!shortWindowTriggered && !longWindowTriggered) {
+                    policyReason = "below-threshold";
+                } else if (decision.confidence()
+                        < rule.minimumConfidence()) {
+                    policyReason = "policy-confidence";
+                } else if (integrity
+                        < rule.minimumIntegrityScore()) {
+                    policyReason = "policy-integrity";
+                } else {
+                    String cmd = MessageUtil.replacePlaceholders(
+                            player,
+                            rule.command()
+                                    .replace(
+                                            "%episode_family%",
+                                            decision.family()
+                                    )
+                                    .replace(
+                                            "%episode_component%",
+                                            decision.component()
+                                    )
+                                    .replace(
+                                            "%confirmed_episodes_10m%",
+                                            Integer.toString(
+                                                    decision.confirmedEpisodes10m()
+                                            )
+                                    )
+                                    .replace(
+                                            "%confirmed_episodes_2h%",
+                                            Integer.toString(
+                                                    decision.confirmedEpisodes2h()
+                                            )
+                                    )
+                                    .replace(
+                                            "%confirmed_episodes_retention%",
+                                            Integer.toString(
+                                                    decision.confirmedEpisodesRetention()
+                                            )
+                                    )
+                                    .replace(
+                                            "%episode_confidence%",
+                                            formatMetric(
+                                                    decision.confidence()
+                                            )
+                                    )
+                                    .replace(
+                                            "%integrity_score%",
+                                            formatMetric(integrity)
+                                    )
+                                    .replace(
+                                            "%check_name%",
+                                            check.getDisplayName() == null
+                                                    ? "Unknown"
+                                                    : check.getDisplayName()
+                                    )
+                                    .replace(
+                                            "%component%",
+                                            decision.component()
+                                    )
+                    );
 
-        GrimAPI.INSTANCE
-                .getScheduler()
-                .getGlobalRegionScheduler()
-                .run(
-                        GrimAPI.INSTANCE.getGrimPlugin(),
-                        () -> GrimAPI.INSTANCE
-                                .getPlatformServer()
-                                .dispatchCommand(
-                                        GrimAPI.INSTANCE
+                    boolean canceled = COMMAND_CHANNEL.fire(
+                            player,
+                            check,
+                            "confirmed-episode family="
+                                    + decision.family()
+                                    + " component="
+                                    + decision.component()
+                                    + " 10m="
+                                    + decision.confirmedEpisodes10m()
+                                    + " 2h="
+                                    + decision.confirmedEpisodes2h()
+                                    + " confidence="
+                                    + formatMetric(
+                                            decision.confidence()
+                                    ),
+                            cmd
+                    );
+
+                    if (canceled) {
+                        policyReason = "command-event-canceled";
+                    } else if (!confirmedEpisodeKickExecuted
+                            .compareAndSet(false, true)) {
+                        policyReason = "kick-already-queued";
+                    } else {
+                        action = "KICK_QUEUED";
+                        policyReason = "threshold-met";
+
+                        GrimAPI.INSTANCE
+                                .getScheduler()
+                                .getGlobalRegionScheduler()
+                                .run(
+                                        GrimAPI.INSTANCE.getGrimPlugin(),
+                                        () -> GrimAPI.INSTANCE
                                                 .getPlatformServer()
-                                                .getConsoleSender(),
-                                        cmd
-                                )
-                );
+                                                .dispatchCommand(
+                                                        GrimAPI.INSTANCE
+                                                                .getPlatformServer()
+                                                                .getConsoleSender(),
+                                                        cmd
+                                                )
+                                );
+                    }
+                }
+            }
+        }
+
+        auditEpisodeDecision(
+                check,
+                decision,
+                rule,
+                integrity,
+                action,
+                policyReason,
+                autonomousEligible
+        );
+    }
+
+    private void auditEpisodeDecision(
+            Check check,
+            SanctionEpisodeManager.Decision decision,
+            EpisodeSanctionRule rule,
+            double integrity,
+            String action,
+            String policyReason,
+            boolean autonomousEligible
+    ) {
+        if (!episodeAuditEnabled) {
+            return;
+        }
+
+        if (decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.REJECTED
+                && !episodeAuditLogRejections) {
+            return;
+        }
+
+        boolean observeOnly =
+                decision.recorded()
+                        && (rule == null
+                        || !rule.enabled()
+                        || !autonomousEligible);
+
+        if (observeOnly && !episodeAuditLogObserveOnly) {
+            return;
+        }
+
+        int minimum10m =
+                rule == null ? 0 : rule.minimumEpisodes10m();
+        int minimum2h =
+                rule == null ? 0 : rule.minimumEpisodes2h();
+        double minimumConfidence =
+                rule == null ? 1.0D : rule.minimumConfidence();
+
+        String stableKey = check.getStableKey();
+        String displayName = check.getDisplayName() == null
+                ? "Unknown"
+                : check.getDisplayName();
+
+        var lag = GrimAPI.INSTANCE.getLagProtectionManager();
+
+        LogUtil.info(
+                "[SanctionAudit]"
+                        + " player=" + player.getName()
+                        + " check=" + displayName.replace(' ', '_')
+                        + " stable="
+                        + (stableKey == null ? "" : stableKey)
+                        + " outcome=" + decision.outcome().name()
+                        + " family=" + decision.family()
+                        + " component=" + decision.component()
+                        + " action=" + action
+                        + " reason=" + policyReason.replace(' ', '_')
+                        + " episodes10m="
+                        + decision.confirmedEpisodes10m()
+                        + "/" + minimum10m
+                        + " episodes2h="
+                        + decision.confirmedEpisodes2h()
+                        + "/" + minimum2h
+                        + " confidence="
+                        + formatMetric(decision.confidence())
+                        + "/" + formatMetric(minimumConfidence)
+                        + " serverConfidence="
+                        + formatMetric(decision.serverConfidence())
+                        + " playerConfidence="
+                        + formatMetric(decision.playerConfidence())
+                        + " tps=" + formatMetric(decision.tps())
+                        + " ping=" + player.getTransactionPing()
+                        + " avgPing="
+                        + formatMetric(
+                                lag.getAveragePingMillis(player.uuid)
+                        )
+                        + " jitter="
+                        + formatMetric(
+                                lag.getPlayerJitterMillis(player.uuid)
+                        )
+                        + " integrity=" + formatMetric(integrity)
+                        + " recovery="
+                        + (decision.recovery() ? "YES" : "NO")
+                        + " autonomous="
+                        + (autonomousEligible ? "YES" : "NO")
+        );
     }
 
     private boolean confirmedEpisodeSanctionEligible(
