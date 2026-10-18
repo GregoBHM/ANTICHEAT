@@ -263,9 +263,10 @@ public class Check extends GrimProcessor implements AbstractCheck {
                         episodeToken
                 );
 
-        if (decision.recorded()) {
-            player.punishmentManager.handleConfirmedEpisode(this, decision);
-        }
+        player.punishmentManager.handleEpisodeDecision(
+                this,
+                decision
+        );
 
         return decision;
     }
