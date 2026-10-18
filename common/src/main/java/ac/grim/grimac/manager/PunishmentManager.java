@@ -19,6 +19,7 @@ import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public class PunishmentManager implements ConfigReloadable {
@@ -50,6 +52,12 @@ public class PunishmentManager implements ConfigReloadable {
     private double sanctionMinimumPlayerConfidence = 0.80D;
     private double sanctionMinimumTps = 18.0D;
     private boolean legacyOneEightNativeSensitiveSanctionsOnly = true;
+    private boolean legacyVlActionsEnabled;
+    private boolean confirmedEpisodeSanctionsEnabled = true;
+    private final Map<String, EpisodeSanctionRule> episodeSanctionRules =
+            new HashMap<>();
+    private final AtomicBoolean confirmedEpisodeKickExecuted =
+            new AtomicBoolean(false);
 
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
@@ -132,6 +140,93 @@ public class PunishmentManager implements ConfigReloadable {
         legacyOneEightNativeSensitiveSanctionsOnly = config.getBooleanElse(
                 "sanctions.legacy-1_8.native-sensitive-sanctions-only",
                 true
+        );
+        legacyVlActionsEnabled = config.getBooleanElse(
+                "sanctions.legacy-vl-actions-enabled",
+                false
+        );
+
+        confirmedEpisodeSanctionsEnabled = config.getBooleanElse(
+                "episode-sanctions.enabled",
+                true
+        );
+        episodeSanctionRules.clear();
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_TIMER,
+                "timer",
+                true,
+                4,
+                6,
+                0.90D,
+                0.0D,
+                "kick %player% Repeated confirmed Timer abuse detected by SparkGrim."
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_VELOCITY,
+                "velocity",
+                true,
+                4,
+                6,
+                0.90D,
+                4.0D,
+                "kick %player% Repeated confirmed invalid knockback detected by SparkGrim."
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_COMBAT,
+                "combat",
+                true,
+                4,
+                6,
+                0.90D,
+                0.0D,
+                "kick %player% Repeated confirmed invalid combat interactions detected by SparkGrim."
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_MOVEMENT,
+                "movement",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_ITEM_USE,
+                "item-use",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_GROUND,
+                "ground",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_NETWORK,
+                "network",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
         );
 
         try {
