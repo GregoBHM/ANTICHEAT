@@ -501,14 +501,11 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                             () -> {
                                 if (confirmNormalOnAcceptedFlag
                                         && !normalEpisodeConfirmed) {
-                                    var confirmation = GrimAPI.INSTANCE
-                                            .getSanctionEpisodeManager()
-                                            .confirm(
-                                                    player,
-                                                    ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
-                                                    simulationComponent,
-                                                    specialEpisodeToken
-                                            );
+                                    var confirmation = confirmSanctionEpisode(
+                                            ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
+                                            simulationComponent,
+                                            specialEpisodeToken
+                                    );
                                     if (!confirmation.blocked()) {
                                         normalEpisodeConfirmed = true;
                                     }
@@ -586,14 +583,11 @@ public class OffsetHandler extends Check implements PostPredictionListener {
                     && normalEpisodeFlagAccepted
                     && severeMovement
                     && !normalEpisodeConfirmed) {
-                var confirmation = GrimAPI.INSTANCE
-                        .getSanctionEpisodeManager()
-                        .confirm(
-                                player,
-                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
-                                simulationComponent,
-                                specialEpisodeToken
-                        );
+                var confirmation = confirmSanctionEpisode(
+                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_MOVEMENT,
+                        simulationComponent,
+                        specialEpisodeToken
+                );
                 if (!confirmation.blocked()) {
                     normalEpisodeConfirmed = true;
                 }
