@@ -167,10 +167,10 @@ public class PunishmentManager implements ConfigReloadable {
                 SanctionEpisodeManager.FAMILY_VELOCITY,
                 "velocity",
                 true,
-                4,
-                6,
-                0.90D,
-                4.0D,
+                5,
+                8,
+                0.92D,
+                0.0D,
                 "kick %player% Repeated confirmed invalid knockback detected by SparkGrim."
         );
         loadEpisodeSanctionRule(
