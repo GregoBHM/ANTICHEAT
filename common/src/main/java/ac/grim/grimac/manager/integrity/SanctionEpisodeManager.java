@@ -164,6 +164,7 @@ public final class SanctionEpisodeManager {
                     sanitize(component),
                     0,
                     0,
+                    0,
                     0.0D,
                     true,
                     "disabled"
@@ -515,6 +516,12 @@ public final class SanctionEpisodeManager {
                 now,
                 TimeUnit.MINUTES.toNanos(10L)
         );
+        int twoHours = countLocked(
+                state,
+                family,
+                now,
+                TimeUnit.HOURS.toNanos(2L)
+        );
         int retained = countLocked(
                 state,
                 family,
@@ -527,6 +534,7 @@ public final class SanctionEpisodeManager {
                 family,
                 sanitize(component),
                 tenMinutes,
+                twoHours,
                 retained,
                 eligibility.confidence,
                 !eligibility.allowed,
@@ -694,6 +702,7 @@ public final class SanctionEpisodeManager {
             @NotNull String family,
             @NotNull String component,
             int confirmedEpisodes10m,
+            int confirmedEpisodes2h,
             int confirmedEpisodesRetention,
             double confidence,
             boolean blocked,
