@@ -16,10 +16,41 @@ sanctions:
   minimum-server-confidence: 0.80
   minimum-player-confidence: 0.80
   minimum-tps: 18.0
+  # Compatibility safety: old sanction_vl kick conditions are ignored by
+  # default for non-crash checks. Set true only to intentionally restore them.
+  legacy-vl-actions-enabled: false
   legacy-1_8:
     # On a 1.8.8 backend, translated modern clients still get prevention and
     # alerts, but combat geometry/velocity cannot create autonomous sanctions.
     native-sensitive-sanctions-only: true
+
+
+# Phase 3A: automatic sanctions are driven by newly confirmed physical episodes,
+# never by raw VL. This phase is deliberately kick-only; bans are not accepted.
+episode-sanctions:
+  enabled: true
+  families:
+    timer:
+      enabled: true
+      minimum-episodes-10m: 4
+      minimum-episodes-2h: 6
+      minimum-confidence: 0.90
+      minimum-integrity-score: 0.0
+      command: "kick %player% Repeated confirmed Timer abuse detected by SparkGrim."
+    velocity:
+      enabled: true
+      minimum-episodes-10m: 4
+      minimum-episodes-2h: 6
+      minimum-confidence: 0.90
+      minimum-integrity-score: 4.0
+      command: "kick %player% Repeated confirmed invalid knockback detected by SparkGrim."
+    combat:
+      enabled: true
+      minimum-episodes-10m: 4
+      minimum-episodes-2h: 6
+      minimum-confidence: 0.90
+      minimum-integrity-score: 0.0
+      command: "kick %player% Repeated confirmed invalid combat interactions detected by SparkGrim."
 
 Punishments:
   Simulation:
@@ -43,7 +74,6 @@ Punishments:
       - "1:1 [log]"
       - "25:25 [webhook]"
       - "25:25 [proxy]"
-      - "1:0 if sanction_vl>=100 do kick %player% Timer abuse detected by SparkGrim."
 
   TimerLimit:
     remove-violations-after: 300
@@ -101,7 +131,6 @@ Punishments:
       - "1:1 [log]"
       - "20:20 [webhook]"
       - "20:20 [proxy]"
-      - "1:0 if sanction_vl>=50 & integrity_score>=4.0 do kick %player% Invalid knockback detected by SparkGrim."
 
   Explosion:
     remove-violations-after: 300
@@ -169,7 +198,6 @@ Punishments:
       - "1:1 [log]"
       - "3:3 [webhook]"
       - "3:3 [proxy]"
-      - "1:0 if sanction_vl>=20 do kick %player% Invalid reach detected by SparkGrim."
   Hitboxes:
     remove-violations-after: 300
     checks:
@@ -179,7 +207,6 @@ Punishments:
       - "1:1 [log]"
       - "5:3 [webhook]"
       - "5:3 [proxy]"
-      - "1:0 if sanction_vl>=30 do kick %player% Invalid hitbox interaction detected by SparkGrim."
   Misc:
     remove-violations-after: 300
     threshold-scope: check
