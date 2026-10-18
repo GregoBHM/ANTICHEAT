@@ -160,13 +160,18 @@ public final class SanctionEpisodeManager {
         if (!enabled) {
             return new Decision(
                     false,
+                    DecisionOutcome.DISABLED,
                     normalizedFamily,
                     sanitize(component),
                     0,
                     0,
                     0,
                     0.0D,
+                    0.0D,
+                    0.0D,
+                    0.0D,
                     true,
+                    false,
                     "disabled"
             );
         }
@@ -194,11 +199,16 @@ public final class SanctionEpisodeManager {
                     if (episode.token.equals(normalizedToken)) {
                         return decision(
                                 false,
+                                DecisionOutcome.DUPLICATE,
                                 state,
                                 normalizedFamily,
                                 new Eligibility(
                                         true,
                                         episode.confidence,
+                                        0.0D,
+                                        0.0D,
+                                        0.0D,
+                                        false,
                                         "duplicate"
                                 ),
                                 normalizedComponent
@@ -214,11 +224,16 @@ public final class SanctionEpisodeManager {
                     if (episode.token.equals(normalizedToken)) {
                         return decision(
                                 false,
+                                DecisionOutcome.REJECTED_DUPLICATE,
                                 state,
                                 normalizedFamily,
                                 new Eligibility(
                                         false,
                                         0.0D,
+                                        0.0D,
+                                        0.0D,
+                                        0.0D,
+                                        episode.reason.startsWith("recovery:"),
                                         episode.reason
                                 ),
                                 normalizedComponent
@@ -234,7 +249,11 @@ public final class SanctionEpisodeManager {
             if (recoveryBlockedLocked(state, now)) {
                 eligibility = new Eligibility(
                         false,
-                        0.0D,
+                        eligibility.confidence,
+                        eligibility.serverConfidence,
+                        eligibility.playerConfidence,
+                        eligibility.tps,
+                        true,
                         "recovery:" + state.lastContinuityReason
                 );
             }
@@ -251,6 +270,7 @@ public final class SanctionEpisodeManager {
                 }
                 return decision(
                         false,
+                        DecisionOutcome.REJECTED,
                         state,
                         normalizedFamily,
                         eligibility,
@@ -281,6 +301,7 @@ public final class SanctionEpisodeManager {
 
             return decision(
                     true,
+                    DecisionOutcome.RECORDED,
                     state,
                     normalizedFamily,
                     eligibility,
@@ -461,24 +482,6 @@ public final class SanctionEpisodeManager {
             @NotNull GrimPlayer player,
             long now
     ) {
-        if (!enabled) {
-            return new Eligibility(false, 0.0D, "disabled");
-        }
-
-        State existing = states.get(player.uuid);
-        if (existing != null) {
-            synchronized (existing) {
-                purgeLocked(existing, now);
-                if (recoveryBlockedLocked(existing, now)) {
-                    return new Eligibility(
-                            false,
-                            0.0D,
-                            "recovery:" + existing.lastContinuityReason
-                    );
-                }
-            }
-        }
-
         var lag = GrimAPI.INSTANCE.getLagProtectionManager();
         double serverConfidence = lag.heuristicConfidence();
         double playerConfidence = lag.playerNetworkConfidence(player);
@@ -488,6 +491,24 @@ public final class SanctionEpisodeManager {
         );
         double tps = GrimAPI.INSTANCE.getPlatformServer().getTPS();
 
+        State existing = states.get(player.uuid);
+        if (existing != null) {
+            synchronized (existing) {
+                purgeLocked(existing, now);
+                if (recoveryBlockedLocked(existing, now)) {
+                    return new Eligibility(
+                            false,
+                            confidence,
+                            serverConfidence,
+                            playerConfidence,
+                            tps,
+                            true,
+                            "recovery:" + existing.lastContinuityReason
+                    );
+                }
+            }
+        }
+
         if (confidence < minimumConfidence
                 || serverConfidence < minimumServerConfidence
                 || playerConfidence < minimumPlayerConfidence
@@ -495,15 +516,28 @@ public final class SanctionEpisodeManager {
             return new Eligibility(
                     false,
                     confidence,
+                    serverConfidence,
+                    playerConfidence,
+                    tps,
+                    false,
                     "confidence"
             );
         }
 
-        return new Eligibility(true, confidence, "ok");
+        return new Eligibility(
+                true,
+                confidence,
+                serverConfidence,
+                playerConfidence,
+                tps,
+                false,
+                "ok"
+        );
     }
 
     private @NotNull Decision decision(
             boolean recorded,
+            @NotNull DecisionOutcome outcome,
             @NotNull State state,
             @NotNull String family,
             @NotNull Eligibility eligibility,
@@ -531,13 +565,18 @@ public final class SanctionEpisodeManager {
 
         return new Decision(
                 recorded,
+                outcome,
                 family,
                 sanitize(component),
                 tenMinutes,
                 twoHours,
                 retained,
                 eligibility.confidence,
+                eligibility.serverConfidence,
+                eligibility.playerConfidence,
+                eligibility.tps,
                 !eligibility.allowed,
+                eligibility.recovery,
                 eligibility.reason
         );
     }
@@ -697,15 +736,28 @@ public final class SanctionEpisodeManager {
     ) {
     }
 
+    public enum DecisionOutcome {
+        RECORDED,
+        REJECTED,
+        DUPLICATE,
+        REJECTED_DUPLICATE,
+        DISABLED
+    }
+
     public record Decision(
             boolean recorded,
+            @NotNull DecisionOutcome outcome,
             @NotNull String family,
             @NotNull String component,
             int confirmedEpisodes10m,
             int confirmedEpisodes2h,
             int confirmedEpisodesRetention,
             double confidence,
+            double serverConfidence,
+            double playerConfidence,
+            double tps,
             boolean blocked,
+            boolean recovery,
             @NotNull String reason
     ) {
     }
@@ -713,6 +765,10 @@ public final class SanctionEpisodeManager {
     private record Eligibility(
             boolean allowed,
             double confidence,
+            double serverConfidence,
+            double playerConfidence,
+            double tps,
+            boolean recovery,
             @NotNull String reason
     ) {
     }
