@@ -187,8 +187,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 // physical stall, so avoid a duplicate raw VL/alert. The hard
                 // release itself is still independently strong enough to enter
                 // the long-window NETWORK ledger.
-                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                        player,
+                confirmSanctionEpisode(
                         ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_NETWORK,
                         "connectionstall.hard-release",
                         networkEpisodeToken
@@ -208,8 +207,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                                 + " prevention=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.preventionConfidence)
                                 + " sanction=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.sanctionConfidence)
                                 + " corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation),
-                        () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                player,
+                        () -> confirmSanctionEpisode(
                                 ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_NETWORK,
                                 "connectionstall.hard-release",
                                 networkEpisodeToken
