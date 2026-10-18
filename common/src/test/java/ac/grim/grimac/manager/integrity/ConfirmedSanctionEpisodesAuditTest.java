@@ -753,9 +753,10 @@ class ConfirmedSanctionEpisodesAuditTest {
                 reach,
                 stall
         }) {
-            assertTrue(producer.contains("confirmSanctionEpisode("));
-            assertFalse(producer.contains(
-                    ".getSanctionEpisodeManager().confirm("
+            String compact = producer.replaceAll("\\s+", "");
+            assertTrue(compact.contains("confirmSanctionEpisode("));
+            assertFalse(compact.contains(
+                    "getSanctionEpisodeManager().confirm("
             ));
         }
     }
