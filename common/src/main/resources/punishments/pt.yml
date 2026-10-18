@@ -38,10 +38,10 @@ episode-sanctions:
       command: "kick %player% Repeated confirmed Timer abuse detected by SparkGrim."
     velocity:
       enabled: true
-      minimum-episodes-10m: 4
-      minimum-episodes-2h: 6
-      minimum-confidence: 0.90
-      minimum-integrity-score: 4.0
+      minimum-episodes-10m: 5
+      minimum-episodes-2h: 8
+      minimum-confidence: 0.92
+      minimum-integrity-score: 0.0
       command: "kick %player% Repeated confirmed invalid knockback detected by SparkGrim."
     combat:
       enabled: true
