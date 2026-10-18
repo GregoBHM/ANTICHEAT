@@ -643,7 +643,7 @@ class ConfirmedSanctionEpisodesAuditTest {
     }
 
     @Test
-    void newConfirmedEpisodeIsTheOnlyAutomaticKickTrigger()
+    void newEpisodeDecisionIsTheOnlyAutomaticKickTrigger()
             throws IOException {
         String check = source("checks/Check.java");
         String punishment = source("manager/PunishmentManager.java");
@@ -652,23 +652,26 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "public final @NotNull SanctionEpisodeManager.Decision confirmSanctionEpisode("
         ));
         assertTrue(check.contains(
-                "if (decision.recorded())"
-        ));
-        assertTrue(check.contains(
-                "player.punishmentManager.handleConfirmedEpisode(this, decision)"
+                "player.punishmentManager.handleEpisodeDecision("
         ));
 
         assertTrue(punishment.contains(
-                "public void handleConfirmedEpisode("
+                "public void handleEpisodeDecision("
         ));
         assertTrue(punishment.contains(
-                "|| !decision.recorded()"
+                "DecisionOutcome.DUPLICATE"
         ));
         assertTrue(punishment.contains(
-                "confirmedEpisodeKickExecuted.compareAndSet("
+                "DecisionOutcome.REJECTED_DUPLICATE"
+        ));
+        assertTrue(punishment.contains(
+                "confirmedEpisodeKickExecuted"
+        ));
+        assertTrue(punishment.contains(
+                ".compareAndSet(false, true)"
         ));
         assertFalse(punishment.contains(
-                "handleConfirmedEpisode(this"
+                "public void handleConfirmedEpisode("
         ));
     }
 
@@ -759,6 +762,100 @@ class ConfirmedSanctionEpisodesAuditTest {
                     "getSanctionEpisodeManager().confirm("
             ));
         }
+    }
+
+
+    @Test
+    void phaseThreeBAuditIsStructuredAndEpisodeScoped()
+            throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+        String manager = source(
+                "manager/integrity/SanctionEpisodeManager.java"
+        );
+
+        assertTrue(manager.contains(
+                "public enum DecisionOutcome"
+        ));
+        assertTrue(manager.contains("RECORDED"));
+        assertTrue(manager.contains("REJECTED"));
+        assertTrue(manager.contains("DUPLICATE"));
+        assertTrue(manager.contains("REJECTED_DUPLICATE"));
+        assertTrue(manager.contains(
+                "double serverConfidence"
+        ));
+        assertTrue(manager.contains(
+                "double playerConfidence"
+        ));
+        assertTrue(manager.contains("double tps"));
+        assertTrue(manager.contains("boolean recovery"));
+
+        assertTrue(punishment.contains(
+                "\"episode-sanctions.audit.enabled\""
+        ));
+        assertTrue(punishment.contains(
+                "\"episode-sanctions.audit.log-rejections\""
+        ));
+        assertTrue(punishment.contains(
+                "\"episode-sanctions.audit.log-observe-only\""
+        ));
+        assertTrue(punishment.contains(
+                "\"[SanctionAudit]\""
+        ));
+        assertTrue(punishment.contains(
+                "\" outcome=\" + decision.outcome().name()"
+        ));
+        assertTrue(punishment.contains(
+                "\" action=\" + action"
+        ));
+        assertTrue(punishment.contains(
+                "\" episodes10m=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" episodes2h=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" serverConfidence=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" playerConfidence=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" tps=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" avgPing=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" jitter=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" integrity=\""
+        ));
+        assertTrue(punishment.contains(
+                "\" recovery=\""
+        ));
+    }
+
+    @Test
+    void duplicateEpisodeTokensNeverSpamSanctionAudit()
+            throws IOException {
+        String punishment = source("manager/PunishmentManager.java");
+
+        int duplicate = punishment.indexOf(
+                "DecisionOutcome.DUPLICATE"
+        );
+        int audit = punishment.indexOf(
+                "auditEpisodeDecision(",
+                duplicate
+        );
+
+        assertTrue(duplicate >= 0);
+        assertTrue(audit > duplicate);
+        String prefix = punishment.substring(
+                duplicate,
+                Math.min(audit, punishment.length())
+        );
+        assertTrue(prefix.contains("return;"));
     }
 
 
