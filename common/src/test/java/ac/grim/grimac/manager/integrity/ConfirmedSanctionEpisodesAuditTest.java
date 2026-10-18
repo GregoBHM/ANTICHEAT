@@ -805,6 +805,12 @@ class ConfirmedSanctionEpisodesAuditTest {
                 "\" outcome=\" + decision.outcome().name()"
         ));
         assertTrue(punishment.contains(
+                "\" episode=\""
+        ));
+        assertTrue(punishment.contains(
+                "decision.episodeToken()"
+        ));
+        assertTrue(punishment.contains(
                 "\" action=\" + action"
         ));
         assertTrue(punishment.contains(
