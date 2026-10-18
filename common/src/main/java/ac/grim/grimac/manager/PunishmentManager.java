@@ -58,6 +58,9 @@ public class PunishmentManager implements ConfigReloadable {
             new HashMap<>();
     private final AtomicBoolean confirmedEpisodeKickExecuted =
             new AtomicBoolean(false);
+    private boolean episodeAuditEnabled = true;
+    private boolean episodeAuditLogRejections = true;
+    private boolean episodeAuditLogObserveOnly = true;
 
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
@@ -148,6 +151,18 @@ public class PunishmentManager implements ConfigReloadable {
 
         confirmedEpisodeSanctionsEnabled = config.getBooleanElse(
                 "episode-sanctions.enabled",
+                true
+        );
+        episodeAuditEnabled = config.getBooleanElse(
+                "episode-sanctions.audit.enabled",
+                true
+        );
+        episodeAuditLogRejections = config.getBooleanElse(
+                "episode-sanctions.audit.log-rejections",
+                true
+        );
+        episodeAuditLogObserveOnly = config.getBooleanElse(
+                "episode-sanctions.audit.log-observe-only",
                 true
         );
         episodeSanctionRules.clear();
