@@ -224,8 +224,7 @@ public class NoSlow extends Check implements PostPredictionListener {
                                     + decision.observations()
                                     + " episodeFlags="
                                     + decision.flags(),
-                            () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                    player,
+                            () -> confirmSanctionEpisode(
                                     ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_ITEM_USE,
                                     "noslow.normal",
                                     normalEpisode.token()
