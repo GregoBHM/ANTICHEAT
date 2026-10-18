@@ -303,8 +303,7 @@ public class Reach extends Check implements PacketReceiveListener {
                                 }
                                 return result.verbose() + added;
                             },
-                            () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                    player,
+                            () -> confirmSanctionEpisode(
                                     ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
                                     "reach",
                                     combatEpisodeToken
@@ -318,17 +317,17 @@ public class Reach extends Check implements PacketReceiveListener {
                     if (reachEntity instanceof PacketEntitySizeable sizeable) {
                         added += ", size=" + sizeable.size;
                     }
-                    player.checkManager.get(Hitboxes.class)
-                            .flagComponent(
+                    Hitboxes hitboxes =
+                            player.checkManager.get(Hitboxes.class);
+                    hitboxes.flagComponent(
+                            "hitbox",
+                            result.verbose() + added,
+                            () -> hitboxes.confirmSanctionEpisode(
+                                    ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
                                     "hitbox",
-                                    result.verbose() + added,
-                                    () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                            player,
-                                            ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_COMBAT,
-                                            "hitbox",
-                                            combatEpisodeToken
-                                    )
-                            );
+                                    combatEpisodeToken
+                            )
+                    );
                 }
             }
         }
