@@ -28,6 +28,12 @@ sanctions:
 # never by raw VL. This phase is deliberately kick-only; bans are not accepted.
 episode-sanctions:
   enabled: true
+  audit:
+    # One structured console line per NEW physical episode. Duplicate tokens
+    # are silent, so this is suitable for real-server regression testing.
+    enabled: true
+    log-rejections: true
+    log-observe-only: true
   families:
     timer:
       enabled: true
