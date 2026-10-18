@@ -348,8 +348,7 @@ public class KnockbackHandler extends Check implements PacketSendListener, PostP
                         () -> alertText,
                         () -> {
                             if (strongEpisode) {
-                                GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                        player,
+                                confirmSanctionEpisode(
                                         ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_VELOCITY,
                                         "velocity.normal",
                                         "kb#tx=" + player.likelyKB.transaction
