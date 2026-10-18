@@ -1274,6 +1274,258 @@ public class PunishmentManager implements ConfigReloadable {
         return String.format(Locale.ROOT, "%.2f", value);
     }
 
+    private void loadEpisodeSanctionRule(
+            ConfigManager config,
+            String family,
+            String configKey,
+            boolean defaultEnabled,
+            int defaultMinimum10m,
+            int defaultMinimum2h,
+            double defaultMinimumConfidence,
+            double defaultMinimumIntegrity,
+            String defaultCommand
+    ) {
+        String base = "episode-sanctions.families." + configKey + ".";
+
+        boolean enabled = config.getBooleanElse(
+                base + "enabled",
+                defaultEnabled
+        );
+        int minimum10m = (int) Math.max(
+                0L,
+                Math.min(
+                        100L,
+                        config.getLongElse(
+                                base + "minimum-episodes-10m",
+                                defaultMinimum10m
+                        )
+                )
+        );
+        int minimum2h = (int) Math.max(
+                0L,
+                Math.min(
+                        256L,
+                        config.getLongElse(
+                                base + "minimum-episodes-2h",
+                                defaultMinimum2h
+                        )
+                )
+        );
+        double minimumConfidence = clamp01(
+                config.getDoubleElse(
+                        base + "minimum-confidence",
+                        defaultMinimumConfidence
+                )
+        );
+        double minimumIntegrity = Math.max(
+                0.0D,
+                config.getDoubleElse(
+                        base + "minimum-integrity-score",
+                        defaultMinimumIntegrity
+                )
+        );
+        String command = config.getStringElse(
+                base + "command",
+                defaultCommand
+        ).trim();
+
+        boolean kickOnly =
+                command.toLowerCase(Locale.ROOT).startsWith("kick ");
+
+        if (enabled
+                && (minimum10m <= 0 && minimum2h <= 0)) {
+            enabled = false;
+            LogUtil.warn(
+                    "Confirmed episode sanctions for " + family
+                            + " are disabled because both recurrence thresholds are zero."
+            );
+        }
+
+        if (enabled && !kickOnly) {
+            enabled = false;
+            LogUtil.warn(
+                    "Confirmed episode sanctions for " + family
+                            + " require a kick command in v15 Phase 3A. "
+                            + "Configured command was ignored: " + command
+            );
+        }
+
+        episodeSanctionRules.put(
+                family,
+                new EpisodeSanctionRule(
+                        enabled,
+                        minimum10m,
+                        minimum2h,
+                        minimumConfidence,
+                        minimumIntegrity,
+                        command
+                )
+        );
+    }
+
+    /**
+     * Episode-based automatic sanctions are evaluated only when a brand-new
+     * physical episode is recorded. Raw VL, repeated packets and duplicate
+     * tokens cannot enter this method.
+     */
+    public void handleConfirmedEpisode(
+            Check check,
+            SanctionEpisodeManager.Decision decision
+    ) {
+        if (!confirmedEpisodeSanctionsEnabled
+                || !decision.recorded()
+                || decision.blocked()
+                || confirmedEpisodeKickExecuted.get()) {
+            return;
+        }
+
+        EpisodeSanctionRule rule =
+                episodeSanctionRules.get(decision.family());
+
+        if (rule == null
+                || !rule.enabled
+                || !confirmedEpisodeSanctionEligible(check, decision)) {
+            return;
+        }
+
+        boolean shortWindowTriggered =
+                rule.minimumEpisodes10m > 0
+                        && decision.confirmedEpisodes10m()
+                        >= rule.minimumEpisodes10m;
+        boolean longWindowTriggered =
+                rule.minimumEpisodes2h > 0
+                        && decision.confirmedEpisodes2h()
+                        >= rule.minimumEpisodes2h;
+
+        if (!shortWindowTriggered && !longWindowTriggered) {
+            return;
+        }
+
+        if (decision.confidence() < rule.minimumConfidence) {
+            return;
+        }
+
+        double integrity = GrimAPI.INSTANCE
+                .getIntegrityCorrelationManager()
+                .getScore(player.uuid);
+
+        if (integrity < rule.minimumIntegrityScore) {
+            return;
+        }
+
+        String cmd = MessageUtil.replacePlaceholders(
+                player,
+                rule.command
+                        .replace("%episode_family%", decision.family())
+                        .replace("%episode_component%", decision.component())
+                        .replace(
+                                "%confirmed_episodes_10m%",
+                                Integer.toString(
+                                        decision.confirmedEpisodes10m()
+                                )
+                        )
+                        .replace(
+                                "%confirmed_episodes_2h%",
+                                Integer.toString(
+                                        decision.confirmedEpisodes2h()
+                                )
+                        )
+                        .replace(
+                                "%confirmed_episodes_retention%",
+                                Integer.toString(
+                                        decision.confirmedEpisodesRetention()
+                                )
+                        )
+                        .replace(
+                                "%episode_confidence%",
+                                formatMetric(decision.confidence())
+                        )
+                        .replace(
+                                "%integrity_score%",
+                                formatMetric(integrity)
+                        )
+                        .replace(
+                                "%check_name%",
+                                check.getDisplayName() == null
+                                        ? "Unknown"
+                                        : check.getDisplayName()
+                        )
+                        .replace(
+                                "%component%",
+                                decision.component()
+                        )
+        );
+
+        boolean canceled = COMMAND_CHANNEL.fire(
+                player,
+                check,
+                "confirmed-episode family=" + decision.family()
+                        + " component=" + decision.component()
+                        + " 10m=" + decision.confirmedEpisodes10m()
+                        + " 2h=" + decision.confirmedEpisodes2h()
+                        + " confidence=" + formatMetric(decision.confidence()),
+                cmd
+        );
+
+        if (canceled
+                || !confirmedEpisodeKickExecuted.compareAndSet(
+                        false,
+                        true
+                )) {
+            return;
+        }
+
+        GrimAPI.INSTANCE
+                .getScheduler()
+                .getGlobalRegionScheduler()
+                .run(
+                        GrimAPI.INSTANCE.getGrimPlugin(),
+                        () -> GrimAPI.INSTANCE
+                                .getPlatformServer()
+                                .dispatchCommand(
+                                        GrimAPI.INSTANCE
+                                                .getPlatformServer()
+                                                .getConsoleSender(),
+                                        cmd
+                                )
+                );
+    }
+
+    private boolean confirmedEpisodeSanctionEligible(
+            Check check,
+            SanctionEpisodeManager.Decision decision
+    ) {
+        String key = check.getStableKey();
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+
+        return switch (decision.family()) {
+            case SanctionEpisodeManager.FAMILY_TIMER ->
+                    "grim.timer.timer".equals(key);
+
+            case SanctionEpisodeManager.FAMILY_VELOCITY ->
+                    "grim.velocity.anti_knockback".equals(key)
+                            && "velocity.normal".equals(decision.component())
+                            && sensitiveLegacyEvidenceAllowed();
+
+            case SanctionEpisodeManager.FAMILY_COMBAT ->
+                    ("grim.combat.reach".equals(key)
+                            || "grim.combat.hitboxes".equals(key))
+                            && sensitiveLegacyEvidenceAllowed();
+
+            // Phase 3A is intentionally kick-disabled for these families until
+            // real-server regression proves their confirmed episode quality.
+            case SanctionEpisodeManager.FAMILY_MOVEMENT,
+                 SanctionEpisodeManager.FAMILY_ITEM_USE,
+                 SanctionEpisodeManager.FAMILY_GROUND,
+                 SanctionEpisodeManager.FAMILY_NETWORK ->
+                    false;
+
+            default -> false;
+        };
+    }
+
     private boolean sanctionEvidenceEligible(Check check) {
         String key = check.getStableKey();
         if (key == null || key.isBlank()) {
@@ -1499,6 +1751,16 @@ public class PunishmentManager implements ConfigReloadable {
                 ? number.intValue()
                 : defaultValue;
     }
+}
+
+record EpisodeSanctionRule(
+        boolean enabled,
+        int minimumEpisodes10m,
+        int minimumEpisodes2h,
+        double minimumConfidence,
+        double minimumIntegrityScore,
+        String command
+) {
 }
 
 final class PunishGroup {
