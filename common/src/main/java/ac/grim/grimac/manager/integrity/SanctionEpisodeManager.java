@@ -154,6 +154,7 @@ public final class SanctionEpisodeManager {
             @NotNull String episodeToken
     ) {
         String normalizedFamily = normalizeFamily(family);
+        String auditEpisodeToken = sanitize(episodeToken);
 
         // Disabled means fully inert: do not even allocate per-player state,
         // because tick() is also disabled and therefore cannot purge it.
@@ -163,6 +164,7 @@ public final class SanctionEpisodeManager {
                     DecisionOutcome.DISABLED,
                     normalizedFamily,
                     sanitize(component),
+                    auditEpisodeToken,
                     0,
                     0,
                     0,
@@ -182,7 +184,7 @@ public final class SanctionEpisodeManager {
         String normalizedToken = "join="
                 + player.joinTime
                 + "|"
-                + sanitize(episodeToken);
+                + auditEpisodeToken;
 
         State state = states.computeIfAbsent(
                 player.uuid,
@@ -211,6 +213,7 @@ public final class SanctionEpisodeManager {
                                         false,
                                         "duplicate"
                                 ),
+                                auditEpisodeToken,
                                 normalizedComponent
                         );
                     }
@@ -236,6 +239,7 @@ public final class SanctionEpisodeManager {
                                         episode.reason.startsWith("recovery:"),
                                         episode.reason
                                 ),
+                                auditEpisodeToken,
                                 normalizedComponent
                         );
                     }
@@ -274,6 +278,7 @@ public final class SanctionEpisodeManager {
                         state,
                         normalizedFamily,
                         eligibility,
+                        auditEpisodeToken,
                         normalizedComponent
                 );
             }
@@ -305,6 +310,7 @@ public final class SanctionEpisodeManager {
                     state,
                     normalizedFamily,
                     eligibility,
+                    auditEpisodeToken,
                     normalizedComponent
             );
         }
@@ -541,6 +547,7 @@ public final class SanctionEpisodeManager {
             @NotNull State state,
             @NotNull String family,
             @NotNull Eligibility eligibility,
+            @NotNull String episodeToken,
             @NotNull String component
     ) {
         long now = System.nanoTime();
@@ -568,6 +575,7 @@ public final class SanctionEpisodeManager {
                 outcome,
                 family,
                 sanitize(component),
+                sanitize(episodeToken),
                 tenMinutes,
                 twoHours,
                 retained,
@@ -749,6 +757,7 @@ public final class SanctionEpisodeManager {
             @NotNull DecisionOutcome outcome,
             @NotNull String family,
             @NotNull String component,
+            @NotNull String episodeToken,
             int confirmedEpisodes10m,
             int confirmedEpisodes2h,
             int confirmedEpisodesRetention,
