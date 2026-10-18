@@ -100,8 +100,7 @@ public class NoFall extends Check implements PacketReceiveListener {
                                             + sharedEpisode.token()
                                             + " observations="
                                             + episode.observations(),
-                                    () -> GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                            player,
+                                    () -> confirmSanctionEpisode(
                                             ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_GROUND,
                                             "nofall.normal",
                                             sharedEpisode.token()
