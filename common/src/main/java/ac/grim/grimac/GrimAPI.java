@@ -29,6 +29,7 @@ import ac.grim.grimac.manager.integrity.InteractionContextManager;
 import ac.grim.grimac.manager.integrity.LagProtectionManager;
 import ac.grim.grimac.manager.integrity.MovementContextManager;
 import ac.grim.grimac.manager.integrity.MovementReleaseGuard;
+import ac.grim.grimac.manager.integrity.SanctionEpisodeManager;
 import ac.grim.grimac.manager.init.Initable;
 import ac.grim.grimac.platform.api.Platform;
 import ac.grim.grimac.platform.api.PlatformLoader;
@@ -68,6 +69,7 @@ public final class GrimAPI {
     private final LagProtectionManager lagProtectionManager;
     private final MovementContextManager movementContextManager;
     private final MovementReleaseGuard movementReleaseGuard;
+    private final SanctionEpisodeManager sanctionEpisodeManager;
     private final GrimExtensionManager extensionManager;
     private final EventBus eventBus;
     private final GrimExternalAPI externalAPI;
@@ -94,6 +96,7 @@ public final class GrimAPI {
         this.lagProtectionManager = new LagProtectionManager();
         this.movementContextManager = new MovementContextManager();
         this.movementReleaseGuard = new MovementReleaseGuard();
+        this.sanctionEpisodeManager = new SanctionEpisodeManager();
         this.extensionManager = new GrimExtensionManager();
         this.eventBus = new OptimizedEventBus(extensionManager);
         this.externalAPI = new GrimExternalAPI(this);

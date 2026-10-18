@@ -134,6 +134,11 @@ RotationPlace:
 # Grim ține cont de netcode-ul buguit aici... greu de generat fals pozitive, chiar și când apeși repetat click dreapta și butonul pentru mâna secundară
 # Mult mai stabil decât alte anticheaturi, dar raportează orice fals-pozitiv... am reparat multe probleme de netcode aici.
 NoSlow:
+    # One physical ItemUse session can contribute at most one normal NoSlow flag.
+    normal-episode:
+        window-ms: 5000
+        flag-interval-ms: 1000
+        max-flags-per-episode: 1
     # Cât de mare abatere e considerată „cheating”
     # Implicit este mai mică decât alte offs
     # Marchează între 0.03-0.2 constant cu NoSlow activ
@@ -200,6 +205,11 @@ Explosion:
     setbackvl: 3
 
 TimerA:
+    # Timer acceleration is episode-bounded while packet prevention stays active.
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 500
+    max-flags-per-episode: 2
+    episode-max-lifetime-ms: 2500
     setbackvl: 10
     prevention:
         enabled: true
@@ -212,6 +222,10 @@ TimerA:
 
 # Acest check limitează abuzul TimerA prevenind rămânerea în urmă a mișcării față de timpul real
 TimerLimit:
+    # A buffered/debt release is one diagnostic episode, not one VL per packet.
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
     # Ping la care check-ul începe să limiteze balanța timer, pentru a preveni abuzul.
     # Poate cauza setback pentru jucători legitimi doar dacă sunt peste acest prag de ping.
     # -1 pentru a dezactiva
@@ -682,6 +696,12 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    # Normal Simulation is also episode-bounded; one Fly episode must not become x300 VL.
+    normal-episode:
+        window-ms: 1200
+        flag-interval-ms: 500
+        max-flags-per-episode: 2
+        max-lifetime-ms: 3000
     # Destructive Simulation correction pauses only when the SERVER is unhealthy.
     # Player ping/jitter alone never becomes a movement bypass.
     minimum-server-confidence: 0.55
@@ -824,3 +844,29 @@ autoclicker-pattern:
     maximum-variance: 0.10
     minimum-periodicity: 0.95
     minimum-mode-ratio: 0.85
+
+# Long-window memory stores only independently confirmed episodes, never raw VL.
+# It is telemetry/punishment input only; this block does not enable autobans.
+sanction-episodes:
+    enabled: true
+    retention-seconds: 7200
+    max-episodes-per-family: 32
+    post-continuity-grace-ms: 1500
+    clean-recovery-predictions: 8
+    minimum-confidence: 0.85
+    minimum-server-confidence: 0.85
+    minimum-player-confidence: 0.85
+    minimum-tps: 18.0
+
+# Native ground-integrity packet spam is collapsed into physical fall episodes.
+NoFall:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
+    episode-max-lifetime-ms: 4000
+
+GroundSpoof:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
+    episode-max-lifetime-ms: 4000

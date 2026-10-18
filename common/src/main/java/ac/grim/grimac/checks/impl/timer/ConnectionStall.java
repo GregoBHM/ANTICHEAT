@@ -178,23 +178,46 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             regularFlagged = flaggedThisStall;
         }
 
-        if (hardDecision.flag && !regularFlagged) {
-            double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
-                    .record(player, ac.grim.grimac.manager.integrity.IntegritySignal.SELECTIVE_STALL);
+        if (hardDecision.flag) {
+            String networkEpisodeToken =
+                    "blink#release=" + hardDecision.episodeId;
 
-            if (flag("hard-release type=" + hardDecision.releaseType
-                    + " gap=" + TimeUnit.NANOSECONDS.toMillis(hardDecision.gapNanos)
-                    + "ms trans=" + hardDecision.transactionAdvance
-                    + " blockedPackets=" + getHardReleaseBlockedPackets()
-                    + " blockedActions=" + getHardReleaseBlockedActions()
-                    + " repeated=" + hardDecision.repeats
-                    + " prevention=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.preventionConfidence)
-                    + " sanction=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.sanctionConfidence)
-                    + " corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation))) {
-                synchronized (lock) {
-                    if (stallActive) {
-                        flaggedThisStall = true;
-                        lastFlagNanos = now;
+            if (regularFlagged) {
+                // A normal ConnectionStall flag already represented this
+                // physical stall, so avoid a duplicate raw VL/alert. The hard
+                // release itself is still independently strong enough to enter
+                // the long-window NETWORK ledger.
+                confirmSanctionEpisode(
+                        ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_NETWORK,
+                        "connectionstall.hard-release",
+                        networkEpisodeToken
+                );
+            } else {
+                double correlation = GrimAPI.INSTANCE.getIntegrityCorrelationManager()
+                        .record(player, ac.grim.grimac.manager.integrity.IntegritySignal.SELECTIVE_STALL);
+
+                if (flagComponent(
+                        "connectionstall.hard-release",
+                        "hard-release type=" + hardDecision.releaseType
+                                + " gap=" + TimeUnit.NANOSECONDS.toMillis(hardDecision.gapNanos)
+                                + "ms trans=" + hardDecision.transactionAdvance
+                                + " blockedPackets=" + getHardReleaseBlockedPackets()
+                                + " blockedActions=" + getHardReleaseBlockedActions()
+                                + " repeated=" + hardDecision.repeats
+                                + " prevention=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.preventionConfidence)
+                                + " sanction=" + String.format(java.util.Locale.ROOT, "%.2f", hardDecision.sanctionConfidence)
+                                + " corr=" + String.format(java.util.Locale.ROOT, "%.2f", correlation),
+                        () -> confirmSanctionEpisode(
+                                ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_NETWORK,
+                                "connectionstall.hard-release",
+                                networkEpisodeToken
+                        )
+                )) {
+                    synchronized (lock) {
+                        if (stallActive) {
+                            flaggedThisStall = true;
+                            lastFlagNanos = now;
+                        }
                     }
                 }
             }
@@ -408,6 +431,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 hardReleaseSetback && !rollbackAlreadyApplied,
                 shouldFlag,
                 true,
+                now,
                 releaseType,
                 sourceGap,
                 sourceTransactions,
@@ -1322,6 +1346,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             boolean applySetback,
             boolean flag,
             boolean confirmed,
+            long episodeId,
             String releaseType,
             long gapNanos,
             int transactionAdvance,
@@ -1330,7 +1355,10 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
             double sanctionConfidence
     ) {
         static final HardReleaseDecision NONE =
-                new HardReleaseDecision(false, false, false, false, "NONE", 0L, 0, 0, 0.0D, 0.0D);
+                new HardReleaseDecision(
+                        false, false, false, false, 0L,
+                        "NONE", 0L, 0, 0, 0.0D, 0.0D
+                );
 
         static HardReleaseDecision cancelOnly(
                 long gapNanos,
@@ -1338,7 +1366,7 @@ public final class ConnectionStall extends Check implements PrePredictionPacketR
                 int repeats
         ) {
             return new HardReleaseDecision(
-                    true, false, false, false, "OWNED",
+                    true, false, false, false, 0L, "OWNED",
                     gapNanos, transactionAdvance, repeats, 1.0D, 0.0D
             );
         }

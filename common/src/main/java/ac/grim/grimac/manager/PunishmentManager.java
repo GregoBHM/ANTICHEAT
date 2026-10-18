@@ -6,6 +6,7 @@ import ac.grim.grimac.api.config.ConfigManager;
 import ac.grim.grimac.api.config.ConfigReloadable;
 import ac.grim.grimac.api.event.events.CommandExecuteEvent;
 import ac.grim.grimac.checks.Check;
+import ac.grim.grimac.manager.integrity.SanctionEpisodeManager;
 import ac.grim.grimac.events.packets.ProxyAlertMessenger;
 import ac.grim.grimac.platform.api.player.PlatformPlayer;
 import ac.grim.grimac.player.GrimPlayer;
@@ -18,6 +19,7 @@ import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public class PunishmentManager implements ConfigReloadable {
@@ -49,6 +52,15 @@ public class PunishmentManager implements ConfigReloadable {
     private double sanctionMinimumPlayerConfidence = 0.80D;
     private double sanctionMinimumTps = 18.0D;
     private boolean legacyOneEightNativeSensitiveSanctionsOnly = true;
+    private boolean legacyVlActionsEnabled;
+    private boolean confirmedEpisodeSanctionsEnabled = true;
+    private final Map<String, EpisodeSanctionRule> episodeSanctionRules =
+            new HashMap<>();
+    private final AtomicBoolean confirmedEpisodeKickExecuted =
+            new AtomicBoolean(false);
+    private boolean episodeAuditEnabled = true;
+    private boolean episodeAuditLogRejections = true;
+    private boolean episodeAuditLogObserveOnly = true;
 
     // v21: staff-only diagnostic alerts emitted only when Grim actually sends a
     // movement correction. They never add VL and never execute punishments.
@@ -131,6 +143,105 @@ public class PunishmentManager implements ConfigReloadable {
         legacyOneEightNativeSensitiveSanctionsOnly = config.getBooleanElse(
                 "sanctions.legacy-1_8.native-sensitive-sanctions-only",
                 true
+        );
+        legacyVlActionsEnabled = config.getBooleanElse(
+                "sanctions.legacy-vl-actions-enabled",
+                false
+        );
+
+        confirmedEpisodeSanctionsEnabled = config.getBooleanElse(
+                "episode-sanctions.enabled",
+                true
+        );
+        episodeAuditEnabled = config.getBooleanElse(
+                "episode-sanctions.audit.enabled",
+                true
+        );
+        episodeAuditLogRejections = config.getBooleanElse(
+                "episode-sanctions.audit.log-rejections",
+                true
+        );
+        episodeAuditLogObserveOnly = config.getBooleanElse(
+                "episode-sanctions.audit.log-observe-only",
+                true
+        );
+        episodeSanctionRules.clear();
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_TIMER,
+                "timer",
+                true,
+                4,
+                6,
+                0.90D,
+                0.0D,
+                "kick %player% Repeated confirmed Timer abuse detected by SparkGrim."
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_VELOCITY,
+                "velocity",
+                true,
+                5,
+                8,
+                0.92D,
+                0.0D,
+                "kick %player% Repeated confirmed invalid knockback detected by SparkGrim."
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_COMBAT,
+                "combat",
+                true,
+                4,
+                6,
+                0.90D,
+                0.0D,
+                "kick %player% Repeated confirmed invalid combat interactions detected by SparkGrim."
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_MOVEMENT,
+                "movement",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_ITEM_USE,
+                "item-use",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_GROUND,
+                "ground",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
+        );
+        loadEpisodeSanctionRule(
+                config,
+                SanctionEpisodeManager.FAMILY_NETWORK,
+                "network",
+                false,
+                0,
+                0,
+                1.0D,
+                0.0D,
+                ""
         );
 
         try {
@@ -274,6 +385,7 @@ public class PunishmentManager implements ConfigReloadable {
 
         PunishmentCondition condition = null;
         boolean unless = false;
+        boolean legacySanctionVlCondition = false;
 
         String lower =
                 action.toLowerCase(Locale.ROOT);
@@ -304,6 +416,13 @@ public class PunishmentManager implements ConfigReloadable {
                             doIndex
                     ).trim();
 
+            String normalizedExpression =
+                    expression.toLowerCase(Locale.ROOT);
+            legacySanctionVlCondition =
+                    normalizedExpression.contains("sanction_vl")
+                            || normalizedExpression.contains("sanction_check_vl")
+                            || normalizedExpression.contains("sanction_group_vl");
+
             action =
                     action.substring(doIndex + 4).trim();
 
@@ -323,7 +442,8 @@ public class PunishmentManager implements ConfigReloadable {
                 interval,
                 action,
                 condition,
-                unless
+                unless,
+                legacySanctionVlCondition
         );
     }
 
@@ -388,6 +508,28 @@ public class PunishmentManager implements ConfigReloadable {
                 GrimAPI.INSTANCE.getAlertAggregationManager()
                         .severity(player.uuid, vl)
                         .name();
+
+        String episodeFamily = SanctionEpisodeManager.familyFor(
+                stableKey,
+                component
+        );
+        SanctionEpisodeManager.Snapshot episodeSnapshot =
+                GrimAPI.INSTANCE
+                        .getSanctionEpisodeManager()
+                        .snapshot(player.uuid, episodeFamily);
+
+        int confirmedEpisodes10m =
+                episodeSnapshot.confirmedEpisodes10m();
+        int confirmedEpisodes2h =
+                episodeSnapshot.confirmedEpisodes2h();
+        int confirmedEpisodesRetention =
+                episodeSnapshot.confirmedEpisodesRetention();
+        double episodeConfidence =
+                episodeSnapshot.latestConfidence();
+        boolean episodeRecovery =
+                episodeSnapshot.recoveryBlocked();
+        String episodeRecoveryReason =
+                episodeSnapshot.recoveryReason();
 
         String template = StaffAlertTemplate.expand(
                 original,
@@ -461,6 +603,34 @@ public class PunishmentManager implements ConfigReloadable {
                                         GrimAPI.INSTANCE.getIntegrityCorrelationManager()
                                                 .getScore(player.uuid)
                                 )
+                        )
+                        .replace(
+                                "%confirmed_episodes_10m%",
+                                Integer.toString(confirmedEpisodes10m)
+                        )
+                        .replace(
+                                "%confirmed_episodes_2h%",
+                                Integer.toString(confirmedEpisodes2h)
+                        )
+                        .replace(
+                                "%confirmed_episodes%",
+                                Integer.toString(confirmedEpisodesRetention)
+                        )
+                        .replace(
+                                "%confirmed_episodes_retention%",
+                                Integer.toString(confirmedEpisodesRetention)
+                        )
+                        .replace(
+                                "%episode_confidence%",
+                                formatMetric(episodeConfidence)
+                        )
+                        .replace(
+                                "%episode_recovery%",
+                                episodeRecovery ? "YES" : "NO"
+                        )
+                        .replace(
+                                "%episode_recovery_reason%",
+                                episodeRecoveryReason
                         )
                         .replace("%lag_state%", lagState())
                         .replace(
@@ -838,6 +1008,12 @@ public class PunishmentManager implements ConfigReloadable {
             return true;
         }
 
+        if (command.legacySanctionVlCondition
+                && !legacyVlActionsEnabled
+                && !isCrashCheck(check)) {
+            return false;
+        }
+
         boolean result =
                 command.condition.test(
                         variable -> conditionValue(
@@ -888,6 +1064,57 @@ public class PunishmentManager implements ConfigReloadable {
 
             case "sanction_group_vl" ->
                     group.sanctionViolations.size();
+
+            case "confirmed_episodes_10m" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countWithin(
+                                player.uuid,
+                                family,
+                                TimeUnit.MINUTES.toMillis(10L)
+                        );
+            }
+
+            case "confirmed_episodes_2h" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countWithin(
+                                player.uuid,
+                                family,
+                                TimeUnit.HOURS.toMillis(2L)
+                        );
+            }
+
+            case "confirmed_episodes",
+                 "confirmed_episodes_retention" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .countRetention(player.uuid, family);
+            }
+
+            case "episode_confidence" -> {
+                String family = SanctionEpisodeManager.familyFor(
+                        check.getStableKey(),
+                        componentFor(check)
+                );
+                yield GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                        .latestConfidence(player.uuid, family);
+            }
+
+            case "episode_recovery" ->
+                    GrimAPI.INSTANCE.getSanctionEpisodeManager()
+                            .isRecoveryBlocked(player.uuid)
+                            ? 1.0D
+                            : 0.0D;
 
             case "integrity", "integrity_score" ->
                     GrimAPI.INSTANCE
@@ -1075,6 +1302,409 @@ public class PunishmentManager implements ConfigReloadable {
     private static String formatMetric(double value) {
         if (!Double.isFinite(value)) return "0";
         return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    private void loadEpisodeSanctionRule(
+            ConfigManager config,
+            String family,
+            String configKey,
+            boolean defaultEnabled,
+            int defaultMinimum10m,
+            int defaultMinimum2h,
+            double defaultMinimumConfidence,
+            double defaultMinimumIntegrity,
+            String defaultCommand
+    ) {
+        String base = "episode-sanctions.families." + configKey + ".";
+
+        boolean enabled = config.getBooleanElse(
+                base + "enabled",
+                defaultEnabled
+        );
+        int minimum10m = (int) Math.max(
+                0L,
+                Math.min(
+                        100L,
+                        config.getLongElse(
+                                base + "minimum-episodes-10m",
+                                defaultMinimum10m
+                        )
+                )
+        );
+        int minimum2h = (int) Math.max(
+                0L,
+                Math.min(
+                        256L,
+                        config.getLongElse(
+                                base + "minimum-episodes-2h",
+                                defaultMinimum2h
+                        )
+                )
+        );
+        double minimumConfidence = clamp01(
+                config.getDoubleElse(
+                        base + "minimum-confidence",
+                        defaultMinimumConfidence
+                )
+        );
+        double minimumIntegrity = Math.max(
+                0.0D,
+                config.getDoubleElse(
+                        base + "minimum-integrity-score",
+                        defaultMinimumIntegrity
+                )
+        );
+        String command = config.getStringElse(
+                base + "command",
+                defaultCommand
+        ).trim();
+
+        boolean kickOnly =
+                command.toLowerCase(Locale.ROOT).startsWith("kick ");
+
+        if (enabled
+                && (minimum10m <= 0 && minimum2h <= 0)) {
+            enabled = false;
+            LogUtil.warn(
+                    "Confirmed episode sanctions for " + family
+                            + " are disabled because both recurrence thresholds are zero."
+            );
+        }
+
+        if (enabled && !kickOnly) {
+            enabled = false;
+            LogUtil.warn(
+                    "Confirmed episode sanctions for " + family
+                            + " require a kick command in v15 Phase 3A. "
+                            + "Configured command was ignored: " + command
+            );
+        }
+
+        episodeSanctionRules.put(
+                family,
+                new EpisodeSanctionRule(
+                        enabled,
+                        minimum10m,
+                        minimum2h,
+                        minimumConfidence,
+                        minimumIntegrity,
+                        command
+                )
+        );
+    }
+
+    /**
+     * Episode-based automatic sanctions are evaluated only when a brand-new
+     * physical episode is recorded. Raw VL, repeated packets and duplicate
+     * tokens cannot enter this method.
+     */
+    /**
+     * Phase 3B: evaluate one ledger decision and emit one structured audit line
+     * for each new physical episode. Duplicate tokens are deliberately silent.
+     */
+    public void handleEpisodeDecision(
+            Check check,
+            SanctionEpisodeManager.Decision decision
+    ) {
+        if (decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.DUPLICATE
+                || decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.REJECTED_DUPLICATE
+                || decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.DISABLED) {
+            return;
+        }
+
+        EpisodeSanctionRule rule =
+                episodeSanctionRules.get(decision.family());
+        double integrity = GrimAPI.INSTANCE
+                .getIntegrityCorrelationManager()
+                .getScore(player.uuid);
+
+        String action = "NONE";
+        String policyReason = decision.reason();
+        boolean autonomousEligible = false;
+
+        if (!decision.recorded()) {
+            policyReason = "rejected:" + decision.reason();
+            auditEpisodeDecision(
+                    check,
+                    decision,
+                    rule,
+                    integrity,
+                    action,
+                    policyReason,
+                    false
+            );
+            return;
+        }
+
+        if (!confirmedEpisodeSanctionsEnabled) {
+            policyReason = "policy-disabled";
+        } else if (rule == null) {
+            policyReason = "no-rule";
+        } else if (!rule.enabled()) {
+            policyReason = "observe-only";
+        } else {
+            autonomousEligible =
+                    confirmedEpisodeSanctionEligible(check, decision);
+
+            if (!autonomousEligible) {
+                policyReason = "family-not-autonomous";
+            } else if (confirmedEpisodeKickExecuted.get()) {
+                policyReason = "kick-already-queued";
+            } else {
+                boolean shortWindowTriggered =
+                        rule.minimumEpisodes10m() > 0
+                                && decision.confirmedEpisodes10m()
+                                >= rule.minimumEpisodes10m();
+                boolean longWindowTriggered =
+                        rule.minimumEpisodes2h() > 0
+                                && decision.confirmedEpisodes2h()
+                                >= rule.minimumEpisodes2h();
+
+                if (!shortWindowTriggered && !longWindowTriggered) {
+                    policyReason = "below-threshold";
+                } else if (decision.confidence()
+                        < rule.minimumConfidence()) {
+                    policyReason = "policy-confidence";
+                } else if (integrity
+                        < rule.minimumIntegrityScore()) {
+                    policyReason = "policy-integrity";
+                } else {
+                    String cmd = MessageUtil.replacePlaceholders(
+                            player,
+                            rule.command()
+                                    .replace(
+                                            "%episode_family%",
+                                            decision.family()
+                                    )
+                                    .replace(
+                                            "%episode_component%",
+                                            decision.component()
+                                    )
+                                    .replace(
+                                            "%confirmed_episodes_10m%",
+                                            Integer.toString(
+                                                    decision.confirmedEpisodes10m()
+                                            )
+                                    )
+                                    .replace(
+                                            "%confirmed_episodes_2h%",
+                                            Integer.toString(
+                                                    decision.confirmedEpisodes2h()
+                                            )
+                                    )
+                                    .replace(
+                                            "%confirmed_episodes_retention%",
+                                            Integer.toString(
+                                                    decision.confirmedEpisodesRetention()
+                                            )
+                                    )
+                                    .replace(
+                                            "%episode_confidence%",
+                                            formatMetric(
+                                                    decision.confidence()
+                                            )
+                                    )
+                                    .replace(
+                                            "%integrity_score%",
+                                            formatMetric(integrity)
+                                    )
+                                    .replace(
+                                            "%check_name%",
+                                            check.getDisplayName() == null
+                                                    ? "Unknown"
+                                                    : check.getDisplayName()
+                                    )
+                                    .replace(
+                                            "%component%",
+                                            decision.component()
+                                    )
+                    );
+
+                    boolean canceled = COMMAND_CHANNEL.fire(
+                            player,
+                            check,
+                            "confirmed-episode family="
+                                    + decision.family()
+                                    + " component="
+                                    + decision.component()
+                                    + " 10m="
+                                    + decision.confirmedEpisodes10m()
+                                    + " 2h="
+                                    + decision.confirmedEpisodes2h()
+                                    + " confidence="
+                                    + formatMetric(
+                                            decision.confidence()
+                                    ),
+                            cmd
+                    );
+
+                    if (canceled) {
+                        policyReason = "command-event-canceled";
+                    } else if (!confirmedEpisodeKickExecuted
+                            .compareAndSet(false, true)) {
+                        policyReason = "kick-already-queued";
+                    } else {
+                        action = "KICK_QUEUED";
+                        policyReason = "threshold-met";
+
+                        GrimAPI.INSTANCE
+                                .getScheduler()
+                                .getGlobalRegionScheduler()
+                                .run(
+                                        GrimAPI.INSTANCE.getGrimPlugin(),
+                                        () -> GrimAPI.INSTANCE
+                                                .getPlatformServer()
+                                                .dispatchCommand(
+                                                        GrimAPI.INSTANCE
+                                                                .getPlatformServer()
+                                                                .getConsoleSender(),
+                                                        cmd
+                                                )
+                                );
+                    }
+                }
+            }
+        }
+
+        auditEpisodeDecision(
+                check,
+                decision,
+                rule,
+                integrity,
+                action,
+                policyReason,
+                autonomousEligible
+        );
+    }
+
+    private void auditEpisodeDecision(
+            Check check,
+            SanctionEpisodeManager.Decision decision,
+            EpisodeSanctionRule rule,
+            double integrity,
+            String action,
+            String policyReason,
+            boolean autonomousEligible
+    ) {
+        if (!episodeAuditEnabled) {
+            return;
+        }
+
+        if (decision.outcome()
+                == SanctionEpisodeManager.DecisionOutcome.REJECTED
+                && !episodeAuditLogRejections) {
+            return;
+        }
+
+        boolean observeOnly =
+                decision.recorded()
+                        && (rule == null
+                        || !rule.enabled()
+                        || !autonomousEligible);
+
+        if (observeOnly && !episodeAuditLogObserveOnly) {
+            return;
+        }
+
+        int minimum10m =
+                rule == null ? 0 : rule.minimumEpisodes10m();
+        int minimum2h =
+                rule == null ? 0 : rule.minimumEpisodes2h();
+        double minimumConfidence =
+                rule == null ? 1.0D : rule.minimumConfidence();
+
+        String stableKey = check.getStableKey();
+        String displayName = check.getDisplayName() == null
+                ? "Unknown"
+                : check.getDisplayName();
+
+        var lag = GrimAPI.INSTANCE.getLagProtectionManager();
+
+        LogUtil.info(
+                "[SanctionAudit]"
+                        + " player=" + player.getName()
+                        + " check=" + displayName.replace(' ', '_')
+                        + " stable="
+                        + (stableKey == null ? "" : stableKey)
+                        + " outcome=" + decision.outcome().name()
+                        + " family=" + decision.family()
+                        + " component=" + decision.component()
+                        + " episode="
+                        + decision.episodeToken().replace(' ', '_')
+                        + " action=" + action
+                        + " reason=" + policyReason.replace(' ', '_')
+                        + " episodes10m="
+                        + decision.confirmedEpisodes10m()
+                        + "/" + minimum10m
+                        + " episodes2h="
+                        + decision.confirmedEpisodes2h()
+                        + "/" + minimum2h
+                        + " confidence="
+                        + formatMetric(decision.confidence())
+                        + "/" + formatMetric(minimumConfidence)
+                        + " serverConfidence="
+                        + formatMetric(decision.serverConfidence())
+                        + " playerConfidence="
+                        + formatMetric(decision.playerConfidence())
+                        + " tps=" + formatMetric(decision.tps())
+                        + " ping=" + player.getTransactionPing()
+                        + " avgPing="
+                        + formatMetric(
+                                lag.getAveragePingMillis(player.uuid)
+                        )
+                        + " jitter="
+                        + formatMetric(
+                                lag.getPlayerJitterMillis(player.uuid)
+                        )
+                        + " integrity=" + formatMetric(integrity)
+                        + " recovery="
+                        + (decision.recovery() ? "YES" : "NO")
+                        + " autonomous="
+                        + (autonomousEligible ? "YES" : "NO")
+        );
+    }
+
+    private boolean confirmedEpisodeSanctionEligible(
+            Check check,
+            SanctionEpisodeManager.Decision decision
+    ) {
+        String key = check.getStableKey();
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+
+        return switch (decision.family()) {
+            case SanctionEpisodeManager.FAMILY_TIMER ->
+                    "grim.timer.timer".equals(key);
+
+            case SanctionEpisodeManager.FAMILY_VELOCITY ->
+                    "grim.velocity.anti_knockback".equals(key)
+                            && "velocity.normal".equals(decision.component())
+                            && sensitiveLegacyEvidenceAllowed();
+
+            case SanctionEpisodeManager.FAMILY_COMBAT ->
+                    ("grim.combat.reach".equals(key)
+                            || "grim.combat.hitboxes".equals(key))
+                            && sensitiveLegacyEvidenceAllowed();
+
+            // Phase 3A is intentionally kick-disabled for these families until
+            // real-server regression proves their confirmed episode quality.
+            case SanctionEpisodeManager.FAMILY_MOVEMENT,
+                 SanctionEpisodeManager.FAMILY_ITEM_USE,
+                 SanctionEpisodeManager.FAMILY_GROUND,
+                 SanctionEpisodeManager.FAMILY_NETWORK ->
+                    false;
+
+            default -> false;
+        };
+    }
+
+    private static boolean isCrashCheck(Check check) {
+        String key = check.getStableKey();
+        return key != null && key.startsWith("grim.crash.");
     }
 
     private boolean sanctionEvidenceEligible(Check check) {
@@ -1304,6 +1934,16 @@ public class PunishmentManager implements ConfigReloadable {
     }
 }
 
+record EpisodeSanctionRule(
+        boolean enabled,
+        int minimumEpisodes10m,
+        int minimumEpisodes2h,
+        double minimumConfidence,
+        double minimumIntegrityScore,
+        String command
+) {
+}
+
 final class PunishGroup {
     final List<AbstractCheck> checks;
     final List<ParsedCommand> commands;
@@ -1353,6 +1993,7 @@ final class ParsedCommand {
     final String command;
     final PunishmentCondition condition;
     final boolean unless;
+    final boolean legacySanctionVlCondition;
 
     private int groupExecuteCount;
     private int groupNextBoundary;
@@ -1370,13 +2011,15 @@ final class ParsedCommand {
             int interval,
             String command,
             PunishmentCondition condition,
-            boolean unless
+            boolean unless,
+            boolean legacySanctionVlCondition
     ) {
         this.threshold = threshold;
         this.interval = interval;
         this.command = command;
         this.condition = condition;
         this.unless = unless;
+        this.legacySanctionVlCondition = legacySanctionVlCondition;
         this.groupNextBoundary = threshold;
     }
 

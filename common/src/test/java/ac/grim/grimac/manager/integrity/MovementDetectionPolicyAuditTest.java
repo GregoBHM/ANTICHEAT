@@ -73,11 +73,12 @@ class MovementDetectionPolicyAuditTest {
 
         String correction = between(
                 source,
-                "if (!specialFlagAllowed)",
-                "removeOffsetLenience();\n                return;"
+                "boolean episodeEvidenceAccepted =",
+                "advantageGained = Math.min(advantageGained, maxCeiling);"
         );
 
-        assertTrue(correction.contains("persistentCorrection"));
+        assertTrue(correction.contains("boolean severeMovement = false"));
+        assertTrue(correction.contains("executeViolationSetback(this)"));
         assertFalse(correction.contains("&& !trustedVelocityContext"));
     }
 
@@ -235,20 +236,27 @@ class MovementDetectionPolicyAuditTest {
                 "player.detectionEpisodeManager.evaluate(",
                 correctionIncrement
         );
-        int deniedSlot = source.indexOf(
-                "if (!specialFlagAllowed)",
+        int flagBudgetGate = source.indexOf(
+                "if (specialFlagAllowed)",
                 episodeBudget
+        );
+        int persistentEvidence = source.indexOf(
+                "boolean episodeEvidenceAccepted =",
+                flagBudgetGate
         );
         int correction = source.indexOf(
                 "executeViolationSetback(this)",
-                deniedSlot
+                persistentEvidence
         );
 
         assertTrue(correctionIncrement >= 0);
         assertTrue(episodeBudget > correctionIncrement);
-        assertTrue(deniedSlot > episodeBudget);
-        assertTrue(correction > deniedSlot);
+        assertTrue(flagBudgetGate > episodeBudget);
+        assertTrue(persistentEvidence > flagBudgetGate);
+        assertTrue(correction > persistentEvidence);
+        assertFalse(source.contains("if (!specialFlagAllowed)"));
         assertTrue(source.contains("specialEnvironmentEpisodeFlagAccepted"));
+        assertTrue(source.contains("Episode budgets cap VL/alerts only"));
     }
 
     @Test
@@ -315,7 +323,10 @@ class MovementDetectionPolicyAuditTest {
                 "private boolean specialEnvironmentEpisodeCorrectionApplied"
         ));
         assertTrue(source.contains(
-                "&& !specialEnvironmentEpisodeCorrectionApplied"
+                "boolean correctionApplied = environmentProtectedWindow"
+        ));
+        assertTrue(source.contains(
+                "&& !correctionApplied"
         ));
         assertTrue(source.contains(
                 "specialEnvironmentEpisodeCorrectionApplied = true"

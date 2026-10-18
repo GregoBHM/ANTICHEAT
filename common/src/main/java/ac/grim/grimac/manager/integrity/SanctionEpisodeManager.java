@@ -1,0 +1,812 @@
+package ac.grim.grimac.manager.integrity;
+
+import ac.grim.grimac.GrimAPI;
+import ac.grim.grimac.api.config.ConfigManager;
+import ac.grim.grimac.player.GrimPlayer;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Long-window memory of independently confirmed anti-cheat episodes.
+ *
+ * <p>This manager deliberately does not create VL, setbacks, kicks or bans.
+ * Checks decide when a physical episode is strong enough to be confirmed.
+ * The manager only deduplicates episode tokens, applies a post-continuity
+ * recovery gate and keeps a bounded history for future punishment conditions.</p>
+ */
+public final class SanctionEpisodeManager {
+    private static final long PURGE_INTERVAL_NANOS =
+            TimeUnit.SECONDS.toNanos(30L);
+
+    public static final String FAMILY_VELOCITY = "VELOCITY";
+    public static final String FAMILY_MOVEMENT = "MOVEMENT";
+    public static final String FAMILY_TIMER = "TIMER";
+    public static final String FAMILY_ITEM_USE = "ITEM_USE";
+    public static final String FAMILY_GROUND = "GROUND";
+    public static final String FAMILY_COMBAT = "COMBAT";
+    public static final String FAMILY_NETWORK = "NETWORK";
+    public static final String FAMILY_OTHER = "OTHER";
+
+    private final Map<UUID, State> states = new ConcurrentHashMap<>();
+
+    private volatile boolean enabled = true;
+    private volatile long nextPurgeNanos;
+    private volatile long retentionNanos = TimeUnit.HOURS.toNanos(2L);
+    private volatile long storageRetentionNanos = TimeUnit.HOURS.toNanos(2L);
+    private volatile int maxEpisodesPerFamily = 32;
+    private volatile long postContinuityGraceNanos = TimeUnit.MILLISECONDS.toNanos(1500L);
+    private volatile int minimumCleanPredictions = 8;
+    private volatile double minimumConfidence = 0.85D;
+    private volatile double minimumServerConfidence = 0.85D;
+    private volatile double minimumPlayerConfidence = 0.85D;
+    private volatile double minimumTps = 18.0D;
+
+    public void reload(@NotNull ConfigManager config) {
+        enabled = config.getBooleanElse("sanction-episodes.enabled", true);
+        retentionNanos = TimeUnit.SECONDS.toNanos(clamp(
+                config.getLongElse("sanction-episodes.retention-seconds", 7200L),
+                300L,
+                86_400L
+        ));
+        // The public 2h metric must remain a real two-hour window even when
+        // operators choose a shorter custom retention window. Keep enough
+        // internal history for both views; countRetention still respects the
+        // configured retentionNanos value.
+        storageRetentionNanos = Math.max(
+                retentionNanos,
+                TimeUnit.HOURS.toNanos(2L)
+        );
+        maxEpisodesPerFamily = (int) clamp(
+                config.getLongElse("sanction-episodes.max-episodes-per-family", 32L),
+                4L,
+                256L
+        );
+        postContinuityGraceNanos = TimeUnit.MILLISECONDS.toNanos(clamp(
+                config.getLongElse("sanction-episodes.post-continuity-grace-ms", 1500L),
+                0L,
+                10_000L
+        ));
+        minimumCleanPredictions = (int) clamp(
+                config.getLongElse("sanction-episodes.clean-recovery-predictions", 8L),
+                0L,
+                80L
+        );
+        minimumConfidence = clamp01(
+                config.getDoubleElse("sanction-episodes.minimum-confidence", 0.85D)
+        );
+        minimumServerConfidence = clamp01(
+                config.getDoubleElse("sanction-episodes.minimum-server-confidence", 0.85D)
+        );
+        minimumPlayerConfidence = clamp01(
+                config.getDoubleElse("sanction-episodes.minimum-player-confidence", 0.85D)
+        );
+        minimumTps = Math.max(
+                1.0D,
+                config.getDoubleElse("sanction-episodes.minimum-tps", 18.0D)
+        );
+
+        nextPurgeNanos = 0L;
+
+        if (!enabled) {
+            states.clear();
+        } else {
+            purgeAll();
+        }
+    }
+
+    /**
+     * Marks a real movement continuity boundary, e.g. /home, teleport, respawn
+     * or world change. Confirmed history is retained; only new confirmations
+     * are gated until both grace time and clean predictions recover.
+     */
+    public void markContinuityBreak(@NotNull UUID uuid, @NotNull String reason) {
+        if (!enabled) return;
+
+        long now = System.nanoTime();
+        State state = states.computeIfAbsent(uuid, ignored -> new State());
+        synchronized (state) {
+            purgeLocked(state, now);
+            state.recoveryUntilNanos = now + postContinuityGraceNanos;
+            state.cleanPredictions = 0;
+            state.lastContinuityReason = sanitize(reason);
+        }
+    }
+
+    /**
+     * Advances continuity recovery only after a genuinely clean prediction.
+     * Callers must not use merely "checked" or still-suspicious movement here.
+     */
+    public void noteCleanPrediction(@NotNull UUID uuid) {
+        if (!enabled) return;
+
+        State state = states.get(uuid);
+        if (state == null) return;
+
+        synchronized (state) {
+            purgeLocked(state, System.nanoTime());
+            if (state.recoveryUntilNanos == 0L
+                    && state.cleanPredictions >= minimumCleanPredictions) {
+                return;
+            }
+            state.cleanPredictions = Math.min(
+                    minimumCleanPredictions,
+                    state.cleanPredictions + 1
+            );
+        }
+    }
+
+    /**
+     * Records one independently confirmed episode. The same token can only be
+     * recorded once inside retention, regardless of how many packets/ticks the
+     * underlying check observed.
+     */
+    public @NotNull Decision confirm(
+            @NotNull GrimPlayer player,
+            @NotNull String family,
+            @NotNull String component,
+            @NotNull String episodeToken
+    ) {
+        String normalizedFamily = normalizeFamily(family);
+        String auditEpisodeToken = sanitize(episodeToken);
+
+        // Disabled means fully inert: do not even allocate per-player state,
+        // because tick() is also disabled and therefore cannot purge it.
+        if (!enabled) {
+            return new Decision(
+                    false,
+                    DecisionOutcome.DISABLED,
+                    normalizedFamily,
+                    sanitize(component),
+                    auditEpisodeToken,
+                    0,
+                    0,
+                    0,
+                    0.0D,
+                    0.0D,
+                    0.0D,
+                    0.0D,
+                    true,
+                    false,
+                    "disabled"
+            );
+        }
+
+        long now = System.nanoTime();
+        Eligibility eligibility = eligibility(player, now);
+        String normalizedComponent = sanitize(component);
+        String normalizedToken = "join="
+                + player.joinTime
+                + "|"
+                + auditEpisodeToken;
+
+        State state = states.computeIfAbsent(
+                player.uuid,
+                ignored -> new State()
+        );
+
+        synchronized (state) {
+            purgeLocked(state, now);
+
+            Deque<Episode> existingEpisodes =
+                    state.episodes.get(normalizedFamily);
+            if (existingEpisodes != null) {
+                for (Episode episode : existingEpisodes) {
+                    if (episode.token.equals(normalizedToken)) {
+                        return decision(
+                                false,
+                                DecisionOutcome.DUPLICATE,
+                                state,
+                                normalizedFamily,
+                                new Eligibility(
+                                        true,
+                                        episode.confidence,
+                                        0.0D,
+                                        0.0D,
+                                        0.0D,
+                                        false,
+                                        "duplicate"
+                                ),
+                                auditEpisodeToken,
+                                normalizedComponent
+                        );
+                    }
+                }
+            }
+
+            Deque<RejectedEpisode> rejected =
+                    state.rejectedEpisodes.get(normalizedFamily);
+            if (rejected != null) {
+                for (RejectedEpisode episode : rejected) {
+                    if (episode.token.equals(normalizedToken)) {
+                        return decision(
+                                false,
+                                DecisionOutcome.REJECTED_DUPLICATE,
+                                state,
+                                normalizedFamily,
+                                new Eligibility(
+                                        false,
+                                        0.0D,
+                                        0.0D,
+                                        0.0D,
+                                        0.0D,
+                                        episode.reason.startsWith("recovery:"),
+                                        episode.reason
+                                ),
+                                auditEpisodeToken,
+                                normalizedComponent
+                        );
+                    }
+                }
+            }
+
+            // Re-check continuity while holding the same state lock that will
+            // record the episode. A teleport/rejoin boundary may arrive on a
+            // different event thread between the optimistic eligibility check
+            // above and this critical section.
+            if (recoveryBlockedLocked(state, now)) {
+                eligibility = new Eligibility(
+                        false,
+                        eligibility.confidence,
+                        eligibility.serverConfidence,
+                        eligibility.playerConfidence,
+                        eligibility.tps,
+                        true,
+                        "recovery:" + state.lastContinuityReason
+                );
+            }
+
+            if (!enabled || !eligibility.allowed) {
+                if (enabled) {
+                    rememberRejectedLocked(
+                            state,
+                            normalizedFamily,
+                            normalizedToken,
+                            eligibility.reason,
+                            now
+                    );
+                }
+                return decision(
+                        false,
+                        DecisionOutcome.REJECTED,
+                        state,
+                        normalizedFamily,
+                        eligibility,
+                        auditEpisodeToken,
+                        normalizedComponent
+                );
+            }
+
+            Deque<Episode> episodes = state.episodes.computeIfAbsent(
+                    normalizedFamily,
+                    ignored -> new ArrayDeque<>()
+            );
+
+            episodes.addLast(new Episode(
+                    now,
+                    normalizedToken,
+                    normalizedComponent,
+                    eligibility.confidence
+            ));
+
+            while (episodes.size() > maxEpisodesPerFamily) {
+                episodes.pollFirst();
+            }
+
+            state.lastConfirmedNanos = now;
+            state.lastConfirmedFamily = normalizedFamily;
+            state.lastConfirmedComponent = normalizedComponent;
+            state.lastConfirmedConfidence = eligibility.confidence;
+
+            return decision(
+                    true,
+                    DecisionOutcome.RECORDED,
+                    state,
+                    normalizedFamily,
+                    eligibility,
+                    auditEpisodeToken,
+                    normalizedComponent
+            );
+        }
+    }
+
+    public @NotNull Snapshot snapshot(
+            @NotNull UUID uuid,
+            @NotNull String family
+    ) {
+        State state = states.get(uuid);
+        String normalizedFamily = normalizeFamily(family);
+
+        if (!enabled || state == null) {
+            return new Snapshot(
+                    normalizedFamily,
+                    0,
+                    0,
+                    0,
+                    0.0D,
+                    false,
+                    ""
+            );
+        }
+
+        long now = System.nanoTime();
+
+        synchronized (state) {
+            purgeLocked(state, now);
+
+            Deque<Episode> episodes =
+                    state.episodes.get(normalizedFamily);
+
+            double confidence =
+                    episodes == null || episodes.isEmpty()
+                            ? 0.0D
+                            : episodes.peekLast().confidence;
+
+            boolean recovery = recoveryBlockedLocked(state, now);
+
+            return new Snapshot(
+                    normalizedFamily,
+                    countLocked(
+                            state,
+                            normalizedFamily,
+                            now,
+                            TimeUnit.MINUTES.toNanos(10L)
+                    ),
+                    countLocked(
+                            state,
+                            normalizedFamily,
+                            now,
+                            TimeUnit.HOURS.toNanos(2L)
+                    ),
+                    countLocked(
+                            state,
+                            normalizedFamily,
+                            now,
+                            retentionNanos
+                    ),
+                    confidence,
+                    recovery,
+                    recovery ? state.lastContinuityReason : ""
+            );
+        }
+    }
+
+    public int countWithin(
+            @NotNull UUID uuid,
+            @NotNull String family,
+            long windowMillis
+    ) {
+        State state = states.get(uuid);
+        if (!enabled || state == null) return 0;
+
+        long now = System.nanoTime();
+        long window = TimeUnit.MILLISECONDS.toNanos(
+                Math.max(1L, windowMillis)
+        );
+
+        synchronized (state) {
+            purgeLocked(state, now);
+            Deque<Episode> episodes = state.episodes.get(
+                    normalizeFamily(family)
+            );
+            if (episodes == null) return 0;
+
+            int count = 0;
+            for (Episode episode : episodes) {
+                if (now - episode.timeNanos <= window) {
+                    count++;
+                }
+            }
+            return count;
+        }
+    }
+
+    public int countRetention(
+            @NotNull UUID uuid,
+            @NotNull String family
+    ) {
+        return countWithin(
+                uuid,
+                family,
+                TimeUnit.NANOSECONDS.toMillis(retentionNanos)
+        );
+    }
+
+    public boolean isRecoveryBlocked(@NotNull UUID uuid) {
+        State state = states.get(uuid);
+        if (!enabled || state == null) return false;
+
+        long now = System.nanoTime();
+        synchronized (state) {
+            purgeLocked(state, now);
+            return recoveryBlockedLocked(state, now);
+        }
+    }
+
+    public double latestConfidence(@NotNull UUID uuid) {
+        State state = states.get(uuid);
+        if (!enabled || state == null) return 0.0D;
+
+        synchronized (state) {
+            purgeLocked(state, System.nanoTime());
+            return state.episodes.isEmpty()
+                    ? 0.0D
+                    : state.lastConfirmedConfidence;
+        }
+    }
+
+    public double latestConfidence(
+            @NotNull UUID uuid,
+            @NotNull String family
+    ) {
+        State state = states.get(uuid);
+        if (!enabled || state == null) return 0.0D;
+
+        synchronized (state) {
+            purgeLocked(state, System.nanoTime());
+            Deque<Episode> episodes = state.episodes.get(
+                    normalizeFamily(family)
+            );
+            if (episodes == null || episodes.isEmpty()) return 0.0D;
+            return episodes.peekLast().confidence;
+        }
+    }
+
+    public @NotNull String recoveryReason(@NotNull UUID uuid) {
+        State state = states.get(uuid);
+        if (!enabled || state == null) return "";
+
+        synchronized (state) {
+            purgeLocked(state, System.nanoTime());
+            return recoveryBlockedLocked(state, System.nanoTime())
+                    ? state.lastContinuityReason
+                    : "";
+        }
+    }
+
+    public void clear(@NotNull UUID uuid) {
+        states.remove(uuid);
+    }
+
+    public void tick() {
+        if (!enabled) return;
+
+        long now = System.nanoTime();
+        if (now < nextPurgeNanos) return;
+
+        nextPurgeNanos = now + PURGE_INTERVAL_NANOS;
+        purgeAll();
+    }
+
+    private @NotNull Eligibility eligibility(
+            @NotNull GrimPlayer player,
+            long now
+    ) {
+        var lag = GrimAPI.INSTANCE.getLagProtectionManager();
+        double serverConfidence = lag.heuristicConfidence();
+        double playerConfidence = lag.playerNetworkConfidence(player);
+        double confidence = Math.min(
+                serverConfidence,
+                playerConfidence
+        );
+        double tps = GrimAPI.INSTANCE.getPlatformServer().getTPS();
+
+        State existing = states.get(player.uuid);
+        if (existing != null) {
+            synchronized (existing) {
+                purgeLocked(existing, now);
+                if (recoveryBlockedLocked(existing, now)) {
+                    return new Eligibility(
+                            false,
+                            confidence,
+                            serverConfidence,
+                            playerConfidence,
+                            tps,
+                            true,
+                            "recovery:" + existing.lastContinuityReason
+                    );
+                }
+            }
+        }
+
+        if (confidence < minimumConfidence
+                || serverConfidence < minimumServerConfidence
+                || playerConfidence < minimumPlayerConfidence
+                || tps < minimumTps) {
+            return new Eligibility(
+                    false,
+                    confidence,
+                    serverConfidence,
+                    playerConfidence,
+                    tps,
+                    false,
+                    "confidence"
+            );
+        }
+
+        return new Eligibility(
+                true,
+                confidence,
+                serverConfidence,
+                playerConfidence,
+                tps,
+                false,
+                "ok"
+        );
+    }
+
+    private @NotNull Decision decision(
+            boolean recorded,
+            @NotNull DecisionOutcome outcome,
+            @NotNull State state,
+            @NotNull String family,
+            @NotNull Eligibility eligibility,
+            @NotNull String episodeToken,
+            @NotNull String component
+    ) {
+        long now = System.nanoTime();
+        int tenMinutes = countLocked(
+                state,
+                family,
+                now,
+                TimeUnit.MINUTES.toNanos(10L)
+        );
+        int twoHours = countLocked(
+                state,
+                family,
+                now,
+                TimeUnit.HOURS.toNanos(2L)
+        );
+        int retained = countLocked(
+                state,
+                family,
+                now,
+                retentionNanos
+        );
+
+        return new Decision(
+                recorded,
+                outcome,
+                family,
+                sanitize(component),
+                sanitize(episodeToken),
+                tenMinutes,
+                twoHours,
+                retained,
+                eligibility.confidence,
+                eligibility.serverConfidence,
+                eligibility.playerConfidence,
+                eligibility.tps,
+                !eligibility.allowed,
+                eligibility.recovery,
+                eligibility.reason
+        );
+    }
+
+    private void rememberRejectedLocked(
+            @NotNull State state,
+            @NotNull String family,
+            @NotNull String token,
+            @NotNull String reason,
+            long now
+    ) {
+        Deque<RejectedEpisode> rejected =
+                state.rejectedEpisodes.computeIfAbsent(
+                        family,
+                        ignored -> new ArrayDeque<>()
+                );
+
+        for (RejectedEpisode episode : rejected) {
+            if (episode.token.equals(token)) {
+                return;
+            }
+        }
+
+        rejected.addLast(new RejectedEpisode(
+                now,
+                token,
+                sanitize(reason)
+        ));
+
+        while (rejected.size() > maxEpisodesPerFamily) {
+            rejected.pollFirst();
+        }
+    }
+
+    private int countLocked(
+            @NotNull State state,
+            @NotNull String family,
+            long now,
+            long windowNanos
+    ) {
+        Deque<Episode> episodes = state.episodes.get(family);
+        if (episodes == null) return 0;
+
+        int count = 0;
+        for (Episode episode : episodes) {
+            if (now - episode.timeNanos <= windowNanos) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean recoveryBlockedLocked(
+            @NotNull State state,
+            long now
+    ) {
+        return now < state.recoveryUntilNanos
+                || state.cleanPredictions < minimumCleanPredictions;
+    }
+
+    private void purgeAll() {
+        long now = System.nanoTime();
+        states.entrySet().removeIf(entry -> {
+            State state = entry.getValue();
+            synchronized (state) {
+                purgeLocked(state, now);
+                return state.episodes.isEmpty()
+                        && state.rejectedEpisodes.isEmpty()
+                        && !recoveryBlockedLocked(state, now)
+                        && now - state.lastConfirmedNanos > storageRetentionNanos;
+            }
+        });
+    }
+
+    private void purgeLocked(@NotNull State state, long now) {
+        for (Deque<Episode> episodes : state.episodes.values()) {
+            while (!episodes.isEmpty()
+                    && now - episodes.peekFirst().timeNanos > storageRetentionNanos) {
+                episodes.pollFirst();
+            }
+        }
+        state.episodes.entrySet().removeIf(
+                entry -> entry.getValue().isEmpty()
+        );
+
+        for (Deque<RejectedEpisode> rejected
+                : state.rejectedEpisodes.values()) {
+            while (!rejected.isEmpty()
+                    && now - rejected.peekFirst().timeNanos > storageRetentionNanos) {
+                rejected.pollFirst();
+            }
+        }
+        state.rejectedEpisodes.entrySet().removeIf(
+                entry -> entry.getValue().isEmpty()
+        );
+
+        if (now >= state.recoveryUntilNanos
+                && state.cleanPredictions >= minimumCleanPredictions) {
+            state.recoveryUntilNanos = 0L;
+            state.lastContinuityReason = "";
+        }
+    }
+
+    public static @NotNull String familyFor(
+            String stableKey,
+            String component
+    ) {
+        if (stableKey == null) return FAMILY_OTHER;
+
+        return switch (stableKey) {
+            case "grim.velocity.anti_knockback" -> FAMILY_VELOCITY;
+            case "grim.prediction.simulation" -> FAMILY_MOVEMENT;
+            case "grim.timer.timer", "grim.timer.limit" -> FAMILY_TIMER;
+            case "grim.timer.connection_stall",
+                 "grim.timer.packet_burst",
+                 "grim.exploit.stall_actions" -> FAMILY_NETWORK;
+            case "grim.movement.noslow" -> FAMILY_ITEM_USE;
+            case "grim.groundspoof.no_fall",
+                 "grim.groundspoof.fake" -> FAMILY_GROUND;
+            case "grim.combat.reach",
+                 "grim.combat.hitboxes" -> FAMILY_COMBAT;
+            default -> FAMILY_OTHER;
+        };
+    }
+
+    private static @NotNull String normalizeFamily(String family) {
+        if (family == null || family.isBlank()) {
+            return FAMILY_NETWORK;
+        }
+        return family.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static @NotNull String sanitize(String value) {
+        if (value == null) return "";
+        String trimmed = value.trim();
+        return trimmed.length() <= 128
+                ? trimmed
+                : trimmed.substring(0, 128);
+    }
+
+    private static long clamp(long value, long min, long max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static double clamp01(double value) {
+        return Math.max(0.0D, Math.min(1.0D, value));
+    }
+
+    public record Snapshot(
+            @NotNull String family,
+            int confirmedEpisodes10m,
+            int confirmedEpisodes2h,
+            int confirmedEpisodesRetention,
+            double latestConfidence,
+            boolean recoveryBlocked,
+            @NotNull String recoveryReason
+    ) {
+    }
+
+    public enum DecisionOutcome {
+        RECORDED,
+        REJECTED,
+        DUPLICATE,
+        REJECTED_DUPLICATE,
+        DISABLED
+    }
+
+    public record Decision(
+            boolean recorded,
+            @NotNull DecisionOutcome outcome,
+            @NotNull String family,
+            @NotNull String component,
+            @NotNull String episodeToken,
+            int confirmedEpisodes10m,
+            int confirmedEpisodes2h,
+            int confirmedEpisodesRetention,
+            double confidence,
+            double serverConfidence,
+            double playerConfidence,
+            double tps,
+            boolean blocked,
+            boolean recovery,
+            @NotNull String reason
+    ) {
+    }
+
+    private record Eligibility(
+            boolean allowed,
+            double confidence,
+            double serverConfidence,
+            double playerConfidence,
+            double tps,
+            boolean recovery,
+            @NotNull String reason
+    ) {
+    }
+
+    private record Episode(
+            long timeNanos,
+            @NotNull String token,
+            @NotNull String component,
+            double confidence
+    ) {
+    }
+
+    private record RejectedEpisode(
+            long timeNanos,
+            @NotNull String token,
+            @NotNull String reason
+    ) {
+    }
+
+    private static final class State {
+        final Map<String, Deque<Episode>> episodes = new HashMap<>();
+        final Map<String, Deque<RejectedEpisode>> rejectedEpisodes =
+                new HashMap<>();
+        long recoveryUntilNanos;
+        int cleanPredictions = Integer.MAX_VALUE;
+        String lastContinuityReason = "";
+        long lastConfirmedNanos;
+        String lastConfirmedFamily = "";
+        String lastConfirmedComponent = "";
+        double lastConfirmedConfidence;
+    }
+}

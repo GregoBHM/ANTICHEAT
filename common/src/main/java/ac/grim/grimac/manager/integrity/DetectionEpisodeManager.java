@@ -117,15 +117,43 @@ public final class DetectionEpisodeManager {
             @NotNull String contextKey,
             long episodeWindowMillis
     ) {
+        return resolveSharedEpisode(
+                family,
+                contextKey,
+                episodeWindowMillis,
+                Long.MAX_VALUE
+        );
+    }
+
+    /**
+     * Resolves a shared physical episode with both an idle-gap boundary and an
+     * optional maximum lifetime. The lifetime cap is useful for persistent
+     * normal cheats: continuous Timer/Fly should roll into bounded independent
+     * episodes instead of producing either hundreds of flags or one immortal
+     * episode.
+     */
+    public synchronized @NotNull SharedEpisode resolveSharedEpisode(
+            @NotNull String family,
+            @NotNull String contextKey,
+            long episodeWindowMillis,
+            long maximumEpisodeLifetimeMillis
+    ) {
         long now = System.nanoTime();
         long window = TimeUnit.MILLISECONDS.toNanos(
                 Math.max(1L, episodeWindowMillis)
+        );
+        long maximumLifetime = maximumEpisodeLifetimeMillis == Long.MAX_VALUE
+                ? Long.MAX_VALUE
+                : TimeUnit.MILLISECONDS.toNanos(
+                Math.max(1L, maximumEpisodeLifetimeMillis)
         );
 
         SharedState state = sharedStates.get(family);
         if (state == null
                 || !state.contextKey.equals(contextKey)
-                || now - state.lastSeenNanos > window) {
+                || now - state.lastSeenNanos > window
+                || (maximumLifetime != Long.MAX_VALUE
+                && now - state.createdAtNanos >= maximumLifetime)) {
             state = new SharedState(
                     ++sharedSequence,
                     contextKey,
@@ -147,6 +175,15 @@ public final class DetectionEpisodeManager {
 
     public synchronized void clear(@NotNull String component) {
         states.remove(component);
+    }
+
+    /**
+     * Ends one shared physical family explicitly. Use this for real lifecycle
+     * boundaries such as a clean landing so a later independent fall cannot
+     * inherit the previous episode merely because it happened quickly.
+     */
+    public synchronized void clearSharedEpisode(@NotNull String family) {
+        sharedStates.remove(family);
     }
 
     public synchronized void clearAll() {
@@ -203,6 +240,7 @@ public final class DetectionEpisodeManager {
     private static final class SharedState {
         final long id;
         final String contextKey;
+        final long createdAtNanos;
         long lastSeenNanos;
         int observations;
         int flags;
@@ -210,6 +248,7 @@ public final class DetectionEpisodeManager {
         SharedState(long id, String contextKey, long now) {
             this.id = id;
             this.contextKey = contextKey;
+            this.createdAtNanos = now;
             this.lastSeenNanos = now;
         }
     }

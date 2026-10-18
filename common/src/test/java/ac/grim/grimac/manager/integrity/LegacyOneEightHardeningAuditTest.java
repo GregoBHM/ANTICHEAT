@@ -31,8 +31,27 @@ class LegacyOneEightHardeningAuditTest {
                 "boolean hardPrevention = shouldPreventBurstRelease()"
         ));
         assertTrue(limit.contains(
-                "if (hardPrevention && shouldSetback())"
+                "hardPrevention && cancelBurstMovement && shouldModifyPackets()"
         ));
+        assertTrue(limit.contains(
+                "&& hardPrevention"
+        ));
+        assertTrue(limit.contains(
+                "&& shouldSetback()"
+        ));
+
+        int prevention = limit.indexOf(
+                "boolean hardPrevention = shouldPreventBurstRelease()"
+        );
+        int episodeFlagGate = limit.indexOf(
+                "if (episode.allowFlag())"
+        );
+        assertTrue(prevention >= 0 && episodeFlagGate >= 0);
+        assertTrue(
+                prevention < episodeFlagGate,
+                "TimerLimit prevention must not be disabled by the episode alert/VL cap"
+        );
+
         assertTrue(limit.contains("stall.isHardReleaseCandidateActive()"));
         assertTrue(limit.contains("stall.shouldSuppressMovementSetbacks()"));
     }

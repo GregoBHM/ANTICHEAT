@@ -42,6 +42,11 @@ public class NoSlow extends Check implements PostPredictionListener {
     private String lastContextEvidenceKey = "";
     private long lastCheckedPredictionNanos;
 
+    private long normalEpisodeWindowMillis;
+    private long normalEpisodeFlagIntervalMillis;
+    private int normalMaxFlagsPerEpisode;
+    private long normalEpisodeMaxLifetimeMillis;
+
     public NoSlow(GrimPlayer player) {
         super(player);
     }
@@ -181,11 +186,51 @@ public class NoSlow extends Check implements PostPredictionListener {
     private void handleNormal(@NotNull ItemUseSessionTracker.Session session) {
         if (bestOffset > offsetToFlag) {
             if (flaggedLastTick) {
-                flagComponentWithSetback(
-                        "noslow.normal",
-                        "offset=" + formatOffset(bestOffset)
-                                + " session=" + session.sessionId()
-                );
+                // Eating is naturally short-lived, but blocking/use-item states
+                // can remain active for a long time. Keep the physical session
+                // identity while rolling persistent NoSlow into bounded
+                // sub-episodes so one held session is neither x70 spam nor an
+                // immortal single piece of evidence.
+                DetectionEpisodeManager.SharedEpisode normalEpisode =
+                        player.detectionEpisodeManager.resolveSharedEpisode(
+                                "noslow-normal",
+                                "itemuse#" + session.sessionId(),
+                                normalEpisodeWindowMillis,
+                                normalEpisodeMaxLifetimeMillis
+                        );
+
+                String episodeKey = "noslow.normal|session="
+                        + session.sessionId()
+                        + "|" + normalEpisode.token();
+
+                DetectionEpisodeManager.Decision decision =
+                        player.detectionEpisodeManager.evaluate(
+                                "noslow.normal",
+                                episodeKey,
+                                normalEpisodeWindowMillis,
+                                normalEpisodeFlagIntervalMillis,
+                                normalMaxFlagsPerEpisode,
+                                normalEpisode,
+                                normalMaxFlagsPerEpisode
+                        );
+
+                if (decision.allowFlag()) {
+                    flagComponentWithSetback(
+                            "noslow.normal",
+                            "offset=" + formatOffset(bestOffset)
+                                    + " session=" + session.sessionId()
+                                    + " episode=" + normalEpisode.token()
+                                    + " episodeObservations="
+                                    + decision.observations()
+                                    + " episodeFlags="
+                                    + decision.flags(),
+                            () -> confirmSanctionEpisode(
+                                    ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_ITEM_USE,
+                                    "noslow.normal",
+                                    normalEpisode.token()
+                            )
+                    );
+                }
             }
             flaggedLastTick = true;
         } else {
@@ -371,6 +416,39 @@ public class NoSlow extends Check implements PostPredictionListener {
                 ),
                 1L,
                 10L
+        );
+
+        normalEpisodeWindowMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.window-ms",
+                        5000L
+                ),
+                500L,
+                15_000L
+        );
+        normalEpisodeFlagIntervalMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.flag-interval-ms",
+                        1000L
+                ),
+                0L,
+                10_000L
+        );
+        normalMaxFlagsPerEpisode = (int) clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.max-flags-per-episode",
+                        1L
+                ),
+                1L,
+                4L
+        );
+        normalEpisodeMaxLifetimeMillis = clamp(
+                config.getLongElse(
+                        "NoSlow.normal-episode.max-lifetime-ms",
+                        4000L
+                ),
+                1000L,
+                30_000L
         );
 
         resetTickState();

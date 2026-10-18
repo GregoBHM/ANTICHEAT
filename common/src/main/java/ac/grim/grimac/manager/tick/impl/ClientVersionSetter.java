@@ -25,6 +25,7 @@ public class ClientVersionSetter implements Tickable {
         GrimAPI.INSTANCE.getMovementContextManager().tick();
         GrimAPI.INSTANCE.getInteractionContextManager().tick();
         GrimAPI.INSTANCE.getIntegrityCorrelationManager().tick();
+        GrimAPI.INSTANCE.getSanctionEpisodeManager().tick();
         GrimAPI.INSTANCE.getAlertAggregationManager().tick();
     }
 }

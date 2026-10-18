@@ -136,6 +136,10 @@ RotationPlace:
 # Muito mais estável que outros anticheats, mas por favor, reporte quaisquer falsos positivos. Eu já arrumei diversos
 # erros de netcode.
 NoSlow:
+    normal-episode:
+        window-ms: 5000
+        flag-interval-ms: 1000
+        max-flags-per-episode: 1
     # Quanto de desalinhamento é considerado trapaça?
     # Por padrão é menor que os outros.
     # Em 0.03-0.2 detecta com consistência.
@@ -202,6 +206,10 @@ Explosion:
     setbackvl: 3
 
 TimerA:
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 500
+    max-flags-per-episode: 2
+    episode-max-lifetime-ms: 2500
     setbackvl: 10
     prevention:
         enabled: true
@@ -215,6 +223,9 @@ TimerA:
 
 # This check limits abuse of the TimerA balance by preventing the player's movement falling too far behind realtime
 TimerLimit:
+    episode-window-ms: 1500
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
     # Ping no qual a verificação vai começar a limitar o balançeamento do timer para previnir abuso.
     # Pode causar recuos a jogadores legítmos, mas somente se estiverem acima desse ping.
     # -1 desabilitará.
@@ -688,6 +699,11 @@ world-integrity:
 
 movement-enforcement:
     enabled: true
+    normal-episode:
+        window-ms: 1200
+        flag-interval-ms: 500
+        max-flags-per-episode: 2
+        max-lifetime-ms: 3000
     # Destructive Simulation correction pauses only when the SERVER is unhealthy.
     # Player ping/jitter alone never becomes a movement bypass.
     minimum-server-confidence: 0.55
@@ -830,3 +846,28 @@ autoclicker-pattern:
     maximum-variance: 0.10
     minimum-periodicity: 0.95
     minimum-mode-ratio: 0.85
+
+# Long-window memory stores only independently confirmed episodes, never raw VL.
+# It is telemetry/punishment input only; this block does not enable autobans.
+sanction-episodes:
+    enabled: true
+    retention-seconds: 7200
+    max-episodes-per-family: 32
+    post-continuity-grace-ms: 1500
+    clean-recovery-predictions: 8
+    minimum-confidence: 0.85
+    minimum-server-confidence: 0.85
+    minimum-player-confidence: 0.85
+    minimum-tps: 18.0
+
+NoFall:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
+    episode-max-lifetime-ms: 4000
+
+GroundSpoof:
+    episode-window-ms: 2000
+    episode-flag-interval-ms: 750
+    max-flags-per-episode: 1
+    episode-max-lifetime-ms: 4000

@@ -186,6 +186,31 @@ class DetectionEpisodeManagerTest {
 
 
     @Test
+    void persistentSharedEpisodeRollsAfterMaximumLifetime() throws Exception {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        DetectionEpisodeManager.SharedEpisode first =
+                manager.resolveSharedEpisode(
+                        "simulation-normal",
+                        "simulation.normal",
+                        1000L,
+                        1L
+                );
+
+        Thread.sleep(5L);
+
+        DetectionEpisodeManager.SharedEpisode rolled =
+                manager.resolveSharedEpisode(
+                        "simulation-normal",
+                        "simulation.normal",
+                        1000L,
+                        1L
+                );
+
+        assertTrue(first.id() != rolled.id());
+    }
+
+    @Test
     void itemUseSessionAndRecoveryTransitionsStartFreshSharedEpisodes() {
         DetectionEpisodeManager manager = new DetectionEpisodeManager();
 
@@ -211,5 +236,31 @@ class DetectionEpisodeManagerTest {
         assertTrue(itemSeven.id() != itemEight.id());
         assertTrue(itemEight.id() != recovery.id());
     }
+
+    @Test
+    void explicitSharedBoundaryStartsFreshPhysicalEpisode() {
+        DetectionEpisodeManager manager = new DetectionEpisodeManager();
+
+        DetectionEpisodeManager.SharedEpisode first =
+                manager.resolveSharedEpisode(
+                        "ground-integrity",
+                        "airborne",
+                        2000L,
+                        4000L
+                );
+
+        manager.clearSharedEpisode("ground-integrity");
+
+        DetectionEpisodeManager.SharedEpisode second =
+                manager.resolveSharedEpisode(
+                        "ground-integrity",
+                        "airborne",
+                        2000L,
+                        4000L
+                );
+
+        assertTrue(first.id() != second.id());
+    }
+
 
 }

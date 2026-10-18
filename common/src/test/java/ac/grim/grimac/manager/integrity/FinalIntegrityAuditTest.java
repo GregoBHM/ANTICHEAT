@@ -115,10 +115,12 @@ class FinalIntegrityAuditTest {
     }
 
     @Test
-    void timerPreventionIsIndependentFromSanctionConfidence() throws IOException {
+    void timerPreventionIsIndependentFromEpisodeVlAndSanctionConfidence() throws IOException {
         String timer = source("checks/impl/timer/Timer.java");
 
-        assertTrue(timer.contains("boolean acceptedViolation = flag()"));
+        assertTrue(timer.contains("DetectionEpisodeManager.Decision episode"));
+        assertTrue(timer.contains("episode.allowFlag()"));
+        assertTrue(timer.contains("flagComponent("));
         assertTrue(timer.contains("preventExcessPackets"));
         assertTrue(timer.contains("preventionMinimumServerConfidence"));
         assertTrue(timer.contains("heuristicConfidence() >= preventionMinimumServerConfidence"));
