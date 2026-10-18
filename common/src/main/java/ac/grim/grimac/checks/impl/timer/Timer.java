@@ -106,8 +106,7 @@ public class Timer extends Check implements PrePredictionPacketReceiveListener {
                             + " episodeFlags=" + episode.flags(),
                     () -> {
                         if (confirmEpisode) {
-                            GrimAPI.INSTANCE.getSanctionEpisodeManager().confirm(
-                                    player,
+                            confirmSanctionEpisode(
                                     ac.grim.grimac.manager.integrity.SanctionEpisodeManager.FAMILY_TIMER,
                                     "timer.normal",
                                     timerEpisode.token()
